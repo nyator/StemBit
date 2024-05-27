@@ -1,11 +1,20 @@
-import { View, Text } from 'react-native'
-import React from 'react'
+import { View, Text,Image } from 'react-native'
+import { Tabs } from "expo-router"
 
 const TabLayout = () => {
   return (
-    <View>
-      <Text>TabLayout</Text>
-    </View>
+    <>
+    <Tabs>
+      <Tabs.Screen name="home" 
+      options={
+        {
+          tabBarLabel: "Live",
+          headerShown: false,
+        }
+      } />
+    </Tabs>
+
+    </>
   )
 }
 

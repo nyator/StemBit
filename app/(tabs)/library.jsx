@@ -1,12 +1,12 @@
 import { View, Text } from 'react-native'
 import React from 'react'
 
-const Preset = () => {
+const Library = () => {
   return (
     <View>
-      <Text>Preset</Text>
+      <Text>Library</Text>
     </View>
   )
 }
 
-export default Preset
+export default Library
