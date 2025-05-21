@@ -2,8 +2,6 @@ import { SplashScreen, Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
 
-
-
 const RootLayout = () => {
   const [fontsLoaded, error] = useFonts({
     "Chillax-Bold": require("../assets/fonts/Chillax-Bold.otf"),
@@ -19,7 +17,6 @@ const RootLayout = () => {
   }, []);
 
   useEffect(() => {
-    
     if (error) throw error;
 
     if (fontsLoaded) {
@@ -32,8 +29,8 @@ const RootLayout = () => {
 
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
     </Stack>
   );
 };

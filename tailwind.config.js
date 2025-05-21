@@ -4,7 +4,16 @@ module.exports = {
   content: ["./components/**/*.{js,jsx,ts,tsx}", "./app/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        cBold: ["Chillax-Bold"],
+        cSemibold: ["Chillax-Semibold"],
+        cMedium: ["Chillax-Medium"],
+        cRegular: ["Chillax-Regular"],
+        cLight: ["Chillax-Light"],
+        cExtraLight: ["Chillax-ExtraLight"],
+      },
+    },
   },
   plugins: [],
 };
