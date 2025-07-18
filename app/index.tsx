@@ -1,22 +1,20 @@
-import { Text, View } from "react-native";
-import '../global.css'
-import { useRouter } from "expo-router";
+import { Text, SafeAreaView, View } from "react-native";
 import { Redirect } from "expo-router";
+import { StatusBar } from "react-native";
+
+import "../global.css";
 
 export default function Page() {
-  const router = useRouter();
-
   return (
-    <View className="mx-auto max-w-sm flex-1 justify-center gap-4 px-8 py-4">
-      <View className="flex-1 flex justify-center max-w-3xl mx-auto items-center">
-        <Text
-          className="font-cBold text-[62px] text-gray-900 text-center"
-        >
-          Stem World
-        </Text>
+    <SafeAreaView className="mx-auto max-w-sm flex-1 justify-center items-center">
+      <View className="flex justify-center items-center w-full flex-row">
+        <Text className="font-rBlack text-7xl text-white pt-5 tracking-tighter">Stem</Text>
+        <Text className="font-rBlack text-7xl text-accent pt-5 tracking-tighter">Bits</Text>
         {/* <Text className="text-2xl underline font-cSemibold text-blue-500"  onPress={() => router.replace("/(tabs)/loop")}> Tabs </Text> */}
-        <Redirect href="/(tabs)/loop" />
       </View>
-    </View>
+      <StatusBar barStyle="light-content" />
+        {/* <Redirect href="/(tabs)/loop" /> */}
+        <Redirect href="/(auths)/login" />
+    </SafeAreaView>
   );
 }

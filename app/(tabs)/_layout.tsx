@@ -16,13 +16,13 @@ const TabIcon = ({ icon, name, color, focused }: TabIconProps) => {
         source={icon}
         resizeMode="contain"
         style={{
-          width: 30,
-          height: 30,
+          width: 24,
+          height: 24,
         }}
         tintColor={color}
       />
       <Text
-        className={`${focused ? "font-cSemibold" : "font-cSemibold"} text-sm`}
+        className={`${focused ? "font-rBold" : "font-rSemiBold"} text-sm`}
         style={{ color }}
       >
         {name}
@@ -46,15 +46,15 @@ export default function TabLayout() {
           height: 80,
           width: "90%",
           borderTopColor: "#000",
-          borderTopLeftRadius: 50,
-          borderTopRightRadius: 50,
-          borderBottomRightRadius: 50,
-          borderBottomLeftRadius: 50,
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          borderBottomRightRadius: 20,
+          borderBottomLeftRadius: 20,
           alignSelf: "center",
           shadowColor: "#000",
           shadowOffset: {
             width: 0,
-            height: 10,
+            height: 2,
           },
           shadowOpacity: 0.25,
           shadowRadius: 3.5,

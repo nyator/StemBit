@@ -10,6 +10,12 @@ const RootLayout = () => {
     "Chillax-Regular": require("../assets/fonts/Chillax-Regular.otf"),
     "Chillax-Extralight": require("../assets/fonts/Chillax-Extralight.otf"),
     "Chillax-Light": require("../assets/fonts/Chillax-Light.otf"),
+    "Raleway-Black": require("../assets/fonts/Raleway-Black.ttf"),
+    "Raleway-Bold": require("../assets/fonts/Raleway-Bold.ttf"),
+    "Raleway-Medium": require("../assets/fonts/Raleway-Medium.ttf"),
+    "Raleway-Regular": require("../assets/fonts/Raleway-Regular.ttf"),
+    "Raleway-SemiBold": require("../assets/fonts/Raleway-SemiBold.ttf"),
+    "Raleway-Thin": require("../assets/fonts/Raleway-Thin.ttf"),
   });
 
   useEffect(() => {
@@ -30,7 +36,8 @@ const RootLayout = () => {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="(auths)" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ headerShown: false, contentStyle: {backgroundColor: "#101116"} }} />
     </Stack>
   );
 };
