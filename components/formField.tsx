@@ -2,14 +2,13 @@ import { View, Text, TextInput, TouchableOpacity, Image } from "react-native";
 import React, { useState } from "react";
 
 import Ionicons from "@expo/vector-icons/Ionicons";
-import "../global.css";
 
 type FormFieldProps = {
-  title: string;
+  title?: string;
   value?: string;
   placeholder: string;
   handleChangeText?: (text: string) => void;
-  otherStyles: string;
+  otherStyles?: string;
   [key: string]: any; // To allow other props
 };
 
@@ -24,21 +23,21 @@ const FormField = ({
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <View className={`space-y-2 border-solid border-[5px] border-error ${otherStyles}`}>
-      <Text className="text-2xl font-rBold text-white">{title}</Text>
-      <View className="border-2 border-red-500 w-full h-16 px-4 bg-red-400 rounded-[10px] items-center flex-row">
+    <View className={`space-y-2 ${otherStyles}`}>
+      <Text className="text-xl font-rRegular mb-5 text-white">{title}</Text>
+      <View className="border-[1.5px] border-[#454545]/40 w-full h-[55px] px-4 bg-primary rounded-xl focus:border-accent items-center flex-row">
         <TextInput
-          className="flex-1 text-white font-rSemibold "
+          className="flex-1 text-white font-rRegular text-[18px]"
           placeholder={placeholder}
           keyboardType={title === "Email" ? "email-address" : "default"}
           placeholderTextColor="#7d7d8d"
           selectionColor="#08C192"
           value={value}
           onChangeText={handleChangeText}
-          secureTextEntry={title === "Password" && !showPassword}
+          secureTextEntry={(title === "Password" || title === "Confirm Password") && !showPassword}
         />
 
-        {title === "Password" && (
+        {(title === "Password" || title === "Confirm Password") && (
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
             {!showPassword ? (
               <Ionicons name="eye-off-outline" size={18} color="white" />
