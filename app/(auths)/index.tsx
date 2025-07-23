@@ -5,8 +5,9 @@ import { StatusBar } from "react-native";
 import { useRouter } from "expo-router";
 
 import icons from "../../constants/icons";
-
 import Ionicons from "@expo/vector-icons/Ionicons";
+
+import { MotiView } from 'moti'; // for animation: npx expo install moti
 
 const splashPages = [
   {
@@ -55,9 +56,21 @@ const IndexScreen = () => {
     <SafeAreaView className="flex-1 justify-center items-center bg-primary">
       <StatusBar barStyle="light-content" />
       <View className="flex-1 items-center px-5">
-        <Text className="text-white text-center my-5 font-rMedium">
-          {splashPages[page].id} | {splashPages.length}
-        </Text>
+        <View className="flex-row justify-center items-center py-7 w-screen">
+          <Text className="text-center text-white font-rMedium">
+            {splashPages[page].id} | {splashPages.length}
+          </Text>
+          {page < 2 && (
+            <TouchableOpacity
+              className="flex absolute right-7 rounded text-end"
+              onPress={handleGetStarted}
+            >
+              <Text className="text-xl text-white underline font-rRegular">
+                Skip
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <View className="mb-6 w-[28rem] h-[28rem] justify-start items-center overflow-hidden">
           <Image
             source={splashPages[page].image}
@@ -65,63 +78,68 @@ const IndexScreen = () => {
             className="object-contain w-full h-full"
           />
         </View>
-        <View className="mb-4 w-screen px-5 flex justify-center items-start ">
+        <View className="flex justify-center items-start px-5 mb-4 w-screen">
           <Text className="text-white text-[40px] max-w-[26rem] text-start font-rBold text-nowrap">
             {splashPages[page].title}
           </Text>
         </View>
-        <Text className="text-white text-lg mb-6">
+        <Text className="mb-6 text-lg text-white">
           {splashPages[page].subtitle}
         </Text>
-        <View className="flex flex-row  w-full justify-between items-center px-10 absolute bottom-10 mt-8 gap-6">
-          {page < 2 && (
-            <TouchableOpacity
-              className="px-6 py-2 flex justify-center rounded"
-              onPress={handleGetStarted}
-            >
-              <Text className="text-white text-xl font-rRegular underline">
-                Skip
-              </Text>
-            </TouchableOpacity>
-          )}
 
-          {splashPages[page].id === "1" ? (
-            <TouchableOpacity
-              className="p-2 bg-[#098F6D] rounded-full"
-              onPress={handleBack}
-            >
-              <View className="flex-row items-center p-2 bg-red-500 rounded-full"></View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              className="p-2 bg-[#098F6D] rounded-full"
-              disabled
-            ></TouchableOpacity>
-          )}
-
+        <View className="flex absolute bottom-10 flex-row justify-between items-center px-24 mt-8 w-screen">
+          <View className="flex-row justify-end items-end">
+            {splashPages.map((_, idx) => (
+              <MotiView
+                key={idx}
+                // className={`mx-1 w-3 h-3 rounded-full ${page === idx ? 'bg-white w-10 ' : 'bg-white/30'}`}
+                from={{
+                  width: 8,
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                }}
+                animate={{
+                  width: page === idx ? 25 : 8,
+                  backgroundColor: page === idx ? '#fff' : 'rgba(255,255,255,0.3)',
+                }}
+                transition={{
+                  type: 'timing',
+                  duration: 300,
+                }}
+                style={{
+                  height: 8,
+                  borderRadius: 4,
+                  marginHorizontal: 4,
+                }}
+              />
+            ))}
+          </View>
           {page < splashPages.length - 1 ? (
             <TouchableOpacity
-              className="p-2 bg-[#098F6D] rounded-full"
+              className="p-2 bg-[#098F6D] rounded-full "
               onPress={handleNext}
             >
-              <View className="flex-row items-center p-2 bg-accent rounded-full">
+              <View className="flex-row items-center p-2 rounded-full bg-accent">
                 <Ionicons name="chevron-forward" size={24} color="#CFFCE8" />
               </View>
             </TouchableOpacity>
           ) : (
+            // <View className="flex items-end">
             <TouchableOpacity
-              className="p-2 w-full items-end"
               onPress={handleGetStarted}
+            // className=""
             >
-              <View className="flex-row items-center bg-accent rounded-full ">
-                <Image
-                  source={icons.logoButton}
-                  style={{ width: 50, height: 50 }}
-                  className="object-cover"
-                />
-              </View>
+              <Image
+                source={icons.logoButton}
+                style={{ width: 50, height: 50 }}
+                className="object-contain"
+              />
             </TouchableOpacity>
+            // </View>
           )}
+        </View>
+        <View className="flex absolute bottom-0 right-2/4 flex-row">
+          <Text className="text-white/50 font-rMedium">by </Text>
+          <Text className="text-accent font-rMedium">nehtek</Text>
         </View>
       </View>
     </SafeAreaView>

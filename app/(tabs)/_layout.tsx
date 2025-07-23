@@ -9,27 +9,22 @@ type TabIconProps = {
   focused: boolean;
 };
 
-const TabIcon = ({ icon, name, color, focused }: TabIconProps) => {
-  return (
-    <View className="min-w-[6rem] items-center h-full">
-      <Image
-        source={icon}
-        resizeMode="contain"
-        style={{
-          width: 24,
-          height: 24,
-        }}
-        tintColor={color}
-      />
-      <Text
-        className={`${focused ? "font-rBold" : "font-rSemiBold"} text-sm`}
-        style={{ color }}
-      >
-        {name}
-      </Text>
-    </View>
-  );
-};
+const TabIcon = ({ icon, name, color, focused }: TabIconProps) => (
+  <View className="min-w-[6rem] gap-2 items-center h-full">
+    <Image
+      source={icon}
+      resizeMode="contain"
+      style={{ width: 34, height: 34 }}
+      tintColor={color}
+    />
+    <Text
+      className={`${focused ? "font-rBlack" : "font-rBold"} text-[12px]`}
+      style={{ color }}
+    >
+      {name}
+    </Text>
+  </View>
+);
 
 export default function TabLayout() {
   return (
@@ -38,37 +33,21 @@ export default function TabLayout() {
         headerShown: false,
         tabBarShowLabel: false,
         tabBarStyle: {
-          position: "absolute",
-          left: "50%",
-          transform: [{ translateX: 20 }],
-          backgroundColor: "#000",
-          borderTopWidth: 10,
-          height: 80,
-          width: "90%",
-          borderTopColor: "#000",
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          borderBottomRightRadius: 20,
-          borderBottomLeftRadius: 20,
+          backgroundColor: "#000000",
+          width: "100%",
+          paddingTop: 10,
+          height: "13%",
           alignSelf: "center",
-          shadowColor: "#000",
-          shadowOffset: {
-            width: 0,
-            height: 2,
-          },
-          shadowOpacity: 0.25,
-          shadowRadius: 3.5,
-          marginBottom: 30,
-          paddingHorizontal: 24,
+          borderColor: "#000000",
         },
         tabBarItemStyle: {
           justifyContent: "center",
           alignItems: "center",
           flex: 1,
-          minWidth: 80,
         },
       }}
     >
+      
       <Tabs.Screen
         name="loop"
         options={{
@@ -76,14 +55,47 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon
-              icon={icons.wavesound}
-              name="Loop"
+              icon={icons.play}
+              name="Bits"
               color={focused ? "#57C785" : "#fff"}
               focused={focused}
             />
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="pad"
+        options={{
+          title: "pad",
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              icon={icons.session}
+              name="WPad"
+              color={focused ? "#57C785" : "#fff"}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="session"
+        options={{
+          title: "session",
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              icon={icons.session}
+              name="Session"
+              color={focused ? "#57C785" : "#fff"}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+
       <Tabs.Screen
         name="metro"
         options={{
@@ -91,9 +103,9 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon
-              icon={icons.drum}
+              icon={icons.metronome}
               name="Metronome"
-              color={focused ? "#4493CF" : "#fff"}
+              color={focused ? "#57C785" : "#fff"}
               focused={focused}
             />
           ),

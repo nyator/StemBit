@@ -4,23 +4,41 @@ import { StatusBar } from "react-native";
 
 import FormField from "../../components/formField";
 import CustomButton from "../../components/customButton";
-import { Link } from "expo-router";
+import { Link, router } from "expo-router";
 
 const LoginScreen = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [form, setForm] = useState({
     email: "",
     password: "",
   });
+
+  const submit = async () => {
+    if (!form.email || !form.password) {
+      console.log("All fields (email, password, username) are required.");
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      // await createUser({ email: form.email, password: form.password });
+      console.log("Submission successful");
+      router.replace("/loop");
+    } catch (error) {
+      console.log("err message", error);
+    }
+    setIsSubmitting(false)
+  }
+
   return (
     <SafeAreaView className="flex-1">
-      <View className="flex-1 px-7">
+      <View className="flex-1 px-5">
         <View className="flex flex-row justify-center items-center my-10">
-          <Text className="text-5xl text-white font-rBlack mb-4">Stem</Text>
-          <Text className="text-5xl text-accent font-rBlack mb-4">Bits</Text>
+          <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
+          <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
         </View>
         <View className="flex items-start">
-          <Text className="text-white text-3xl font-rBold">Login</Text>
-          <View className="flex flex-col items-center gap-6 w-full">
+          <Text className="text-3xl text-white font-rBold">Login</Text>
+          <View className="flex flex-col gap-6 items-center w-full">
             <FormField
               title="Email"
               value={form.email}
@@ -38,10 +56,10 @@ const LoginScreen = () => {
               placeholder="Enter your password"
             />
 
-            <TouchableOpacity className="flex w-full items-end mt-3">
+            <TouchableOpacity className="flex items-end mt-3 w-full">
               <Link
                 href="/forgot-password"
-                className="text-white text-xl font-rRegular"
+                className="text-xl text-white font-rRegular"
               >
                 Forgot Password
               </Link>
@@ -49,16 +67,17 @@ const LoginScreen = () => {
             <CustomButton
               title="Login"
               containerStyles="w-full"
-              handlePress={() => {}}
+              handlePress={submit}
+              isLoading={isSubmitting}
             />
             <View className="flex flex-row">
-              <Text className="text-white font-rMedium text-xl ">
+              <Text className="text-xl text-white font-rMedium">
                 Don't have an account?
               </Text>
               <TouchableOpacity>
                 <Link
                   href="/register"
-                  className="text-accent font-rMedium text-xl underline"
+                  className="text-xl underline text-accent font-rMedium"
                 >
                   {" "}
                   Signup
@@ -67,9 +86,9 @@ const LoginScreen = () => {
             </View>
           </View>
         </View>
-        <View className="flex flex-row right-2/4 absolute bottom-0">
-          <Text className="text-white/50 font-rMedium">by</Text>
-          <Text className="text-accent font-rMedium"> oneha</Text>
+        <View className="flex absolute bottom-0 right-2/4 flex-row">
+          <Text className="text-white/50 font-rMedium">by </Text>
+          <Text className="text-accent font-rMedium">nehtek</Text>
         </View>
       </View>
       <StatusBar barStyle="light-content" />
