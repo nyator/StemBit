@@ -1,4 +1,4 @@
-import { TouchableOpacity, Text } from "react-native";
+import { TouchableOpacity, Text, ActivityIndicator } from "react-native";
 import React from "react";
 
 import { GestureResponderEvent } from "react-native";
@@ -10,21 +10,26 @@ type CustomButtonProps = {
   textStyles?: string;
   isLoading?: boolean;
 };
+
 const CustomButton = ({
   title,
   handlePress,
   containerStyles,
   textStyles,
-  isLoading = false,
+  isLoading,
 }: CustomButtonProps) => {
   return (
     <TouchableOpacity
       onPress={handlePress}
       activeOpacity={0.7}
       disabled={isLoading}
-      className={`bg-accent rounded-xl min-h-[50px] flex justify-center items-center ${containerStyles} ${isLoading ? "opacity-50" : ""}`}
+      className={`flex justify-center items-center rounded-2xl bg-accent min-h-[50px] ${containerStyles}`}
     >
-      <Text className={`font-rBold text-white text-2xl ${textStyles}`}>{title}</Text>
+      {isLoading ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <Text className={`text-2xl text-white font-rBold ${textStyles}`}>{title}</Text>
+      )}
     </TouchableOpacity>
   );
 };

@@ -1,27 +1,59 @@
 import { useState } from "react";
 import { SafeAreaView, View, Text, TouchableOpacity } from "react-native";
 import { StatusBar } from "react-native";
-import { Link } from "expo-router";
+import { Link, router } from "expo-router";
 
 import FormField from "../../components/formField";
 import CustomButton from "../../components/customButton";
+import CustomToast from "../../components/customToast";
+
+import { createUser } from "../../lib/appwrite";
 
 const RegisterScreen = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
   });
+
+  // const p
+
+  const passwordsMatch = () => {
+    return form.password === form.confirmPassword;
+  };
+
+  const submit = async () => {
+    if (!form.email || !form.password) {
+      console.log("All fields (email, password, username) are required.");
+      return;
+    }
+    if (!passwordsMatch()) {
+      console.log("Passwords do not match");
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      await createUser({ email: form.email, password: form.password });
+      console.log("Submission successful");
+      router.replace("/loop");
+    } catch (error) {
+      console.log("err message", error);
+    }
+    setIsSubmitting(false)
+  }
+
   return (
     <SafeAreaView className="flex-1">
-      <View className="flex-1 px-7">
+      {/* <CustomToast type="success" title="Sign successful" /> */}
+      <View className="flex-1 px-5">
         <View className="flex flex-row justify-center items-center my-10">
-          <Text className="text-5xl text-white font-rBlack mb-4">Stem</Text>
-          <Text className="text-5xl text-accent font-rBlack mb-4">Bits</Text>
+          <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
+          <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
         </View>
         <View className="flex items-start">
-          <Text className="text-white text-3xl font-rBold">Signup</Text>
-          <View className="flex flex-col items-center gap-6 w-full">
+          <Text className="text-3xl text-white font-rBold">Signup</Text>
+          <View className="flex flex-col gap-5 items-center w-full">
             <FormField
               title="Email"
               value={form.email}
@@ -48,16 +80,17 @@ const RegisterScreen = () => {
             <CustomButton
               title="Signup"
               containerStyles="w-full"
-              handlePress={() => {}}
+              handlePress={submit}
+              isLoading={isSubmitting}
             />
             <View className="flex flex-row">
-              <Text className="text-white font-rMedium text-xl ">
+              <Text className="text-xl text-white font-rMedium">
                 Already have an account?
               </Text>
               <TouchableOpacity>
                 <Link
                   href="/login"
-                  className="text-accent font-rMedium text-xl underline"
+                  className="text-xl underline text-accent font-rMedium"
                 >
                   {" "}
                   Login
@@ -66,14 +99,15 @@ const RegisterScreen = () => {
             </View>
           </View>
         </View>
-        <View className="flex flex-row right-2/4 absolute bottom-0">
+        <View className="flex absolute bottom-0 right-2/4 flex-row">
           <Text className="text-white/50 font-rMedium">by</Text>
-          <Text className="text-accent font-rMedium"> oneha</Text>
+          <Text className="text-accent font-rMedium"> nehtek</Text>
         </View>
       </View>
       <StatusBar barStyle="light-content" />
     </SafeAreaView>
   );
-};
+}
+
 
 export default RegisterScreen;

@@ -14,12 +14,12 @@ const ResetPasswordScreen = () => {
     <SafeAreaView className="flex-1">
       <View className="flex-1 px-7">
         <View className="flex flex-row justify-center items-center my-10">
-          <Text className="text-5xl text-white font-rBlack mb-4">Stem</Text>
-          <Text className="text-5xl text-accent font-rBlack mb-4">Bits</Text>
+          <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
+          <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
         </View>
         <View className="flex items-start">
-          <Text className="text-white text-3xl font-rBold">Reset Password</Text>
-          <View className="flex flex-col items-center gap-6 w-full">
+          <Text className="text-3xl text-white font-rBold">Reset Password</Text>
+          <View className="flex flex-col gap-6 items-center w-full">
             <FormField
               // title="Email"
               value={form.email}
@@ -34,9 +34,9 @@ const ResetPasswordScreen = () => {
             />
           </View>
         </View>
-        <View className="flex flex-row right-2/4 absolute bottom-0">
+        <View className="flex absolute bottom-0 right-2/4 flex-row">
           <Text className="text-white/50 font-rMedium">by</Text>
-          <Text className="text-accent font-rMedium"> oneha</Text>
+          <Text className="text-accent font-rMedium"> nehtek</Text>
         </View>
       </View>
       <StatusBar barStyle="light-content" />
