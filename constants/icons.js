@@ -12,6 +12,7 @@ import plus from "../assets/icons/plus.png";
 import minus from "../assets/icons/minus.png";
 import tap from "../assets/icons/tap.png";
 import folder from "../assets/icons/folder.png";
+import timeSign from "../assets/icons/timeSign.png";
 
 
 export default {
@@ -29,4 +30,5 @@ export default {
   minus,
   tap,
   folder,
+  timeSign,
 };

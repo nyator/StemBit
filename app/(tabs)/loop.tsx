@@ -226,7 +226,7 @@ export default function MetroScreen() {
 
         <View className="flex items-center mt-20">
           <View className="flex flex-row justify-between items-end w-3/5">
-            <TouchableOpacity onPress={handleDecrease} onLongPress={handleHoldDecrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/20">
+            <TouchableOpacity onPress={handleDecrease} onLongPress={handleHoldDecrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/10">
               <AntDesign name="minus" size={30} color="white" />
             </TouchableOpacity>
 
@@ -240,7 +240,7 @@ export default function MetroScreen() {
               underlineColorAndroid="transparent"
             />
 
-            <TouchableOpacity onPress={handleIncrease} onLongPress={handleHoldIncrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/20">
+            <TouchableOpacity onPress={handleIncrease} onLongPress={handleHoldIncrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/10">
               <AntDesign name="plus" size={30} color="white" />
             </TouchableOpacity>
           </View>
