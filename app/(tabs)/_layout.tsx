@@ -57,7 +57,7 @@ export default function TabLayout() {
             <TabIcon
               icon={icons.play}
               name="Bits"
-              color={focused ? "#57C785" : "#fff"}
+              color={focused ? "#08C192" : "#fff"}
               focused={focused}
             />
           ),
@@ -73,7 +73,7 @@ export default function TabLayout() {
             <TabIcon
               icon={icons.wpad}
               name="WPad"
-              color={focused ? "#57C785" : "#fff"}
+              color={focused ? "#08C192" : "#fff"}
               focused={focused}
             />
           ),
@@ -89,7 +89,7 @@ export default function TabLayout() {
             <TabIcon
               icon={icons.session}
               name="Session"
-              color={focused ? "#57C785" : "#fff"}
+              color={focused ? "#08C192" : "#fff"}
               focused={focused}
             />
           ),
@@ -105,7 +105,7 @@ export default function TabLayout() {
             <TabIcon
               icon={icons.metronome}
               name="Metronome"
-              color={focused ? "#57C785" : "#fff"}
+              color={focused ? "#08C192" : "#fff"}
               focused={focused}
             />
           ),

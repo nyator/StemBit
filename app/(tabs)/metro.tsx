@@ -11,6 +11,7 @@ import EclipseSvg from "../../assets/icons/eclipseSvg"
 import PlaySvg from "../../assets/icons/playSvg"
 import PauseSvg from "../../assets/icons/pauseSvg"
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import AntDesign from '@expo/vector-icons/AntDesign';
 
 export default function MetroScreen() {
   const [bpm, setBpm] = useState(120);
@@ -212,8 +213,8 @@ export default function MetroScreen() {
       <View className="flex-1 justify-start items-center mt-9 w-full">
         <View className="flex items-center">
           <View className="flex flex-row justify-between items-end w-3/5">
-            <TouchableOpacity onPress={handleDecrease} onLongPress={handleHoldDecrease} onPressOut={handleRelease}>
-              <Image source={icons.minus} tintColor='white' className="w-12 h-12" />
+            <TouchableOpacity onPress={handleDecrease} onLongPress={handleHoldDecrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/20">
+              <AntDesign name="minus" size={30} color="white" />
             </TouchableOpacity>
 
             <TextInput
@@ -226,22 +227,24 @@ export default function MetroScreen() {
               underlineColorAndroid="transparent"
             />
 
-            <TouchableOpacity onPress={handleIncrease} onLongPress={handleHoldIncrease} onPressOut={handleRelease}>
-              <Image source={icons.plus} tintColor='white' className="w-12 h-12" />
+            <TouchableOpacity onPress={handleIncrease} onLongPress={handleHoldIncrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/20">
+              <AntDesign name="plus" size={30} color="white" />
             </TouchableOpacity>
           </View>
           <Text className="text-sm text-white font-rMedium">Beats per min</Text>
         </View>
         {/* Tap to set BPM button */}
         <TouchableOpacity
-          className=" mt-8 p-2 rounded-full bg-accent border-2 border-[#098E6C]"
+          className=" mt-10 p-2 rounded-full bg-accent border-2 border-[#098E6C]"
           onPress={handleTapTempo}
           activeOpacity={0.7}
         >
-          <MaterialCommunityIcons name="gesture-double-tap" size={34} color="black" />
+          <View className="p-4 rounded-full border-2 border-dashed border-black/30 bg-black/20">
+            <MaterialCommunityIcons name="gesture-double-tap" size={30} color="black" />
+          </View>
         </TouchableOpacity>
 
-        <View className="relative justify-center items-center mt-8 mb-8">
+        <View className="relative justify-center items-center mt-10 mb-8">
           <EclipseSvg />
           <View
             className="absolute inset-0 justify-center items-center"

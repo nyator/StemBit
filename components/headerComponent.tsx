@@ -9,8 +9,9 @@ const HeaderComponent = () => {
     <View className="flex flex-row justify-between items-center px-5 mt-7 mb-5 w-full">
       <View className="flex flex-row justify-between items-center w-2/5">
         <TouchableOpacity
-          onPress={() => router.push("/(profile)")}
-          className="p-1 rounded-full bg-white/20"
+          onPress={() => router.push("/(profile)/user")}
+          className="p-1 rounded-full bg-white/10"
+          accessibilityLabel="Go to profile"
         >
           <Image
             source={icons.user}
@@ -20,6 +21,7 @@ const HeaderComponent = () => {
               height: 24,
             }}
             tintColor="white"
+            accessibilityIgnoresInvertColors
           />
         </TouchableOpacity>
 
@@ -29,14 +31,18 @@ const HeaderComponent = () => {
         </View>
       </View>
 
-      <View className="">
-        <TouchableOpacity>
+      <View>
+        <TouchableOpacity
+          className="p-1 rounded-full bg-white/10"
+          onPress={() => router.push("/settings")}
+          accessibilityLabel="Go to settings"
+        >
           <Image
             source={icons.setting}
             resizeMode="contain"
             style={{
-              width: 30,
-              height: 30,
+              width: 24,
+              height: 24,
             }}
             tintColor="white"
           />

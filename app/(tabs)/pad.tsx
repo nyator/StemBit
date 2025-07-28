@@ -136,12 +136,12 @@ export default function PadScreen() {
           />
         </View> */}
 
-        <View className="flex flex-row justify-center items-center rounded-[20px] border-2 border-white/50 mt-9">
-          <TouchableOpacity className={`px-6 py-3 rounded-s-[18px] bg-accent ${majorMinor.toLocaleLowerCase() === "major" ? "bg-accent border-r-2 border-gray-500" : "bg-black"}`} onPress={() => setMajorMinor("major")}>
-            <Text className="text-white font-rBold">Major</Text>
+        <View className="flex flex-row justify-center items-center rounded-[15px] border-[1.5px] border-white/50 mt-9">
+          <TouchableOpacity className={`px-6 py-3 rounded-s-[13.4px] ${majorMinor.toLocaleLowerCase() === "major" ? "bg-accent" : "bg-black"}`} onPress={() => setMajorMinor("major")}>
+            <Text className={`font-rBold ${majorMinor.toLocaleLowerCase() === "major" ? "text-black" : "text-white "}`}>Major</Text>
           </TouchableOpacity>
-          <TouchableOpacity className={`px-6 py-3 rounded-e-[18px] bg-accent ${majorMinor.toLocaleLowerCase() === "minor" ? "bg-accent border-l-2 border-gray-500" : "bg-black"}`} onPress={() => setMajorMinor("minor")}>
-            <Text className="text-white font-rBold">Minor</Text>
+          <TouchableOpacity className={`px-6 py-3 rounded-e-[13.4px] ${majorMinor.toLocaleLowerCase() === "minor" ? "bg-accent text-black" : "bg-black"}`} onPress={() => setMajorMinor("minor")}>
+            <Text className={`font-rBold ${majorMinor.toLocaleLowerCase() === "minor" ? "text-black" : "text-white "}`}>Minor</Text>
           </TouchableOpacity>
         </View>
         <View className="flex flex-row flex-wrap justify-center items-center mt-5 w-full">
