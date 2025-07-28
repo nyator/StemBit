@@ -3,8 +3,8 @@ import Svg, { Path, Line } from "react-native-svg";
 
 const EclipseSvg = (props: any) => (
   <Svg
-    width={305}
-    height={305}
+    width={250}
+    height={250}
     viewBox="0 0 305 305"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"

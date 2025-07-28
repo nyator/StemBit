@@ -1,6 +1,6 @@
 
 import { useState, useRef, useEffect } from "react";
-import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput } from "react-native";
+import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput, Modal, Pressable, FlatList, Animated } from "react-native";
 
 import { useAudioPlayer } from "expo-audio";
 import audio from "../../constants/audio";
@@ -13,12 +13,26 @@ import PauseSvg from "../../assets/icons/pauseSvg"
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import AntDesign from '@expo/vector-icons/AntDesign';
 
+const TIME_SIGNATURES = [
+  { label: "2 / 4", beats: 2, note: 4 },
+  { label: "3 / 4", beats: 3, note: 4 },
+  { label: "4 / 4", beats: 4, note: 4 },
+  { label: "5 / 4", beats: 5, note: 4 },
+  { label: "6 / 8", beats: 6, note: 8 },
+  { label: "7 / 8", beats: 7, note: 8 },
+  { label: "9 / 8", beats: 9, note: 8 },
+  { label: "12 / 8", beats: 12, note: 8 },
+];
+
 export default function MetroScreen() {
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
-  // Remove currentBeat from state to avoid unnecessary re-renders
+  const [currentBeat, setCurrentBeat] = useState(0);
   const currentBeatRef = useRef(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Instead of setInterval, use a single timeout and reschedule on bpm change
+  const nextBeatTimeout = useRef<NodeJS.Timeout | null>(null);
+  const nextBeatTimeRef = useRef<number | null>(null); // for drift correction
 
   // Use expo-audio's useAudioPlayer for metronome sounds
   const beatPlayer = useAudioPlayer(audio.metronome_low);
@@ -27,6 +41,10 @@ export default function MetroScreen() {
   // For tap tempo
   const tapTimesRef = useRef<number[]>([]);
   const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Time signature state
+  const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURES[2]); // Default 4/4
+  const [modalVisible, setModalVisible] = useState(false);
 
   // Helper to clamp BPM between min and max
   const clampBpm = (value: number) => {
@@ -137,7 +155,6 @@ export default function MetroScreen() {
 
   // Metronome logic
   const playBeat = (beat: number) => {
-    // Try to avoid seekTo(0) if not needed, but expo-audio may require it
     if (beat === 0) {
       accentPlayer.seekTo(0);
       accentPlayer.play();
@@ -147,50 +164,89 @@ export default function MetroScreen() {
     }
   };
 
-  const startMetronome = () => {
-    if (intervalRef.current) return;
-    setIsPlaying(true);
-    currentBeatRef.current = 0;
-    playBeat(0);
+  // --- NEW: Gradual tempo adaptation logic ---
+  // Instead of setInterval, use setTimeout and reschedule on bpm change
+  const scheduleNextBeat = (fromTime?: number) => {
+    // Clear any previous timeout
+    if (nextBeatTimeout.current) {
+      clearTimeout(nextBeatTimeout.current);
+      nextBeatTimeout.current = null;
+    }
 
-    // Use Date.now() to schedule next beat as precisely as possible
-    let nextTick = Date.now() + (60 * 1000) / bpm;
-    intervalRef.current = setInterval(() => {
-      currentBeatRef.current = (currentBeatRef.current + 1) % 4;
+    // Calculate interval for current bpm
+    const interval = (60 * 1000) / bpm;
+
+    // If fromTime is provided, use it to correct drift
+    let now = Date.now();
+    let nextTime = fromTime ? fromTime + interval : now + interval;
+    let delay = Math.max(0, nextTime - now);
+
+    nextBeatTimeRef.current = nextTime;
+
+    nextBeatTimeout.current = setTimeout(() => {
+      // Advance beat
+      currentBeatRef.current = (currentBeatRef.current + 1) % timeSignature.beats;
+      setCurrentBeat(currentBeatRef.current);
       playBeat(currentBeatRef.current);
 
-      // Try to correct for drift
-      const interval = (60 * 1000) / bpm;
-      nextTick += interval;
-      const drift = Date.now() - nextTick;
-      if (Math.abs(drift) > 20) {
-        // If drift is too high, resync
-        nextTick = Date.now() + interval;
-      }
-    }, (60 * 1000) / bpm);
+      // Schedule next beat, using the expected time for drift correction
+      scheduleNextBeat(nextBeatTimeRef.current as number);
+    }, delay);
+  };
+
+  const startMetronome = () => {
+    if (isPlaying) return;
+    setIsPlaying(true);
+    currentBeatRef.current = 0;
+    setCurrentBeat(0);
+    playBeat(0);
+
+    // Schedule first beat
+    let now = Date.now();
+    let interval = (60 * 1000) / bpm;
+    nextBeatTimeRef.current = now + interval;
+    nextBeatTimeout.current = setTimeout(() => {
+      currentBeatRef.current = (currentBeatRef.current + 1) % timeSignature.beats;
+      setCurrentBeat(currentBeatRef.current);
+      playBeat(currentBeatRef.current);
+      scheduleNextBeat(nextBeatTimeRef.current as number);
+    }, interval);
   };
 
   const stopMetronome = () => {
     setIsPlaying(false);
     currentBeatRef.current = 0;
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    setCurrentBeat(0);
+    if (nextBeatTimeout.current) {
+      clearTimeout(nextBeatTimeout.current);
+      nextBeatTimeout.current = null;
     }
+    nextBeatTimeRef.current = null;
   };
 
-  // Update interval when BPM changes and metronome is playing
+  // Gradually adapt to new tempo: when bpm changes, reschedule next beat with new interval, but do not reset beat count or metronome
   useEffect(() => {
     if (isPlaying) {
-      // Instead of clearing and restarting, stop and startMetronome to resync
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      // If metronome is running, reschedule next beat with new bpm
+      if (nextBeatTimeout.current && nextBeatTimeRef.current) {
+        // Calculate how much time is left until next beat, and adjust for new bpm
+        const now = Date.now();
+        const timeSinceLastBeat = now - (nextBeatTimeRef.current - (60 * 1000) / bpm);
+        const newInterval = (60 * 1000) / bpm;
+        const nextTime = now + (newInterval - timeSinceLastBeat);
+
+        clearTimeout(nextBeatTimeout.current);
+        nextBeatTimeout.current = setTimeout(() => {
+          currentBeatRef.current = (currentBeatRef.current + 1) % timeSignature.beats;
+          setCurrentBeat(currentBeatRef.current);
+          playBeat(currentBeatRef.current);
+          scheduleNextBeat(Date.now());
+        }, Math.max(0, nextTime - now));
+        nextBeatTimeRef.current = nextTime;
       }
-      startMetronome();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm]);
+  }, [bpm, timeSignature]);
 
   useEffect(() => {
     return () => {
@@ -203,17 +259,138 @@ export default function MetroScreen() {
         clearTimeout(tapTimeoutRef.current);
         tapTimeoutRef.current = null;
       }
+      if (nextBeatTimeout.current) {
+        clearTimeout(nextBeatTimeout.current);
+        nextBeatTimeout.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Modal for time signature selection
+  const renderTimeSignatureModal = () => (
+    <Modal
+      visible={modalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setModalVisible(false)}
+    >
+      <Pressable
+        style={{
+          flex: 1,
+          // backgroundColor: "rgba(0,0,0,0.4)",
+          justifyContent: "flex-end",
+          alignItems: "stretch",
+        }}
+        onPress={() => setModalVisible(false)}
+      >
+        <View
+          style={{
+            backgroundColor: "#232323",
+            borderRadius: 16,
+            padding: 24,
+            minWidth: 220,
+            maxHeight: 500,
+            elevation: 8,
+          }}
+        >
+          <Text className="mb-3 text-lg text-white font-rBold">Choose Time Signature</Text>
+          <FlatList
+            data={TIME_SIGNATURES}
+            keyExtractor={item => item.label}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                className={`flex-row items-center py-2 px-5 rounded-lg ${item.label === timeSignature.label ? "bg-accent" : "bg-white/10"}`}
+                onPress={() => {
+                  setTimeSignature(item);
+                  setModalVisible(false);
+                }}
+              >
+                <Text className={`text-base font-rMedium ${item.label === timeSignature.label ? "text-black text-3xl" : "text-white"}`}>
+                  {item.label}
+                </Text>
+                {item.label === timeSignature.label && (
+                  <MaterialCommunityIcons name="check-circle" size={18} color="#000" style={{ marginLeft: 8 }} />
+                )}
+              </TouchableOpacity>
+            )}
+            ItemSeparatorComponent={() => <View style={{ height: 4 }} />}
+          />
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
+  // --- Beat Visuals ---
+  // We'll show a row of circles, one for each beat, highlight the current one.
+  const renderBeatVisuals = () => {
+    const beats = [];
+    for (let i = 0; i < timeSignature.beats; i++) {
+      const isCurrent = i === currentBeat;
+      beats.push(
+        <View
+          key={i}
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 14,
+            marginHorizontal: 7,
+            backgroundColor: isCurrent
+              ? (i === 0 ? "#08C192" : "#E6E6E6") // Accent beat is yellow, others green
+              : "rgba(255,255,255,0.15)",
+            borderWidth: isCurrent ? 3 : 1,
+            borderColor: isCurrent
+              ? (i === 0 ? "#08C192" : "#E6E6E6")
+              : "rgba(255,255,255,0.25)",
+            justifyContent: "center",
+            alignItems: "center",
+            shadowColor: isCurrent
+              ? (i === 0 ? "#08C192" : "#E6E6E6") // Accent beat is yellow, others green
+              : "rgba(255,255,255,0.15)",
+            shadowOpacity: isCurrent ? 0.5 : 0,
+            shadowRadius: isCurrent ? 8 : 0,
+            elevation: isCurrent ? 6 : 0,
+          }}
+        >
+          {/* <Text
+            style={{
+              color: isCurrent ? "#232323" : "#fff",
+              fontWeight: isCurrent ? "bold" : "normal",
+              fontSize: 8,
+              opacity: i === 0 ? 1 : 0.8,
+            }}
+          >
+            {i + 1}
+          </Text> */}
+        </View>
+      );
+    }
+    return (
+      <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 18, marginBottom: 8 }}>
+        {beats}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView className="flex-1 justify-start items-center bg-primary">
       <HeaderComponent />
-      <View className="flex-1 justify-start items-center mt-9 w-full">
+      <View className="flex-1 justify-start items-center w-full">
+        <View className="flex flex-col justify-center items-center mb-10">
+          <TouchableOpacity
+            onPress={() => setModalVisible(true)}
+            className="px-3 py-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center "
+          >
+            <View className="flex-row mr-2">
+              <Image source={icons.timeSign} className="w-8 h-8" tintColor="#ffffff" />
+            </View>
+            <View className="w-[2px] h-8 bg-black/40 mr-3"></View>
+            <Text className="text-lg text-white font-rMedium">{timeSignature.label}</Text>
+          </TouchableOpacity>
+        </View>
         <View className="flex items-center">
           <View className="flex flex-row justify-between items-end w-3/5">
-            <TouchableOpacity onPress={handleDecrease} onLongPress={handleHoldDecrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/20">
+            <TouchableOpacity onPress={handleDecrease} onLongPress={handleHoldDecrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/10">
               <AntDesign name="minus" size={30} color="white" />
             </TouchableOpacity>
 
@@ -227,13 +404,15 @@ export default function MetroScreen() {
               underlineColorAndroid="transparent"
             />
 
-            <TouchableOpacity onPress={handleIncrease} onLongPress={handleHoldIncrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/20">
+            <TouchableOpacity onPress={handleIncrease} onLongPress={handleHoldIncrease} onPressOut={handleRelease} className="p-2 rounded-lg bg-white/10">
               <AntDesign name="plus" size={30} color="white" />
             </TouchableOpacity>
           </View>
           <Text className="text-sm text-white font-rMedium">Beats per min</Text>
         </View>
         {/* Tap to set BPM button */}
+        {/* Beat Visuals */}
+        {renderBeatVisuals()}
         <TouchableOpacity
           className=" mt-10 p-2 rounded-full bg-accent border-2 border-[#098E6C]"
           onPress={handleTapTempo}
@@ -244,7 +423,8 @@ export default function MetroScreen() {
           </View>
         </TouchableOpacity>
 
-        <View className="relative justify-center items-center mt-10 mb-8">
+
+        <View className="relative justify-center items-center mt-6 mb-8">
           <EclipseSvg />
           <View
             className="absolute inset-0 justify-center items-center"
@@ -258,7 +438,6 @@ export default function MetroScreen() {
               className="justify-center items-center"
               onPress={isPlaying ? stopMetronome : startMetronome}
             >
-
               <Text className="mt-2 text-white font-cBold">
                 {isPlaying ? <PauseSvg /> : <PlaySvg />}
               </Text>
@@ -266,10 +445,10 @@ export default function MetroScreen() {
           </View>
         </View>
       </View>
+      {renderTimeSignatureModal()}
       <StatusBar barStyle="light-content" />
     </SafeAreaView>
   );
 }
-
 // ---
 // Summary: The app is slow and the metronome is inconsistent because JS timers and audio are not real-time. For a truly accurate metronome, use a native audio engine or a library with sample-accurate scheduling.
