@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Button, TextInput, SafeAreaView } from 'react-native';
 
-const ProfileScreen = () => {
+const UserScreen = () => {
     const [editing, setEditing] = useState(false);
     const [name, setName] = useState('John Doe');
     const [email, setEmail] = useState('john@example.com');
@@ -27,4 +27,4 @@ const ProfileScreen = () => {
     );
 };
 
-export default ProfileScreen;
+export default UserScreen;

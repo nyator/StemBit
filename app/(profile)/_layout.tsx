@@ -4,13 +4,13 @@ import { Stack, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons' // or any icon library you use
 
 
-const ProfileScreen = () => {
+const ProfileLayout = () => {
   const router = useRouter();
 
   return (
     <Stack>
       <Stack.Screen
-        name="index"
+        name="user"
         options={{
           headerShown: true,
           headerLeft: () => (
@@ -45,4 +45,4 @@ const ProfileScreen = () => {
   )
 }
 
-export default ProfileScreen
+export default ProfileLayout

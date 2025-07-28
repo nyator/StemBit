@@ -11,7 +11,8 @@ import wpad from "../assets/icons/wpad.png";
 import plus from "../assets/icons/plus.png";
 import minus from "../assets/icons/minus.png";
 import tap from "../assets/icons/tap.png";
-// import metro from "../assets/icons/metro.svg";
+import folder from "../assets/icons/folder.png";
+
 
 export default {
   wavesound,
@@ -27,6 +28,5 @@ export default {
   plus,
   minus,
   tap,
-  // metro,
-  // Add more icons as needed
+  folder,
 };
