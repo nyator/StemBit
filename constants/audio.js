@@ -15,10 +15,9 @@ import Fs from "../assets/audio/pads/F#_MAJOR.mp3";
 import G from "../assets/audio/pads/G_MAJOR.mp3";
 import Gs from "../assets/audio/pads/G#_MAJOR.mp3";
 
-// Add more audio files as needed
-// import pad1 from "../assets/audio/pad1.mp3";
-// import pad2 from "../assets/audio/pad2.mp3";
-// import pad3 from "../assets/audio/pad3.mp3";
+//Metronome
+import metronome_bright from "../assets/audio/clicks/metronome_bright.wav";
+import metronome_low from "../assets/audio/clicks/metronome_low.wav";
 
 export default {
   beep,
@@ -36,6 +35,10 @@ export default {
   Fs,
   G,
   Gs,
+
+  //metronome
+  metronome_bright,
+  metronome_low,
   // pad1,
   // pad2,
   // pad3,

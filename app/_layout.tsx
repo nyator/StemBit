@@ -2,6 +2,10 @@ import { SplashScreen, Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
 
+import ProfileScreen from "./(profile)/index";
+import { createDrawerNavigator } from '@react-navigation/drawer';
+const Drawer = createDrawerNavigator();
+
 const RootLayout = () => {
   const [fontsLoaded, error] = useFonts({
     "Chillax-Bold": require("../assets/fonts/Chillax-Bold.otf"),
@@ -37,9 +41,12 @@ const RootLayout = () => {
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auths)" options={{ headerShown: false }} />
-      <Stack.Screen name="index" options={{ headerShown: false, contentStyle: {backgroundColor: "#101116"} }} />
+      <Stack.Screen name="index" options={{ headerShown: false, contentStyle: { backgroundColor: "#101116" } }} />
       <Stack.Screen name="(profile)" options={{ headerShown: false}} />
     </Stack>
+
+
+
   );
 };
 
