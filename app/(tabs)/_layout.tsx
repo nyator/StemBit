@@ -47,7 +47,7 @@ export default function TabLayout() {
         },
       }}
     >
-      
+
       <Tabs.Screen
         name="loop"
         options={{
@@ -71,7 +71,7 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon
-              icon={icons.session}
+              icon={icons.wpad}
               name="WPad"
               color={focused ? "#57C785" : "#fff"}
               focused={focused}

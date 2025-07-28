@@ -30,7 +30,7 @@ const HeaderComponent = () => {
             <View className="">
                 <TouchableOpacity>
                     <Image
-                        source={icons.bell}
+                        source={icons.setting}
                         resizeMode="contain"
                         style={{
                             width: 30,

@@ -7,6 +7,11 @@ import play from "../assets/icons/play.png";
 import bell from "../assets/icons/bell.png";
 import setting from "../assets/icons/setting.png";
 import user from "../assets/icons/user.png";
+import wpad from "../assets/icons/wpad.png";
+import plus from "../assets/icons/plus.png";
+import minus from "../assets/icons/minus.png";
+import tap from "../assets/icons/tap.png";
+// import metro from "../assets/icons/metro.svg";
 
 export default {
   wavesound,
@@ -18,5 +23,10 @@ export default {
   bell,
   setting,
   user,
+  wpad,
+  plus,
+  minus,
+  tap,
+  // metro,
   // Add more icons as needed
 };

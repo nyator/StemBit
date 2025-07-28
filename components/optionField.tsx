@@ -35,22 +35,23 @@ function OptionField({ label, options, onSelect, selected, otherStyles }: Option
     });
 
     return (
-        <View className={`w-32 flex justify-start`}>
+        <View className={`flex relative justify-start w-32`}>
             <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${label} dropdown`}
-                className="flex-row items-center bg-zinc-700 p-2 border border-zinc-600 rounded-2xl justify-center"
+                className="flex-row justify-center items-center p-2 rounded-2xl border bg-zinc-700 border-zinc-600"
                 onPress={() => setIsOpened((prev) => !prev)}
                 activeOpacity={0.8}
             >
                 <Animated.View style={{ transform: [{ rotate }] }}>
                     <MaterialIcons name="keyboard-arrow-down" size={24} color="white" />
                 </Animated.View>
-                <Text className="text-white font-bold ml-2 text-base">{selectedOption}</Text>
+                <Text className="ml-2 text-base font-bold text-white">{selectedOption}</Text>
 
             </TouchableOpacity>
             {isOpened && (
-                <View className="bg-zinc-800 rounded-xl mt-1 border border-zinc-600 overflow-hidden justify-center items-center">
+                <View className="overflow-hidden absolute z-10 justify-center items-center mt-12 w-32 rounded-xl border bg-zinc-800 border-zinc-600">
+                    
                     {options.map((option) => (
                         <Pressable
                             key={option}
