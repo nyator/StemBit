@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useRef, useCallback} from "react";
-import {SafeAreaView, View, Text, StatusBar, ScrollView, TouchableOpacity, Button} from "react-native";
+import {SafeAreaView, View, Text, StatusBar, TouchableOpacity} from "react-native";
 import {useFocusEffect} from '@react-navigation/native';
 
 import LaunchPadComponent from "../../components/launchPad";

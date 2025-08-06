@@ -1,6 +1,6 @@
 
 import { useState, useRef, useEffect } from "react";
-import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput, Modal, Pressable, FlatList, Animated } from "react-native";
+import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput, Modal, Pressable } from "react-native";
 
 import { Audio } from "expo-av";
 import audio from "../../constants/audio";
