@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, Image } from "react-native";
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "react-native";
 import { useRouter } from "expo-router";
@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import icons from "../../constants/icons";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { MotiView } from 'moti'; // for animation: npx expo install moti
+import { Animated } from 'react-native';
 
 const splashPages = [
   {
@@ -33,9 +33,34 @@ const splashPages = [
   },
 ];
 
-const IndexScreen = () => {
+export default function IndexScreen() {
   const router = useRouter();
   const [page, setPage] = useState(0);
+  // Create animated values for each dot
+  const dotAnimations = useRef(
+    splashPages.map(() => ({
+      width: new Animated.Value(8),
+      backgroundColor: new Animated.Value(0)
+    }))
+  ).current;
+
+  // Update animations when page changes
+  useEffect(() => {
+    splashPages.forEach((_, idx) => {
+      Animated.parallel([
+        Animated.timing(dotAnimations[idx].width, {
+          toValue: page === idx ? 25 : 8,
+          duration: 300,
+          useNativeDriver: false
+        }),
+        Animated.timing(dotAnimations[idx].backgroundColor, {
+          toValue: page === idx ? 1 : 0,
+          duration: 300,
+          useNativeDriver: false
+        })
+      ]).start();
+    });
+  }, [page]);
 
   const handleNext = () => {
     if (page < splashPages.length - 1) {
@@ -90,25 +115,17 @@ const IndexScreen = () => {
         <View className="flex absolute bottom-10 flex-row justify-between items-center px-24 mt-8 w-screen">
           <View className="flex-row justify-end items-end">
             {splashPages.map((_, idx) => (
-              <MotiView
+              <Animated.View
                 key={idx}
-                // className={`mx-1 w-3 h-3 rounded-full ${page === idx ? 'bg-white w-10 ' : 'bg-white/30'}`}
-                from={{
-                  width: 8,
-                  backgroundColor: 'rgba(255,255,255,0.3)',
-                }}
-                animate={{
-                  width: page === idx ? 25 : 8,
-                  backgroundColor: page === idx ? '#fff' : 'rgba(255,255,255,0.3)',
-                }}
-                transition={{
-                  type: 'timing',
-                  duration: 300,
-                }}
                 style={{
                   height: 8,
+                  width: dotAnimations[idx].width,
                   borderRadius: 4,
                   marginHorizontal: 4,
+                  backgroundColor: dotAnimations[idx].backgroundColor.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['rgba(255,255,255,0.3)', '#fff']
+                  })
                 }}
               />
             ))}
@@ -145,5 +162,3 @@ const IndexScreen = () => {
     </SafeAreaView>
   );
 };
-
-export default IndexScreen;
