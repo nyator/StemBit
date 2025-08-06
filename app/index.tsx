@@ -17,8 +17,8 @@ export default function Page() {
         {/* <Text className="text-2xl text-blue-500 underline font-cSemibold"  onPress={() => router.replace("/(tabs)/loop")}> Tabs </Text> */}
       </View>
       <StatusBar barStyle="light-content" />
-      <Redirect href="/(tabs)/loop" />
-      {/* <Redirect href="/(auths)/register" /> */}
+      {/* <Redirect href="/(tabs)/loop" /> */}
+      <Redirect href="/(auths)" />
     </SafeAreaView>
   );
 }

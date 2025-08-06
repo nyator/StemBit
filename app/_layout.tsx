@@ -2,11 +2,7 @@ import { SplashScreen, Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
 
-import { createDrawerNavigator } from '@react-navigation/drawer';
-
-const Drawer = createDrawerNavigator();
-
-const RootLayout = () => {
+function RootLayout() {
     const [fontsLoaded, error] = useFonts({
         "Chillax-Bold": require("../assets/fonts/Chillax-Bold.otf"),
         "Chillax-Semibold": require("../assets/fonts/Chillax-Semibold.otf"),
@@ -44,8 +40,7 @@ const RootLayout = () => {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(profile)" options={{ headerShown: false }} />
         </Stack>
-
-
     );
-};
+}
+
 export default RootLayout;

@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput, Modal, Pressable, FlatList, Animated } from "react-native";
 
-import { useAudioPlayer } from "expo-audio";
+import { Audio } from "expo-av";
 import audio from "../../constants/audio";
 
 import HeaderComponent from "../../components/headerComponent";
@@ -34,9 +34,44 @@ export default function MetroScreen() {
   const nextBeatTimeout = useRef<NodeJS.Timeout | null>(null);
   const nextBeatTimeRef = useRef<number | null>(null); // for drift correction
 
-  // Use expo-audio's useAudioPlayer for metronome sounds
-  const beatPlayer = useAudioPlayer(audio.metronome_low);
-  const accentPlayer = useAudioPlayer(audio.metronome_bright);
+  // Use expo-av's Audio API for metronome sounds
+  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
+  const [accentSound, setAccentSound] = useState<Audio.Sound | null>(null);
+  
+  // Load sounds on component mount
+  useEffect(() => {
+    const loadSounds = async () => {
+      try {
+        // Enable audio playback in silent mode (iOS)
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: true,
+        });
+        
+        // Load the sounds
+        const { sound: beatSnd } = await Audio.Sound.createAsync(audio.metronome_low);
+        const { sound: accentSnd } = await Audio.Sound.createAsync(audio.metronome_bright);
+        
+        setBeatSound(beatSnd);
+        setAccentSound(accentSnd);
+      } catch (error) {
+        console.error("Failed to load sounds", error);
+      }
+    };
+    
+    loadSounds();
+    
+    // Cleanup sounds on unmount
+    return () => {
+      if (beatSound) {
+        beatSound.unloadAsync();
+      }
+      if (accentSound) {
+        accentSound.unloadAsync();
+      }
+    };
+  }, []);
 
   // For tap tempo
   const tapTimesRef = useRef<number[]>([]);
@@ -153,104 +188,167 @@ export default function MetroScreen() {
     }, 2000);
   };
 
-  // Metronome logic
-  const playBeat = (beat: number) => {
-    if (beat === 0) {
-      accentPlayer.seekTo(0);
-      accentPlayer.play();
-    } else {
-      beatPlayer.seekTo(0);
-      beatPlayer.play();
+  // Metronome logic with precise timing using expo-av
+  const playBeat = async (beat: number) => {
+    try {
+      if (beat === 0 && accentSound) {
+        // Stop and rewind the sound before playing to ensure consistent playback
+        await accentSound.stopAsync();
+        await accentSound.setPositionAsync(0);
+        await accentSound.playAsync();
+      } else if (beatSound) {
+        await beatSound.stopAsync();
+        await beatSound.setPositionAsync(0);
+        await beatSound.playAsync();
+      }
+    } catch (error) {
+      console.error("Error playing beat:", error);
     }
   };
+  
+  // Create a buffer of scheduled sounds for more precise timing
+  const scheduledBeats = useRef<{time: number, beat: number}[]>([]);
+  const audioProcessingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // --- NEW: Gradual tempo adaptation logic ---
-  // Instead of setInterval, use setTimeout and reschedule on bpm change
-  const scheduleNextBeat = (fromTime?: number) => {
-    // Clear any previous timeout
-    if (nextBeatTimeout.current) {
-      clearTimeout(nextBeatTimeout.current);
-      nextBeatTimeout.current = null;
-    }
-
+  // Advanced scheduling system for precise metronome timing
+  const scheduleBeats = () => {
     // Calculate interval for current bpm
     const interval = (60 * 1000) / bpm;
-
-    // If fromTime is provided, use it to correct drift
-    let now = Date.now();
-    let nextTime = fromTime ? fromTime + interval : now + interval;
-    let delay = Math.max(0, nextTime - now);
-
-    nextBeatTimeRef.current = nextTime;
-
-    nextBeatTimeout.current = setTimeout(() => {
-      // Advance beat
-      currentBeatRef.current = (currentBeatRef.current + 1) % timeSignature.beats;
-      setCurrentBeat(currentBeatRef.current);
-      playBeat(currentBeatRef.current);
-
-      // Schedule next beat, using the expected time for drift correction
-      scheduleNextBeat(nextBeatTimeRef.current as number);
-    }, delay);
+    
+    // Get current time
+    const now = Date.now();
+    
+    // Schedule beats ahead of time (buffer of 4 beats)
+    // This ensures we always have beats ready to play
+    while (scheduledBeats.current.length < 4) {
+      const lastScheduledBeat = scheduledBeats.current[scheduledBeats.current.length - 1];
+      const nextBeatTime = lastScheduledBeat 
+        ? lastScheduledBeat.time + interval 
+        : now + interval;
+      
+      const nextBeatNumber = lastScheduledBeat
+        ? (lastScheduledBeat.beat + 1) % timeSignature.beats
+        : (currentBeatRef.current + 1) % timeSignature.beats;
+      
+      scheduledBeats.current.push({
+        time: nextBeatTime,
+        beat: nextBeatNumber
+      });
+    }
+  };
+  
+  // Process scheduled beats
+  const processScheduledBeats = () => {
+    const now = Date.now();
+    
+    // Play any beats that are due
+    while (
+      scheduledBeats.current.length > 0 && 
+      scheduledBeats.current[0].time <= now
+    ) {
+      const { beat } = scheduledBeats.current.shift()!;
+      
+      // Update current beat
+      currentBeatRef.current = beat;
+      setCurrentBeat(beat);
+      
+      // Play the beat
+      playBeat(beat);
+      
+      // Schedule more beats to maintain the buffer
+      scheduleBeats();
+    }
   };
 
   const startMetronome = () => {
     if (isPlaying) return;
+    
+    // Make sure sounds are loaded
+    if (!beatSound || !accentSound) {
+      console.warn("Metronome sounds not loaded yet");
+      return;
+    }
+    
     setIsPlaying(true);
     currentBeatRef.current = 0;
     setCurrentBeat(0);
+    
+    // Clear any existing scheduled beats
+    scheduledBeats.current = [];
+    
+    // Play the first beat immediately
     playBeat(0);
-
-    // Schedule first beat
-    let now = Date.now();
-    let interval = (60 * 1000) / bpm;
-    nextBeatTimeRef.current = now + interval;
-    nextBeatTimeout.current = setTimeout(() => {
-      currentBeatRef.current = (currentBeatRef.current + 1) % timeSignature.beats;
-      setCurrentBeat(currentBeatRef.current);
-      playBeat(currentBeatRef.current);
-      scheduleNextBeat(nextBeatTimeRef.current as number);
-    }, interval);
+    
+    // Schedule the next beats
+    scheduleBeats();
+    
+    // Start the processing interval (check for due beats every 10ms)
+    // This provides much more precise timing than setTimeout
+    if (audioProcessingInterval.current) {
+      clearInterval(audioProcessingInterval.current);
+    }
+    
+    audioProcessingInterval.current = setInterval(() => {
+      processScheduledBeats();
+    }, 10); // Check every 10ms for precise timing
   };
 
   const stopMetronome = () => {
     setIsPlaying(false);
     currentBeatRef.current = 0;
     setCurrentBeat(0);
-    if (nextBeatTimeout.current) {
-      clearTimeout(nextBeatTimeout.current);
-      nextBeatTimeout.current = null;
+    
+    // Clear the processing interval
+    if (audioProcessingInterval.current) {
+      clearInterval(audioProcessingInterval.current);
+      audioProcessingInterval.current = null;
     }
-    nextBeatTimeRef.current = null;
+    
+    // Clear scheduled beats
+    scheduledBeats.current = [];
+    
+    // Stop any playing sounds
+    if (beatSound) {
+      beatSound.stopAsync().catch(console.error);
+    }
+    if (accentSound) {
+      accentSound.stopAsync().catch(console.error);
+    }
   };
 
-  // Gradually adapt to new tempo: when bpm changes, reschedule next beat with new interval, but do not reset beat count or metronome
+  // Handle BPM or time signature changes
   useEffect(() => {
     if (isPlaying) {
-      // If metronome is running, reschedule next beat with new bpm
-      if (nextBeatTimeout.current && nextBeatTimeRef.current) {
-        // Calculate how much time is left until next beat, and adjust for new bpm
-        const now = Date.now();
-        const timeSinceLastBeat = now - (nextBeatTimeRef.current - (60 * 1000) / bpm);
-        const newInterval = (60 * 1000) / bpm;
-        const nextTime = now + (newInterval - timeSinceLastBeat);
-
-        clearTimeout(nextBeatTimeout.current);
-        nextBeatTimeout.current = setTimeout(() => {
-          currentBeatRef.current = (currentBeatRef.current + 1) % timeSignature.beats;
-          setCurrentBeat(currentBeatRef.current);
-          playBeat(currentBeatRef.current);
-          scheduleNextBeat(Date.now());
-        }, Math.max(0, nextTime - now));
-        nextBeatTimeRef.current = nextTime;
+      // When BPM changes, we need to reschedule all beats with the new tempo
+      // but maintain the current beat position
+      
+      // Stop the processing interval
+      if (audioProcessingInterval.current) {
+        clearInterval(audioProcessingInterval.current);
+        audioProcessingInterval.current = null;
       }
+      
+      // Clear scheduled beats but remember the current beat
+      const currentBeat = currentBeatRef.current;
+      scheduledBeats.current = [];
+      
+      // Schedule new beats with the updated BPM
+      scheduleBeats();
+      
+      // Restart the processing interval
+      audioProcessingInterval.current = setInterval(() => {
+        processScheduledBeats();
+      }, 10);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm, timeSignature]);
 
   useEffect(() => {
     return () => {
+      // Stop the metronome
       stopMetronome();
+      
+      // Clean up all intervals and timeouts
       if (holdInterval.current) {
         clearInterval(holdInterval.current);
         holdInterval.current = null;
@@ -259,9 +357,20 @@ export default function MetroScreen() {
         clearTimeout(tapTimeoutRef.current);
         tapTimeoutRef.current = null;
       }
-      if (nextBeatTimeout.current) {
-        clearTimeout(nextBeatTimeout.current);
-        nextBeatTimeout.current = null;
+      if (audioProcessingInterval.current) {
+        clearInterval(audioProcessingInterval.current);
+        audioProcessingInterval.current = null;
+      }
+      
+      // Clear scheduled beats
+      scheduledBeats.current = [];
+      
+      // Unload audio resources
+      if (beatSound) {
+        beatSound.unloadAsync().catch(console.error);
+      }
+      if (accentSound) {
+        accentSound.unloadAsync().catch(console.error);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -286,11 +395,11 @@ export default function MetroScreen() {
       >
         <View
           style={{
-            backgroundColor: "#232323",
+            backgroundColor: "#000000",
             borderRadius: 16,
             padding: 24,
             minWidth: 220,
-            maxHeight: 500,
+            maxHeight: 700,
             elevation: 8,
           }}
         >
@@ -352,16 +461,6 @@ export default function MetroScreen() {
             elevation: isCurrent ? 6 : 0,
           }}
         >
-          {/* <Text
-            style={{
-              color: isCurrent ? "#232323" : "#fff",
-              fontWeight: isCurrent ? "bold" : "normal",
-              fontSize: 8,
-              opacity: i === 0 ? 1 : 0.8,
-            }}
-          >
-            {i + 1}
-          </Text> */}
         </View>
       );
     }

@@ -1,8 +1,8 @@
 
 import { useState, useRef, useEffect } from "react";
-import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput } from "react-native";
+import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput, Modal, Pressable, FlatList, Animated } from "react-native";
 
-import { useAudioPlayer } from "expo-audio";
+import { Audio } from "expo-av";
 import audio from "../../constants/audio";
 
 import HeaderComponent from "../../components/headerComponent";
@@ -19,13 +19,50 @@ export default function MetroScreen() {
   const currentBeatRef = useRef(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Use expo-audio's useAudioPlayer for metronome sounds
-  const beatPlayer = useAudioPlayer(audio.metronome_low);
-  const accentPlayer = useAudioPlayer(audio.metronome_bright);
+  // Use expo-av's Audio API for metronome sounds
+  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
+  const [accentSound, setAccentSound] = useState<Audio.Sound | null>(null);
+  
+  // Load sounds on component mount
+  useEffect(() => {
+    const loadSounds = async () => {
+      try {
+        // Enable audio playback in silent mode (iOS)
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: true,
+        });
+        
+        // Load the sounds
+        const { sound: beatSnd } = await Audio.Sound.createAsync(audio.metronome_low);
+        const { sound: accentSnd } = await Audio.Sound.createAsync(audio.metronome_bright);
+        
+        setBeatSound(beatSnd);
+        setAccentSound(accentSnd);
+      } catch (error) {
+        console.error("Failed to load sounds", error);
+      }
+    };
+    
+    loadSounds();
+    
+    // Cleanup sounds on unmount
+    return () => {
+      if (beatSound) {
+        beatSound.unloadAsync();
+      }
+      if (accentSound) {
+        accentSound.unloadAsync();
+      }
+    };
+  }, []);
 
   // For tap tempo
   const tapTimesRef = useRef<number[]>([]);
   const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [modalVisible, setModalVisible] = useState(false);
 
   // Helper to clamp BPM between min and max
   const clampBpm = (value: number) => {
@@ -134,66 +171,164 @@ export default function MetroScreen() {
     }, 2000);
   };
 
-  // Metronome logic
-  const playBeat = (beat: number) => {
-    // Try to avoid seekTo(0) if not needed, but expo-audio may require it
-    if (beat === 0) {
-      accentPlayer.seekTo(0);
-      accentPlayer.play();
-    } else {
-      beatPlayer.seekTo(0);
-      beatPlayer.play();
+  // Metronome logic with precise timing using expo-av
+  const playBeat = async (beat: number) => {
+    try {
+      if (beat === 0 && accentSound) {
+        // Stop and rewind the sound before playing to ensure consistent playback
+        await accentSound.stopAsync();
+        await accentSound.setPositionAsync(0);
+        await accentSound.playAsync();
+      } else if (beatSound) {
+        await beatSound.stopAsync();
+        await beatSound.setPositionAsync(0);
+        await beatSound.playAsync();
+      }
+    } catch (error) {
+      console.error("Error playing beat:", error);
+    }
+  };
+  
+  // Create a buffer of scheduled sounds for more precise timing
+  const scheduledBeats = useRef<{time: number, beat: number}[]>([]);
+  const audioProcessingInterval = useRef<NodeJS.Timeout | null>(null);
+  
+  // Advanced scheduling system for precise metronome timing
+  const scheduleBeats = () => {
+    // Calculate interval for current bpm
+    const interval = (60 * 1000) / bpm;
+    
+    // Get current time
+    const now = Date.now();
+    
+    // Schedule beats ahead of time (buffer of 4 beats)
+    // This ensures we always have beats ready to play
+    while (scheduledBeats.current.length < 4) {
+      const lastScheduledBeat = scheduledBeats.current[scheduledBeats.current.length - 1];
+      const nextBeatTime = lastScheduledBeat 
+        ? lastScheduledBeat.time + interval 
+        : now + interval;
+      
+      const nextBeatNumber = lastScheduledBeat
+        ? (lastScheduledBeat.beat + 1) % 4 // Fixed at 4 beats for loop.tsx
+        : (currentBeatRef.current + 1) % 4;
+      
+      scheduledBeats.current.push({
+        time: nextBeatTime,
+        beat: nextBeatNumber
+      });
+    }
+  };
+  
+  // Process scheduled beats
+  const processScheduledBeats = () => {
+    const now = Date.now();
+    
+    // Play any beats that are due
+    while (
+      scheduledBeats.current.length > 0 && 
+      scheduledBeats.current[0].time <= now
+    ) {
+      const { beat } = scheduledBeats.current.shift()!;
+      
+      // Update current beat
+      currentBeatRef.current = beat;
+      
+      // Play the beat
+      playBeat(beat);
+      
+      // Schedule more beats to maintain the buffer
+      scheduleBeats();
     }
   };
 
   const startLoop = () => {
-    if (intervalRef.current) return;
+    if (isPlaying) return;
+    
+    // Make sure sounds are loaded
+    if (!beatSound || !accentSound) {
+      console.warn("Loop sounds not loaded yet");
+      return;
+    }
+    
     setIsPlaying(true);
     currentBeatRef.current = 0;
+    
+    // Clear any existing scheduled beats
+    scheduledBeats.current = [];
+    
+    // Play the first beat immediately
     playBeat(0);
-
-    // Use Date.now() to schedule next beat as precisely as possible
-    let nextTick = Date.now() + (60 * 1000) / bpm;
-    intervalRef.current = setInterval(() => {
-      currentBeatRef.current = (currentBeatRef.current + 1) % 4;
-      playBeat(currentBeatRef.current);
-
-      // Try to correct for drift
-      const interval = (60 * 1000) / bpm;
-      nextTick += interval;
-      const drift = Date.now() - nextTick;
-      if (Math.abs(drift) > 20) {
-        // If drift is too high, resync
-        nextTick = Date.now() + interval;
-      }
-    }, (60 * 1000) / bpm);
+    
+    // Schedule the next beats
+    scheduleBeats();
+    
+    // Start the processing interval (check for due beats every 10ms)
+    // This provides much more precise timing than setInterval
+    if (audioProcessingInterval.current) {
+      clearInterval(audioProcessingInterval.current);
+    }
+    
+    audioProcessingInterval.current = setInterval(() => {
+      processScheduledBeats();
+    }, 10); // Check every 10ms for precise timing
   };
 
   const stopLoop = () => {
     setIsPlaying(false);
     currentBeatRef.current = 0;
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    
+    // Clear the processing interval
+    if (audioProcessingInterval.current) {
+      clearInterval(audioProcessingInterval.current);
+      audioProcessingInterval.current = null;
+    }
+    
+    // Clear scheduled beats
+    scheduledBeats.current = [];
+    
+    // Stop any playing sounds
+    if (beatSound) {
+      beatSound.stopAsync().catch(console.error);
+    }
+    if (accentSound) {
+      accentSound.stopAsync().catch(console.error);
     }
   };
 
-  // Update interval when BPM changes and metronome is playing
+  // Handle BPM changes
   useEffect(() => {
     if (isPlaying) {
-      // Instead of clearing and restarting, stop and startMetronome to resync
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      // When BPM changes, we need to reschedule all beats with the new tempo
+      // but maintain the current beat position
+      
+      // Stop the processing interval
+      if (audioProcessingInterval.current) {
+        clearInterval(audioProcessingInterval.current);
+        audioProcessingInterval.current = null;
       }
-      startLoop();
+      
+      // Clear scheduled beats but remember the current beat
+      const currentBeat = currentBeatRef.current;
+      scheduledBeats.current = [];
+      
+      // Schedule new beats with the updated BPM
+      scheduleBeats();
+      
+      // Restart the processing interval
+      audioProcessingInterval.current = setInterval(() => {
+        processScheduledBeats();
+      }, 10);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm]);
 
   useEffect(() => {
     return () => {
+      // Stop the loop
       stopLoop();
+      
+      // Clean up all intervals and timeouts
       if (holdInterval.current) {
         clearInterval(holdInterval.current);
         holdInterval.current = null;
@@ -202,9 +337,55 @@ export default function MetroScreen() {
         clearTimeout(tapTimeoutRef.current);
         tapTimeoutRef.current = null;
       }
+      if (audioProcessingInterval.current) {
+        clearInterval(audioProcessingInterval.current);
+        audioProcessingInterval.current = null;
+      }
+      
+      // Clear scheduled beats
+      scheduledBeats.current = [];
+      
+      // Unload audio resources
+      if (beatSound) {
+        beatSound.unloadAsync().catch(console.error);
+      }
+      if (accentSound) {
+        accentSound.unloadAsync().catch(console.error);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const renderLoopSelectionModel = () => {
+    <Modal
+      visible={modalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setModalVisible(false)}
+    >
+      <Pressable
+        style={{
+          flex: 1,
+          // backgroundColor: "rgba(0,0,0,0.4)",
+          justifyContent: "flex-end",
+          alignItems: "stretch",
+        }}
+        onPress={() => setModalVisible(false)}>
+        <View style={{
+          backgroundColor: "#000000",
+          borderRadius: 16,
+          padding: 24,
+          minWidth: 220,
+          maxHeight: 700,
+          elevation: 8,
+        }}>
+          <Text className="mb-3 text-lg text-white font-rBold">Choose Time Signature</Text>
+
+        </View>
+      </Pressable>
+
+    </Modal>
+  }
 
   return (
     <SafeAreaView className="flex-1 justify-start items-center bg-primary">
@@ -214,7 +395,7 @@ export default function MetroScreen() {
         <View className="flex justify-center items-center py-2 w-2/5">
 
           <Text className="text-sm text-white font-rMedium">Select Loop</Text>
-          <TouchableOpacity className="px-3 py-2 mt-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center ">
+          <TouchableOpacity onPress={() => setModalVisible(true)} className="px-3 py-2 mt-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center ">
             <View className="flex-row mr-2">
               <Image source={icons.folder} className="w-8 h-8" tintColor="#ffffff" />
             </View>
@@ -283,6 +464,5 @@ export default function MetroScreen() {
     </SafeAreaView>
   );
 }
-
 // ---
 // Summary: The app is slow and the metronome is inconsistent because JS timers and audio are not real-time. For a truly accurate metronome, use a native audio engine or a library with sample-accurate scheduling.
