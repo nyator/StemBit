@@ -1,6 +1,6 @@
-import { SplashScreen, Stack } from "expo-router";
-import { useFonts } from "expo-font";
-import { useEffect } from "react";
+import {SplashScreen, Stack} from "expo-router";
+import {useFonts} from "expo-font";
+import {useEffect} from "react";
 
 function RootLayout() {
     const [fontsLoaded, error] = useFonts({
@@ -35,10 +35,11 @@ function RootLayout() {
 
     return (
         <Stack>
-            <Stack.Screen name="index" options={{ headerShown: false, contentStyle: { backgroundColor: "#101116" } }} />
-            <Stack.Screen name="(auths)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(profile)" options={{ headerShown: false }} />
+            <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: "#101116"}}}/>
+            <Stack.Screen name="settings" options={{headerShown: false}}/>
+            <Stack.Screen name="(auths)" options={{headerShown: false}}/>
+            <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
+            <Stack.Screen name="(profile)" options={{headerShown: false}}/>
         </Stack>
     );
 }

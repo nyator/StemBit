@@ -38,24 +38,25 @@ export default function PadScreen() {
         });
     }, [majorMinor]);
 
+// Stops Pad From Playing When Out Of The Tab
 
-    useFocusEffect(
-        useCallback(() => {
-            // On unfocus tab, stop all pad players
-            return () => {
-                majorPadPlayers.forEach(player => {
-                    player.pause();
-                    player.seekTo(0);
-                    player.loop = false;
-                });
-                minorPadPlayers.forEach(player => {
-                    player.pause();
-                    player.seekTo(0);
-                    player.loop = false;
-                });
-            };
-        }, [majorPadPlayers, minorPadPlayers])
-    );
+    // useFocusEffect(
+    //     useCallback(() => {
+    //         // On unfocus tab, stop all pad players
+    //         return () => {
+    //             majorPadPlayers.forEach(player => {
+    //                 player.pause();
+    //                 player.seekTo(0);
+    //                 player.loop = false;
+    //             });
+    //             minorPadPlayers.forEach(player => {
+    //                 player.pause();
+    //                 player.seekTo(0);
+    //                 player.loop = false;
+    //             });
+    //         };
+    //     }, [majorPadPlayers, minorPadPlayers])
+    // );
 
     const majorPads = [
         {selectKey: 'A'},

@@ -29,6 +29,12 @@ export default function MetroScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
   const currentBeatRef = useRef(0);
+  
+  // For gradual tempo transition
+  const currentTempoRef = useRef(120); // Actual current tempo that may be transitioning
+  const targetTempoRef = useRef(120); // Target tempo to transition to
+  const tempoTransitionStartTimeRef = useRef<number | null>(null); // When the transition started
+  const tempoTransitionDurationRef = useRef(1000); // Duration of transition in ms (default 1 second)
 
   // Instead of setInterval, use a single timeout and reschedule on bpm change
   const nextBeatTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -84,7 +90,7 @@ export default function MetroScreen() {
   // Helper to clamp BPM between min and max
   const clampBpm = (value: number) => {
     const min = 20;
-    const max = 240;
+    const max = 320;
     return Math.max(min, Math.min(max, value));
   };
 
@@ -210,11 +216,36 @@ export default function MetroScreen() {
   const scheduledBeats = useRef<{time: number, beat: number}[]>([]);
   const audioProcessingInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // Calculate the current tempo based on transition state
+  const getCurrentTempo = () => {
+    // If no transition is in progress, return the target tempo
+    if (tempoTransitionStartTimeRef.current === null) {
+      return targetTempoRef.current;
+    }
+    
+    const now = Date.now();
+    const elapsedTime = now - tempoTransitionStartTimeRef.current;
+    const duration = tempoTransitionDurationRef.current;
+    
+    // If transition is complete, return target tempo
+    if (elapsedTime >= duration) {
+      tempoTransitionStartTimeRef.current = null;
+      currentTempoRef.current = targetTempoRef.current;
+      return targetTempoRef.current;
+    }
+    
+    // Calculate the current tempo using linear interpolation
+    const startTempo = currentTempoRef.current;
+    const endTempo = targetTempoRef.current;
+    const progress = elapsedTime / duration;
+    
+    // Linear interpolation: start + progress * (end - start)
+    const currentTempo = startTempo + progress * (endTempo - startTempo);
+    return currentTempo;
+  };
+
   // Advanced scheduling system for precise metronome timing
   const scheduleBeats = () => {
-    // Calculate interval for current bpm
-    const interval = (60 * 1000) / bpm;
-    
     // Get current time
     const now = Date.now();
     
@@ -222,18 +253,40 @@ export default function MetroScreen() {
     // This ensures we always have beats ready to play
     while (scheduledBeats.current.length < 4) {
       const lastScheduledBeat = scheduledBeats.current[scheduledBeats.current.length - 1];
-      const nextBeatTime = lastScheduledBeat 
-        ? lastScheduledBeat.time + interval 
-        : now + interval;
       
-      const nextBeatNumber = lastScheduledBeat
-        ? (lastScheduledBeat.beat + 1) % timeSignature.beats
-        : (currentBeatRef.current + 1) % timeSignature.beats;
-      
-      scheduledBeats.current.push({
-        time: nextBeatTime,
-        beat: nextBeatNumber
-      });
+      // If this is the first beat or we're not transitioning, use simple scheduling
+      if (!lastScheduledBeat || tempoTransitionStartTimeRef.current === null) {
+        // Calculate interval for current tempo
+        const currentTempo = getCurrentTempo();
+        const interval = (60 * 1000) / currentTempo;
+        
+        const nextBeatTime = lastScheduledBeat 
+          ? lastScheduledBeat.time + interval 
+          : now + interval;
+        
+        const nextBeatNumber = lastScheduledBeat
+          ? (lastScheduledBeat.beat + 1) % timeSignature.beats
+          : (currentBeatRef.current + 1) % timeSignature.beats;
+        
+        scheduledBeats.current.push({
+          time: nextBeatTime,
+          beat: nextBeatNumber
+        });
+      } else {
+        // For transitioning tempo, we need to calculate the exact time for the next beat
+        // based on the tempo at that moment
+        const nextBeatNumber = (lastScheduledBeat.beat + 1) % timeSignature.beats;
+        
+        // Estimate when the next beat should occur based on current tempo
+        const currentTempo = getCurrentTempo();
+        const interval = (60 * 1000) / currentTempo;
+        const nextBeatTime = lastScheduledBeat.time + interval;
+        
+        scheduledBeats.current.push({
+          time: nextBeatTime,
+          beat: nextBeatNumber
+        });
+      }
     }
   };
   
@@ -273,6 +326,11 @@ export default function MetroScreen() {
     currentBeatRef.current = 0;
     setCurrentBeat(0);
     
+    // Initialize tempo references
+    currentTempoRef.current = bpm;
+    targetTempoRef.current = bpm;
+    tempoTransitionStartTimeRef.current = null; // No transition in progress
+    
     // Clear any existing scheduled beats
     scheduledBeats.current = [];
     
@@ -298,6 +356,11 @@ export default function MetroScreen() {
     currentBeatRef.current = 0;
     setCurrentBeat(0);
     
+    // Reset tempo transition state
+    currentTempoRef.current = bpm;
+    targetTempoRef.current = bpm;
+    tempoTransitionStartTimeRef.current = null;
+    
     // Clear the processing interval
     if (audioProcessingInterval.current) {
       clearInterval(audioProcessingInterval.current);
@@ -318,27 +381,46 @@ export default function MetroScreen() {
 
   // Handle BPM or time signature changes
   useEffect(() => {
+    // Update target tempo when BPM changes
+    targetTempoRef.current = bpm;
+    
     if (isPlaying) {
-      // When BPM changes, we need to reschedule all beats with the new tempo
-      // but maintain the current beat position
-      
-      // Stop the processing interval
-      if (audioProcessingInterval.current) {
-        clearInterval(audioProcessingInterval.current);
-        audioProcessingInterval.current = null;
+      // For time signature changes, we need to reset completely
+      if (timeSignature.beats !== scheduledBeats.current[0]?.beat) {
+        // Stop the processing interval
+        if (audioProcessingInterval.current) {
+          clearInterval(audioProcessingInterval.current);
+          audioProcessingInterval.current = null;
+        }
+        
+        // Clear scheduled beats
+        scheduledBeats.current = [];
+        
+        // Reset transition
+        tempoTransitionStartTimeRef.current = null;
+        currentTempoRef.current = bpm;
+        
+        // Schedule new beats with the updated time signature
+        scheduleBeats();
+        
+        // Restart the processing interval
+        audioProcessingInterval.current = setInterval(() => {
+          processScheduledBeats();
+        }, 10);
+      } 
+      // For BPM changes, start a gradual transition
+      else if (Math.abs(currentTempoRef.current - bpm) > 1) {
+        // Start a new tempo transition
+        tempoTransitionStartTimeRef.current = Date.now();
+        
+        // Don't clear scheduled beats - they'll be played with gradually changing tempo
+        // Don't restart the processing interval - it's already running
+        
+        // The transition will happen in getCurrentTempo() which is called by scheduleBeats()
       }
-      
-      // Clear scheduled beats but remember the current beat
-      const currentBeat = currentBeatRef.current;
-      scheduledBeats.current = [];
-      
-      // Schedule new beats with the updated BPM
-      scheduleBeats();
-      
-      // Restart the processing interval
-      audioProcessingInterval.current = setInterval(() => {
-        processScheduledBeats();
-      }, 10);
+    } else {
+      // If not playing, just update the current tempo immediately
+      currentTempoRef.current = bpm;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm, timeSignature]);
