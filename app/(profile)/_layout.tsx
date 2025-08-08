@@ -12,7 +12,7 @@ const ProfileLayout = () => {
       <Stack.Screen
         name="user"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerLeft: () => (
             <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 10 }}>
               <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -28,7 +28,7 @@ const ProfileLayout = () => {
       <Stack.Screen
         name="help"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerLeft: () => (
             <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 10 }}>
               <Ionicons name="arrow-back" size={24} color="#fff" />
