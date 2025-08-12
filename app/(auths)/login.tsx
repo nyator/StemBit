@@ -33,18 +33,18 @@ const LoginScreen = () => {
     return (
         <SafeAreaView className="flex-1">
             <View className="flex-1 px-5">
-                <View className="flex flex-row justify-center items-center my-10">
+                <View className="flex flex-row justify-center items-center mt-10 mb-5">
                     <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
                     <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
                 </View>
                 <View className="flex items-start">
-                    <Text className="text-3xl text-white font-rBold">Login</Text>
+                    <Text className="text-2xl text-white font-rBold">Login</Text>
                     <View className="flex flex-col gap-6 items-center w-full">
                         <FormField
                             title="Email"
                             value={form.email}
                             handleChangeText={(e) => setForm({...form, email: e})}
-                            otherStyles="mt-10"
+                            otherStyles="mt-5"
                             placeholder="Enter Email"
                             keyboardType="email-address"
                         />

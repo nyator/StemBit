@@ -566,7 +566,7 @@ export default function MetroScreen() {
               <Image source={icons.timeSign} className="w-8 h-8" tintColor="#ffffff" />
             </View>
             <View className="w-[2px] h-8 bg-black/40 mr-3"></View>
-            <Text className="text-lg text-white font-rMedium">{timeSignature.label}</Text>
+            <Text className="text-lg text-white font-rBold ">{timeSignature.label}</Text>
           </TouchableOpacity>
         </View>
         <View className="flex items-center">

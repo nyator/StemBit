@@ -14,11 +14,11 @@ const IndexScreen = () => {
     }
 
     return (
-        <SafeAreaView className="flex-1 bg-primary">
+        <SafeAreaView className="flex-1 bg-primary justify-center">
             <StatusBar barStyle="light-content"/>
 
             {/* Header */}
-            <View className="flex-row justify-between items-center px-5 mt-7 mb-5">
+            <View className="flex-row justify-between items-center px-5 mt-7  mb-5">
                 <TouchableOpacity
                     onPress={handleGoBack}
                     className="p-2 rounded-full bg-white/10"

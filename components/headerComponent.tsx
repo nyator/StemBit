@@ -9,7 +9,7 @@ const HeaderComponent = () => {
         <View className="flex flex-row justify-between items-center px-5 mt-7 mb-5 w-full">
             <View className="flex flex-row justify-between items-center w-2/5">
                 {/*<TouchableOpacity*/}
-                {/*    onPress={() => router.push("/(profile)/user")}*/}
+                {/*    onPress={() => router.push("/(settings)/user")}*/}
                 {/*    className="p-2 rounded-full bg-white/10"*/}
                 {/*    accessibilityLabel="Go to profile"*/}
                 {/*>*/}
@@ -34,7 +34,7 @@ const HeaderComponent = () => {
             <View>
                 <TouchableOpacity
                     className="p-2 rounded-full bg-white/10"
-                    onPress={() => router.push("/settings")}
+                    onPress={() => router.push("/(settings)")}
                     accessibilityLabel="Go to settings"
                 >
                     <Image

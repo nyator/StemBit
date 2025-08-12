@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import icons from "../../constants/icons";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { Animated } from 'react-native';
+import { Animated } from "react-native";
 
 const splashPages = [
   {
@@ -40,7 +40,7 @@ export default function IndexScreen() {
   const dotAnimations = useRef(
     splashPages.map(() => ({
       width: new Animated.Value(8),
-      backgroundColor: new Animated.Value(0)
+      backgroundColor: new Animated.Value(0),
     }))
   ).current;
 
@@ -51,13 +51,13 @@ export default function IndexScreen() {
         Animated.timing(dotAnimations[idx].width, {
           toValue: page === idx ? 25 : 8,
           duration: 300,
-          useNativeDriver: false
+          useNativeDriver: false,
         }),
         Animated.timing(dotAnimations[idx].backgroundColor, {
           toValue: page === idx ? 1 : 0,
           duration: 300,
-          useNativeDriver: false
-        })
+          useNativeDriver: false,
+        }),
       ]).start();
     });
   }, [page]);
@@ -96,6 +96,7 @@ export default function IndexScreen() {
             </TouchableOpacity>
           )}
         </View>
+
         <View className="mb-6 w-[28rem] h-[28rem] justify-start items-center overflow-hidden">
           <Image
             source={splashPages[page].image}
@@ -103,11 +104,13 @@ export default function IndexScreen() {
             className="object-contain w-full h-full"
           />
         </View>
+
         <View className="flex justify-center items-start px-5 mb-4 w-screen">
           <Text className="text-white text-[40px] max-w-[26rem] text-start font-rBold text-nowrap">
             {splashPages[page].title}
           </Text>
         </View>
+
         <Text className="mb-6 text-lg text-white">
           {splashPages[page].subtitle}
         </Text>
@@ -122,10 +125,12 @@ export default function IndexScreen() {
                   width: dotAnimations[idx].width,
                   borderRadius: 4,
                   marginHorizontal: 4,
-                  backgroundColor: dotAnimations[idx].backgroundColor.interpolate({
+                  backgroundColor: dotAnimations[
+                    idx
+                  ].backgroundColor.interpolate({
                     inputRange: [0, 1],
-                    outputRange: ['rgba(255,255,255,0.3)', '#fff']
-                  })
+                    outputRange: ["rgba(255,255,255,0.3)", "#fff"],
+                  }),
                 }}
               />
             ))}
@@ -143,7 +148,7 @@ export default function IndexScreen() {
             // <View className="flex items-end">
             <TouchableOpacity
               onPress={handleGetStarted}
-            // className=""
+              // className=""
             >
               <Image
                 source={icons.logoButton}
@@ -154,6 +159,7 @@ export default function IndexScreen() {
             // </View>
           )}
         </View>
+
         <View className="flex absolute bottom-0 right-2/4 flex-row">
           <Text className="text-white/50 font-rMedium">by </Text>
           <Text className="text-accent font-rMedium">nehtek</Text>
@@ -161,4 +167,4 @@ export default function IndexScreen() {
       </View>
     </SafeAreaView>
   );
-};
+}

@@ -1,6 +1,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { SafeAreaView, View, Text, StatusBar, Image, TouchableOpacity, TextInput, Modal, Pressable } from "react-native";
+import {useRouter} from "expo-router";
 
 import { Audio } from "expo-av";
 import audio from "../../constants/audio";
@@ -13,6 +14,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import AntDesign from '@expo/vector-icons/AntDesign';
 
 export default function MetroScreen() {
+  const router = useRouter();
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
   // Remove currentBeat from state to avoid unnecessary re-renders
@@ -395,7 +397,7 @@ export default function MetroScreen() {
         <View className="flex justify-center items-center py-2 w-2/5">
 
           <Text className="text-sm text-white font-rMedium">Select Loop</Text>
-          <TouchableOpacity onPress={() => setModalVisible(true)} className="px-3 py-2 mt-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center ">
+          <TouchableOpacity onPress={() => {router.push("/(loops)/sounds")}} className="px-3 py-2 mt-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center ">
             <View className="flex-row mr-2">
               <Image source={icons.folder} className="w-8 h-8" tintColor="#ffffff" />
             </View>
@@ -460,7 +462,7 @@ export default function MetroScreen() {
         </View>
 
       </View>
-      <StatusBar barStyle="light-content" />
+      <StatusBar hidden />
     </SafeAreaView>
   );
 }
