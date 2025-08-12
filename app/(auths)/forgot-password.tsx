@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { SafeAreaView, View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "react-native";
 import {useRouter, Redirect} from "expo-router";
 
@@ -15,6 +16,8 @@ const ForgotPasswordScreen = () => {
 
   const getCodeSubmit = () => {
     router.push("/reset-password")
+    // setForm({})
+  
   }
   return (
     <SafeAreaView className="flex-1">
