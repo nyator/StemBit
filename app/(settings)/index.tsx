@@ -3,7 +3,7 @@ import {View, Text, Switch, TouchableOpacity, SafeAreaView, StatusBar, ScrollVie
 import {useRouter} from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-const SettingsScreen = () => {
+const IndexScreen = () => {
     const router = useRouter();
     const [notifications, setNotifications] = useState(true);
     const [darkMode, setDarkMode] = useState(true);
@@ -36,7 +36,7 @@ const SettingsScreen = () => {
                     <Text className="text-xl text-accent font-rBold mb-4">Account</Text>
 
                     <TouchableOpacity
-                        onPress={() => router.push("/(profile)/user")}
+                        onPress={() => router.push("/user")}
                         className="flex-row justify-between items-center py-4 border-b border-white/10"
                     >
                         <Text className="text-white text-lg font-rMedium">Profile</Text>
@@ -44,6 +44,7 @@ const SettingsScreen = () => {
                     </TouchableOpacity>
 
                     <TouchableOpacity
+                        onPress={() => router.push("/(auths)/reset-password")}
                         className="flex-row justify-between items-center py-4 border-b border-white/10"
                     >
                         <Text className="text-white text-lg font-rMedium">Change Password</Text>
@@ -91,7 +92,7 @@ const SettingsScreen = () => {
                     <Text className="text-xl text-accent font-rBold mb-4">About</Text>
 
                     <TouchableOpacity
-                        onPress={() => router.push("/(profile)/help")}
+                        onPress={() => router.push("/help")}
                         className="flex-row justify-between items-center py-4 border-b border-white/10"
                     >
                         <Text className="text-white text-lg font-rMedium">Help & Support</Text>
@@ -129,4 +130,4 @@ const SettingsScreen = () => {
     );
 };
 
-export default SettingsScreen;
+export default IndexScreen;
