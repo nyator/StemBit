@@ -1,27 +1,30 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  SafeAreaView, 
-  StatusBar, 
-  TouchableOpacity, 
+import React, { useState } from "react";
+import { Dimensions } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  StatusBar,
+  TouchableOpacity,
   ScrollView,
   Image,
-  Alert
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import CustomButton from '../../components/customButton';
+  Alert,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import CustomButton from "../../components/customButton";
 
 const UserScreen = () => {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState('John Doe');
-  const [email, setEmail] = useState('john@example.com');
-  const [bio, setBio] = useState('Software developer passionate about mobile apps and technology.');
-  const [location, setLocation] = useState('San Francisco, CA');
-  const [joinDate] = useState('August 2023');
+  const [name, setName] = useState("John Doe");
+  const [email, setEmail] = useState("john@example.com");
+  const [bio, setBio] = useState(
+    "Software developer passionate about mobile apps and technology."
+  );
+  const [location, setLocation] = useState("San Francisco, CA");
+  const [joinDate] = useState("August 2023");
 
   const handleGoBack = () => {
     router.back();
@@ -30,7 +33,7 @@ const UserScreen = () => {
   const handleSave = () => {
     // In a real app, you would save the data to a backend or local storage
     setEditing(false);
-    Alert.alert('Success', 'Profile updated successfully!');
+    Alert.alert("Success", "Profile updated successfully!");
   };
 
   const handleEdit = () => {
@@ -42,61 +45,73 @@ const UserScreen = () => {
     setEditing(false);
   };
 
+  // Responsive avatar size (30% of screen width, max 120)
+  const screenWidth = Dimensions.get('window').width;
+  const avatarSize = Math.min(screenWidth * 0.3, 120);
+
   return (
     <SafeAreaView className="flex-1 bg-primary">
       <StatusBar barStyle="light-content" />
-      
+
       {/* Header */}
-      <View className="flex-row justify-between items-center px-5 mt-7 mb-1">
-        <TouchableOpacity 
+      <View className="flex-row justify-between items-center px-4 md:px-8 my-5 mb-1">
+        <TouchableOpacity
           onPress={handleGoBack}
           className="p-2 rounded-full bg-white/10"
         >
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
-        {/*<View style={{ width: 32 }} /> /!* Empty view for alignment *!/*/}
       </View>
 
-      <ScrollView className="flex-1 px-5">
+      <ScrollView className="flex-1 px-4 md:px-8">
         {/* Profile Picture */}
-        <View className="items-center my-6">
-          <View className="relative">
-            <View className="w-28 h-28 rounded-full bg-accent/20 items-center justify-center">
-              <Ionicons name="person" size={60} color="#098F6D" />
+        <View className="items-center my-4 md:my-8">
+          <View className="relative" style={{ width: avatarSize, height: avatarSize }}>
+            <View
+              className="rounded-full bg-accent/20 items-center justify-center"
+              style={{ width: avatarSize, height: avatarSize }}
+            >
+              <Ionicons name="person" size={avatarSize * 0.5} color="#098F6D" />
             </View>
             {editing && (
-              <TouchableOpacity 
-                className="absolute bottom-0 right-0 bg-accent rounded-full p-2"
-                onPress={() => Alert.alert('Feature', 'Photo upload would be implemented here')}
+              <TouchableOpacity
+                className="absolute bottom-0 right-0 bg-accent rounded-full"
+                style={{ padding: avatarSize * 0.13 }}
+                onPress={() =>
+                  Alert.alert(
+                    "Feature",
+                    "Photo upload would be implemented here"
+                  )
+                }
               >
-                <Ionicons name="camera" size={18} color="white" />
+                <Ionicons name="camera" size={avatarSize * 0.15} color="white" />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
         {/* Profile Information */}
-        <View className="bg-white/5 rounded-xl p-5 mb-6">
-          <View className="mb-4">
-            <Text className="text-accent font-rMedium mb-1">Name</Text>
+        <View className="bg-white/5 rounded-xl p-4 md:p-6 mb-6">
+          <View className="mb-3 md:mb-4">
+            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Name</Text>
             {editing ? (
               <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg"
+                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
                 value={name}
                 onChangeText={setName}
                 placeholder="Enter your name"
                 placeholderTextColor="rgba(255,255,255,0.5)"
               />
             ) : (
-              <Text className="text-white text-lg font-rBold">{name}</Text>
+              <Text className="text-white text-lg md:text-xl font-rBold">{name}</Text>
             )}
           </View>
 
-          <View className="mb-4">
-            <Text className="text-accent font-rMedium mb-1">Email</Text>
+          <View className="mb-3 md:mb-4">
+            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Email</Text>
             {editing ? (
               <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg"
+                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
                 value={email}
                 onChangeText={setEmail}
                 placeholder="Enter your email"
@@ -104,15 +119,15 @@ const UserScreen = () => {
                 keyboardType="email-address"
               />
             ) : (
-              <Text className="text-white text-lg">{email}</Text>
+              <Text className="text-white text-lg md:text-xl">{email}</Text>
             )}
           </View>
 
-          <View className="mb-4">
-            <Text className="text-accent font-rMedium mb-1">Bio</Text>
+          <View className="mb-3 md:mb-4">
+            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Bio</Text>
             {editing ? (
               <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg"
+                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Tell us about yourself"
@@ -122,79 +137,85 @@ const UserScreen = () => {
                 textAlignVertical="top"
               />
             ) : (
-              <Text className="text-white">{bio}</Text>
+              <Text className="text-white text-base md:text-lg">{bio}</Text>
             )}
           </View>
 
-          <View className="mb-4">
-            <Text className="text-accent font-rMedium mb-1">Location</Text>
+          <View className="mb-3 md:mb-4">
+            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Location</Text>
             {editing ? (
               <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg"
+                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
                 value={location}
                 onChangeText={setLocation}
                 placeholder="Your location"
                 placeholderTextColor="rgba(255,255,255,0.5)"
               />
             ) : (
-              <Text className="text-white">{location}</Text>
+              <Text className="text-white text-base md:text-lg">{location}</Text>
             )}
           </View>
 
           <View>
-            <Text className="text-accent font-rMedium mb-1">Member Since</Text>
-            <Text className="text-white">{joinDate}</Text>
+            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Member Since</Text>
+            <Text className="text-white text-base md:text-lg">{joinDate}</Text>
           </View>
         </View>
 
         {/* Stats Section */}
-        <View className="bg-white/5 rounded-xl p-5 mb-6">
-          <Text className="text-xl text-accent font-rBold mb-4">Activity Stats</Text>
-          
+        <View className="bg-white/5 rounded-xl p-4 md:p-6 mb-6">
+          <Text className="text-lg md:text-xl text-accent font-rBold mb-4">
+            Activity Stats
+          </Text>
+
           <View className="flex-row justify-between mb-3">
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 mr-2">
-              <Text className="text-2xl text-white font-rBold">12</Text>
-              <Text className="text-white/70">Projects</Text>
+            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 mr-2 min-w-0">
+              <Text className="text-xl md:text-2xl text-white font-rBold">12</Text>
+              <Text className="text-white/70 text-xs md:text-base">Projects</Text>
             </View>
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 ml-2">
-              <Text className="text-2xl text-white font-rBold">156</Text>
-              <Text className="text-white/70">Hours</Text>
+            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 ml-2 min-w-0">
+              <Text className="text-xl md:text-2xl text-white font-rBold">156</Text>
+              <Text className="text-white/70 text-xs md:text-base">Hours</Text>
             </View>
           </View>
-          
+
           <View className="flex-row justify-between">
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 mr-2">
-              <Text className="text-2xl text-white font-rBold">8</Text>
-              <Text className="text-white/70">Badges</Text>
+            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 mr-2 min-w-0">
+              <Text className="text-xl md:text-2xl text-white font-rBold">8</Text>
+              <Text className="text-white/70 text-xs md:text-base">Badges</Text>
             </View>
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 ml-2">
-              <Text className="text-2xl text-white font-rBold">4.8</Text>
-              <Text className="text-white/70">Rating</Text>
+            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 ml-2 min-w-0">
+              <Text className="text-xl md:text-2xl text-white font-rBold">4.8</Text>
+              <Text className="text-white/70 text-xs md:text-base">Rating</Text>
             </View>
           </View>
         </View>
 
         {/* Action Buttons */}
         {editing ? (
-          <View className="flex-row mb-10">
-            <TouchableOpacity 
-              className="flex-1 py-4 bg-white/10 rounded-xl mr-2"
+          <View className="flex-row mb-8 md:mb-10">
+            <TouchableOpacity
+              className="flex-1 py-3 md:py-4 bg-white/10 rounded-xl mr-2"
               onPress={handleCancel}
             >
-              <Text className="text-white text-center text-lg font-rMedium">Cancel</Text>
+              <Text className="text-white text-center text-base md:text-lg font-rMedium">
+                Cancel
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              className="flex-1 py-4 bg-accent rounded-xl ml-2"
+            <TouchableOpacity
+              className="flex-1 py-3 md:py-4 bg-accent rounded-xl ml-2"
               onPress={handleSave}
             >
-              <Text className="text-white text-center text-lg font-rBold">Save</Text>
+              <Text className="text-white text-center text-base md:text-lg font-rBold">
+                Save
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <CustomButton 
+          <CustomButton
             title="Edit Profile"
             handlePress={handleEdit}
-            containerStyles="mb-10"
+            containerStyles="mb-8 md:mb-10"
           />
         )}
       </ScrollView>

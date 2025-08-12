@@ -6,25 +6,8 @@ const HeaderComponent = () => {
     const router = useRouter();
 
     return (
-        <View className="flex flex-row justify-between items-center px-5 mt-7 mb-5 w-full">
+        <View className="flex flex-row justify-between items-center px-5 my-5 w-full">
             <View className="flex flex-row justify-between items-center w-2/5">
-                {/*<TouchableOpacity*/}
-                {/*    onPress={() => router.push("/(settings)/user")}*/}
-                {/*    className="p-2 rounded-full bg-white/10"*/}
-                {/*    accessibilityLabel="Go to profile"*/}
-                {/*>*/}
-                {/*    <Image*/}
-                {/*        source={icons.user}*/}
-                {/*        resizeMode="contain"*/}
-                {/*        style={{*/}
-                {/*            width: 24,*/}
-                {/*            height: 24,*/}
-                {/*        }}*/}
-                {/*        tintColor="white"*/}
-                {/*        accessibilityIgnoresInvertColors*/}
-                {/*    />*/}
-                {/*</TouchableOpacity>*/}
-
                 <View className="flex flex-row justify-center items-center">
                     <Text className="text-3xl text-white font-rBlack">Stem</Text>
                     <Text className="text-3xl text-accent font-rBlack">Bits</Text>
