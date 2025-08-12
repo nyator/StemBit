@@ -36,10 +36,10 @@ function RootLayout() {
     return (
         <Stack>
             <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: "#101116"}}}/>
-            <Stack.Screen name="settings" options={{headerShown: false}}/>
             <Stack.Screen name="(auths)" options={{headerShown: false}}/>
             <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
-            <Stack.Screen name="(profile)" options={{headerShown: false}}/>
+            <Stack.Screen name="(settings)" options={{headerShown: false}}/>
+            <Stack.Screen name="(loops)" options={{headerShown: false}}/>
         </Stack>
     );
 }

@@ -47,7 +47,7 @@ const RegisterScreen = () => {
     <SafeAreaView className="flex-1">
       {/* <CustomToast type="success" title="Sign successful" /> */}
       <View className="flex-1 px-5">
-        <View className="flex flex-row justify-center items-center my-10">
+        <View className="flex flex-row justify-center items-center mt-10 mb-5">
           <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
           <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
         </View>

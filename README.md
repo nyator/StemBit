@@ -47,7 +47,7 @@ StemBit is a React Native mobile application designed for musicians and performe
 - Authentication: register, login, forgot/reset password.
 - Animated splash/onboarding screens.
 
-### Settings (`settings.tsx`)
+### Settings (`index.tsx`)
 - Placeholder for user preferences and app settings.
 
 ---
@@ -128,7 +128,7 @@ StemBit is a React Native mobile application designed for musicians and performe
   - `(tabs)/` - Main tab screens: `loop.tsx`, `pad.tsx`, `session.tsx`, `metro.tsx`
   - `(auths)/` - Authentication screens: `login.tsx`, `register.tsx`, etc.
   - `(profile)/` - User profile and help screens
-  - `settings.tsx` - Settings/configuration
+  - `index.tsx` - Settings/configuration
 - `components/` - Reusable UI components (e.g., header, buttons, toast)
 - `constants/` - Static assets and configuration (icons, audio)
 - `context/` - React context providers (e.g., AuthContext)

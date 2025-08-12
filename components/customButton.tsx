@@ -28,7 +28,7 @@ const CustomButton = ({
       {isLoading ? (
         <ActivityIndicator color="#fff" />
       ) : (
-        <Text className={`text-2xl text-white font-rBold ${textStyles}`}>{title}</Text>
+        <Text className={`text-xl text-white font-rBold ${textStyles}`}>{title}</Text>
       )}
     </TouchableOpacity>
   );
