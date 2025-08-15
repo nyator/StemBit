@@ -37,3 +37,16 @@ export const createUser = ({ email, password }: createUserProp) => {
     }
   );
 };
+
+export const loginUser = ({ email, password }: createUserProp) => {
+  account.create(ID.unique(), email, password).then(
+    function (response) {
+      console.log(response);
+    },
+    function (error) {
+      console.log(error)
+    }
+  )
+}
+
+
