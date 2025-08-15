@@ -1,7 +1,8 @@
 import React, {useState, useEffect, useRef, useCallback} from "react";
-import {SafeAreaView, View, Text, StatusBar, TouchableOpacity} from "react-native";
-import {useFocusEffect} from '@react-navigation/native';
+import {View, Text, StatusBar, TouchableOpacity} from "react-native";
 
+import { SafeAreaView } from "react-native-safe-area-context";
+import {useFocusEffect} from '@react-navigation/native';
 import LaunchPadComponent from "../../components/launchPad";
 import HeaderComponent from "../../components/headerComponent";
 // import OptionField from "../../components/optionField";
@@ -138,15 +139,14 @@ export default function PadScreen() {
         </View> */}
                 <View
                     className="flex flex-row justify-center items-center bg-white/10 rounded-xl border-[1.2px] border-black/40 mt-9">
-
                     <TouchableOpacity
-                        className={`px-6 py-4 rounded-s-xl ${majorMinor.toLocaleLowerCase() === "major" ? "bg-accent" : ""}`}
+                        className={`px-6 py-4 rounded-xl ${majorMinor.toLocaleLowerCase() === "major" ? "bg-accent" : ""}`}
                         onPress={() => setMajorMinor("major")}>
                         <Text
                             className={`font-rBold  text-white`}>Major</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        className={`px-6 py-4 rounded-e-xl ${majorMinor.toLocaleLowerCase() === "minor" ? "bg-accent" : ""}`}
+                        className={`px-6 py-4 rounded-xl ${majorMinor.toLocaleLowerCase() === "minor" ? "bg-accent" : ""}`}
                         onPress={() => setMajorMinor("minor")}>
                         <Text
                             className={`font-rBold text-white`}>Minor</Text>
