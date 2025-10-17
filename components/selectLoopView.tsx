@@ -4,6 +4,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useState, useRef } from "react";
 
 import { Audio } from "expo-av";
+import { useRouter } from "expo-router";
 
 // const TIME_SIGNATURES = [
 //     {label: "2 / 4", beats: 2, note: 4},
@@ -18,25 +19,12 @@ import { Audio } from "expo-av";
 
 const LOOPS = [
   {
-    Title: "Worship Loop",
-    Artist: "Nyator",
-    BPM: 90,
-    TimeSignature: "2 / 4",
-    Audio: require("../assets/audio/pads/A_MAJOR.mp3"),
-  },
-  {
-    Title: "Praise Loop",
-    Artist: "Stephen",
-    BPM: 120,
+    Key: "sample_bpm80",
+    Title: "HENRY LOOP",
+    Artist: "Henry",
+    BPM: 80,
     TimeSignature: "4 / 4",
-    Audio: require("../assets/audio/pads/A_MAJOR.mp3"),
-  },
-  {
-    Title: "Reggae",
-    Artist: "SponTheProducer",
-    BPM: 90,
-    TimeSignature: "4 / 4",
-    Audio: require("../assets/audio/pads/A_MAJOR.mp3"),
+    Audio: require("../assets/audio/loops/sample_bpm80.mp3"),
   },
 ];
 
@@ -45,6 +33,7 @@ const SelectLoopView = () => {
   const soundRef = useRef<Audio.Sound | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const router = useRouter();
 
   const handlePlayPause = async (index: number) => {
     if (playingIndex === index) {
@@ -79,7 +68,7 @@ const SelectLoopView = () => {
 
   const handleRowPress = (i: number) => {
     setSelectedIndex(i);
-  setDialogVisible(true);
+    setDialogVisible(true);
   };
 
   const handleDialogCancel = () => {
@@ -90,8 +79,19 @@ const SelectLoopView = () => {
   const handleDialogLoad = () => {
     setDialogVisible(false);
     if (selectedIndex !== null) {
-      // Perform your task here, e.g., load the file or update state
-      // Example: console.log(`Loading file for ${LOOPS[selectedIndex].Title}`);
+      const loop = LOOPS[selectedIndex];
+      if (soundRef.current) {
+        soundRef.current.stopAsync().catch(() => {});
+      }
+      router.replace({
+        pathname: "/(tabs)/loop",
+        params: {
+          bpm: String(loop.BPM),
+          title: loop.Title,
+          artist: loop.Artist,
+          loopKey: loop.Key,
+        },
+      });
     }
     setSelectedIndex(null);
   };
@@ -110,12 +110,12 @@ const SelectLoopView = () => {
                 <Text className="text-white text-md font-rBold">
                   {item.Title}
                 </Text>
-                <Text className="text-white text-sm font-rRegular">
+                <Text className="text-sm text-white font-rRegular">
                   BPM : {item.BPM}
                 </Text>
               </View>
-              <View className="flex justify-between items-center w-2/6 ">
-                <Text className="text-white text-md font-rMedium ">
+              <View className="flex justify-between items-center w-2/6">
+                <Text className="text-white text-md font-rMedium">
                   {item.Artist}
                 </Text>
                 <Text className="text-white text-md font-rRegular">
@@ -133,10 +133,10 @@ const SelectLoopView = () => {
           ))}
         </ScrollView>
         <Portal>
-          <Dialog visible={dialogVisible} onDismiss={handleDialogCancel}>
-            <Dialog.Title>Load File</Dialog.Title>
+          <Dialog visible={dialogVisible} onDismiss={handleDialogCancel} style={{ borderRadius: 10, }}>
+            <Dialog.Title className="font-rBold">Load File</Dialog.Title>
             <Dialog.Content>
-              <Text>Do you want to load this file?</Text>
+            <Text className="font-rRegular">Do you want to load this file?</Text>
             </Dialog.Content>
             <Dialog.Actions>
               <Button onPress={handleDialogCancel}>Cancel</Button>

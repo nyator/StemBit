@@ -10,7 +10,7 @@ import {
   Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 
 import { Audio } from "expo-av";
 import audio from "../../constants/audio";
@@ -24,7 +24,11 @@ import AntDesign from "@expo/vector-icons/AntDesign";
 
 export default function MetroScreen() {
   const router = useRouter();
-  const [bpm, setBpm] = useState(120);
+  const params = useLocalSearchParams();
+  const initialBpm = typeof params.bpm === "string" ? parseInt(params.bpm, 10) : 120;
+  const [bpm, setBpm] = useState(isNaN(initialBpm) ? 120 : initialBpm);
+  const selectedTitle = typeof params.title === "string" ? params.title : undefined;
+  const selectedLoopKey = typeof params.loopKey === "string" ? params.loopKey : undefined;
   const [isPlaying, setIsPlaying] = useState(false);
   // Remove currentBeat from state to avoid unnecessary re-renders
   const currentBeatRef = useRef(0);
@@ -33,6 +37,7 @@ export default function MetroScreen() {
   // Use expo-av's Audio API for metronome sounds
   const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
   const [accentSound, setAccentSound] = useState<Audio.Sound | null>(null);
+  const [loopSound, setLoopSound] = useState<Audio.Sound | null>(null);
 
   // Load sounds on component mount
   useEffect(() => {
@@ -72,6 +77,49 @@ export default function MetroScreen() {
       }
     };
   }, []);
+
+  // Load selected loop audio when loopKey changes
+  useEffect(() => {
+    let isCancelled = false;
+    const loadSelectedLoop = async () => {
+      try {
+        // Unload any previous loop sound
+        if (loopSound) {
+          await loopSound.unloadAsync();
+          setLoopSound(null);
+        }
+
+        if (!selectedLoopKey) return;
+
+        // Map loop keys to assets
+        let source: number | undefined;
+        if (selectedLoopKey === "sample_bpm80") {
+          source = require("../../assets/audio/loops/sample_bpm80.mp3");
+        }
+
+        if (!source) return;
+
+        const { sound } = await Audio.Sound.createAsync(source, {
+          shouldPlay: false,
+          isLooping: true,
+        });
+        if (!isCancelled) {
+          setLoopSound(sound);
+        } else {
+          await sound.unloadAsync();
+        }
+      } catch (e) {
+        console.error("Failed to load loop sound", e);
+      }
+    };
+
+    loadSelectedLoop();
+
+    return () => {
+      isCancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLoopKey]);
 
   // For tap tempo
   const tapTimesRef = useRef<number[]>([]);
@@ -267,6 +315,10 @@ export default function MetroScreen() {
       console.warn("Loop sounds not loaded yet");
       return;
     }
+    // Ensure loop sound is ready if a loop is selected
+    if (selectedLoopKey && !loopSound) {
+      console.warn("Selected loop audio not loaded yet");
+    }
 
     setIsPlaying(true);
     currentBeatRef.current = 0;
@@ -276,6 +328,13 @@ export default function MetroScreen() {
 
     // Play the first beat immediately
     playBeat(0);
+
+    // Start loop audio if available
+    if (loopSound) {
+      loopSound.setPositionAsync(0).then(() => {
+        loopSound.playAsync().catch(() => {});
+      });
+    }
 
     // Schedule the next beats
     scheduleBeats();
@@ -310,6 +369,9 @@ export default function MetroScreen() {
     }
     if (accentSound) {
       accentSound.stopAsync().catch(console.error);
+    }
+    if (loopSound) {
+      loopSound.stopAsync().catch(console.error);
     }
   };
 
@@ -369,6 +431,9 @@ export default function MetroScreen() {
       if (accentSound) {
         accentSound.unloadAsync().catch(console.error);
       }
+      if (loopSound) {
+        loopSound.unloadAsync().catch(console.error);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -379,15 +444,15 @@ export default function MetroScreen() {
     <SafeAreaView className="flex-1 justify-start items-center bg-primary">
       <HeaderComponent />
       <View className="flex-1 justify-start items-center w-full">
-        <View className="flex justify-center items-center py-2 w-2/5">
-          <Text className="text-sm text-white font-rMedium">Select Loop</Text>
+        <View className="flex justify-center items-center py-2 w-3/5">
+          {/* <Text className="text-sm text-white font-rMedium">Select Loop</Text> */}
           <TouchableOpacity
             onPress={() => {
               router.push("/(loops)/sounds");
             }}
             className="px-3 py-2 mt-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center "
           >
-            <View className="flex-row mr-2">
+            <View className="flex-row mr-6">
               <Image
                 source={icons.folder}
                 className="w-8 h-8"
@@ -395,7 +460,7 @@ export default function MetroScreen() {
               />
             </View>
             <View className="w-[2px] h-8 bg-black/40 mr-6"></View>
-            <Text className="text-white font-cSemibold">BALLAD</Text>
+            <Text className="text-white font-cSemibold">{selectedTitle ? selectedTitle : "SELECT LOOP"}</Text>
           </TouchableOpacity>
         </View>
 

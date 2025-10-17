@@ -13,7 +13,7 @@ type customToastProps = {
 export default function CustomToast({ type, title, desc }: customToastProps) {
   return (
     <View
-      className={`absolute right-0 top-40 z-30 py-2 pr-2 pl-1 bg-white border-white rounded-l-[20px] border-l-[1px] border-t-[1px] border-b-[1px]`}
+      className={`absolute right-0 top-40 z-30 py-2 pr-2 pl-1 bg-white/60 border-white rounded-l-[20px] border-l-[1px] border-t-[1px] border-b-[1px]`}
     >
       <View className={`flex flex-row justify-center items-center gap-[2px]`}>
         {type === "success" && (

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "react-native";
-import { Link, router } from "expo-router";
+import { Link, router, Redirect } from "expo-router";
 
 import FormField from "../../components/formField";
 import CustomButton from "../../components/customButton";
@@ -11,42 +11,50 @@ import CustomToast from "../../components/customToast";
 import { createUser } from "../../lib/appwrite";
 
 const RegisterScreen = () => {
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
   });
-
-  // const p
+  const [error, setError] = useState("");
+  const [showToast, setShowToast] = useState(false);
 
   const passwordsMatch = () => {
     return form.password === form.confirmPassword;
   };
 
   const submit = async () => {
+    setError("");
     if (!form.email || !form.password) {
-      console.log("All fields (email, password, username) are required.");
+      setError("All fields (email and password) are required.");
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2500);
       return;
     }
     if (!passwordsMatch()) {
-      console.log("Passwords do not match");
+      setError("Passwords do not match");
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2500);
       return;
     }
     try {
       setIsSubmitting(true);
       await createUser({ email: form.email, password: form.password });
-      console.log("Submission successful");
-      router.replace("/loop");
+      router.replace("/verification-code");
     } catch (error) {
-      console.log("err message", error);
+      setError("Error message");
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2500);  
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false)
-  }
+  };
 
   return (
     <SafeAreaView className="flex-1">
-      {/* <CustomToast type="success" title="Sign successful" /> */}
+      <StatusBar barStyle="light-content" />
+      {/* {error ? <CustomToast type="error" title={error} /> : null} */}
       <View className="flex-1 px-5">
         <View className="flex flex-row justify-center items-center mt-10 mb-5">
           <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
@@ -54,7 +62,7 @@ const RegisterScreen = () => {
         </View>
         <View className="flex items-start">
           <Text className="text-3xl text-white font-rBold">Signup</Text>
-          <View className="flex flex-col gap-5 items-center w-full">
+          <View className="flex flex-col gap-6 items-center w-full">
             <FormField
               title="Email"
               value={form.email}
@@ -84,7 +92,14 @@ const RegisterScreen = () => {
               handlePress={submit}
               isLoading={isSubmitting}
             />
-            <View className="flex flex-row">
+
+            {showToast && error && (
+              <Text className="text-red-500 font-rMedium py-3 text-center w-full absolute bottom-5">
+                {error}
+              </Text>
+            )}
+
+            <View className="flex flex-row mt-2">
               <Text className="text-xl text-white font-rMedium">
                 Already have an account?
               </Text>
@@ -105,10 +120,8 @@ const RegisterScreen = () => {
           <Text className="text-accent font-rMedium"> nehtek</Text>
         </View>
       </View>
-      <StatusBar barStyle="light-content" />
     </SafeAreaView>
   );
-}
-
+};
 
 export default RegisterScreen;

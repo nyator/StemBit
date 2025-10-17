@@ -593,10 +593,13 @@ export default function MetroScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 justify-start items-center bg-primary">
+    <SafeAreaView className="items-center justify-start flex-1 bg-primary">
       <HeaderComponent />
-      <View className="flex-1 justify-center items-center w-full">
-        <View className="flex flex-col justify-center items-center mb-10">
+      <View className="items-center justify-center flex-1 w-full">
+        <View className="flex flex-col items-center justify-center mb-10">
+          {/* <Text className="text-sm text-white font-rMedium">
+            Time Signature
+          </Text> */}
           <TouchableOpacity
             onPress={() => setModalVisible(true)}
             className="px-3 py-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center "
@@ -615,7 +618,7 @@ export default function MetroScreen() {
           </TouchableOpacity>
         </View>
         <View className="flex items-center">
-          <View className="flex flex-row justify-between items-end w-3/5">
+          <View className="flex flex-row items-end justify-between w-3/5">
             <TouchableOpacity
               onPress={handleDecrease}
               onLongPress={handleHoldDecrease}
@@ -654,7 +657,7 @@ export default function MetroScreen() {
           onPress={handleTapTempo}
           activeOpacity={0.7}
         >
-          <View className="p-4 rounded-full border-2 border-dashed border-black/30 bg-black/20">
+          <View className="p-4 border-2 border-dashed rounded-full border-black/30 bg-black/20">
             <MaterialCommunityIcons
               name="gesture-double-tap"
               size={30}
@@ -663,18 +666,18 @@ export default function MetroScreen() {
           </View>
         </TouchableOpacity>
 
-        <View className="relative justify-center items-center mt-6">
+        <View className="relative items-center justify-center mt-6">
           <EclipseSvg />
           <View
-            className="absolute inset-0 justify-center items-center"
+            className="absolute inset-0 items-center justify-center"
             style={{ flex: 1 }}
           >
-            <View className="absolute right-0 left-0 top-6 items-center">
+            <View className="absolute left-0 right-0 items-center top-6">
               {/* <Text className="text-xl text-white font-cBold">{bpm}</Text>
               <Text className="text-sm text-white font-rMedium">Beats per min</Text> */}
             </View>
             <TouchableOpacity
-              className="justify-center items-center"
+              className="items-center justify-center"
               onPress={isPlaying ? stopMetronome : startMetronome}
             >
               <Text className="mt-2 text-white font-cBold">

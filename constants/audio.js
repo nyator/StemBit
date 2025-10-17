@@ -19,6 +19,9 @@ import Gs from "../assets/audio/pads/G#_MAJOR.mp3";
 import metronome_bright from "../assets/audio/clicks/metronome_bright.wav";
 import metronome_low from "../assets/audio/clicks/metronome_low.wav";
 
+//Loop
+import sampleLoop from "../assets/audio/loops/sample_bpm80.mp3";
+
 export default {
   beep,
   censor,
@@ -42,4 +45,7 @@ export default {
   // pad1,
   // pad2,
   // pad3,
+
+  //Loops
+  sampleLoop
 };

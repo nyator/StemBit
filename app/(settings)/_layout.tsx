@@ -4,7 +4,7 @@ import { Stack, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons' // or any icon library you use
 
 
-const ProfileLayout = () => {
+const SettingsLayout = () => {
   const router = useRouter();
 
   return (
@@ -46,4 +46,4 @@ const ProfileLayout = () => {
   )
 }
 
-export default ProfileLayout
+export default SettingsLayout

@@ -23,7 +23,7 @@ const CustomButton = ({
       onPress={handlePress}
       activeOpacity={0.7}
       disabled={isLoading}
-      className={`flex justify-center items-center rounded-2xl bg-accent min-h-[50px] ${containerStyles}`}
+      className={`flex justify-center items-center rounded-xl bg-accent min-h-[50px] ${containerStyles}`}
     >
       {isLoading ? (
         <ActivityIndicator color="#fff" />

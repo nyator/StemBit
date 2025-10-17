@@ -25,9 +25,9 @@ const FormField = ({
   return (
     <View className={`space-y-2 ${otherStyles}`}>
       <Text className="mb-3 text-xl text-white font-rRegular">{title}</Text>
-      <View className="border-[1.5px] border-[#454545]/40 w-full h-[50px] px-5 bg-primary rounded-2xl focus:border-accent items-center flex-row">
+      <View className="border-[1.5px] border-[#454545]/40 w-full h-[45px] px-3 bg-primary rounded-xl focus:border-accent items-center flex-row">
         <TextInput
-          className="flex-1 text-white font-rRegular text-lg"
+          className="flex-1 text-white font-rRegular text-lg text-left justify-center  "
           placeholder={placeholder}
           keyboardType={title === "Email" ? "email-address" : "default"}
           placeholderTextColor="#7d7d8d"
