@@ -1,67 +1,68 @@
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { Dialog, Portal, Button, Provider as PaperProvider } from 'react-native-paper';
+import {
+  Dialog,
+  Portal,
+  Button,
+  Provider as PaperProvider,
+} from "react-native-paper";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useState, useRef } from "react";
 
-import { Audio } from "expo-av";
+import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
-
-// const TIME_SIGNATURES = [
-//     {label: "2 / 4", beats: 2, note: 4},
-//     {label: "3 / 4", beats: 3, note: 4},
-//     {label: "4 / 4", beats: 4, note: 4},
-//     {label: "5 / 4", beats: 5, note: 4},
-//     {label: "6 / 8", beats: 6, note: 8},
-//     {label: "7 / 8", beats: 7, note: 8},
-//     {label: "9 / 8", beats: 9, note: 8},
-//     {label: "12 / 8", beats: 12, note: 8},
-// ];
-
-const LOOPS = [
-  {
-    Key: "sample_bpm80",
-    Title: "HENRY LOOP",
-    Artist: "Henry",
-    BPM: 80,
-    TimeSignature: "4 / 4",
-    Audio: require("../assets/audio/loops/sample_bpm80.mp3"),
-  },
-];
+import { LOOPS } from "../constants/loops";
 
 const SelectLoopView = () => {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
+  const playbackSubscriptionRef =
+    useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const router = useRouter();
 
+  const unloadCurrentSound = async () => {
+    if (!soundRef.current) return;
+
+    const sound = soundRef.current;
+    soundRef.current = null;
+    setPlayingIndex(null);
+    playbackSubscriptionRef.current?.remove();
+    playbackSubscriptionRef.current = null;
+    sound.remove();
+  };
+
   const handlePlayPause = async (index: number) => {
     if (playingIndex === index) {
       if (soundRef.current) {
-        await soundRef.current.pauseAsync();
+        soundRef.current.pause();
       }
       setPlayingIndex(null);
       return;
     }
-    if (soundRef.current) {
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
-    }
-    const { sound } = await Audio.Sound.createAsync(LOOPS[index].Audio);
+
+    await unloadCurrentSound();
+
+    const sound = createAudioPlayer(LOOPS[index].source);
     soundRef.current = sound;
-    await sound.playAsync();
+    sound.play();
     setPlayingIndex(index);
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
+    playbackSubscriptionRef.current = sound.addListener(
+      "playbackStatusUpdate",
+      (status) => {
+        if (!status.didJustFinish) return;
         setPlayingIndex(null);
+        playbackSubscriptionRef.current?.remove();
+        playbackSubscriptionRef.current = null;
       }
-    });
+    );
   };
 
   React.useEffect(() => {
     return () => {
       if (soundRef.current) {
-        soundRef.current.unloadAsync();
+        playbackSubscriptionRef.current?.remove();
+        soundRef.current.remove();
       }
     };
   }, []);
@@ -81,15 +82,16 @@ const SelectLoopView = () => {
     if (selectedIndex !== null) {
       const loop = LOOPS[selectedIndex];
       if (soundRef.current) {
-        soundRef.current.stopAsync().catch(() => {});
+        soundRef.current.pause();
+        soundRef.current.seekTo(0).catch(console.error);
       }
       router.replace({
         pathname: "/(tabs)/loop",
         params: {
-          bpm: String(loop.BPM),
-          title: loop.Title,
-          artist: loop.Artist,
-          loopKey: loop.Key,
+          bpm: String(loop.bpm),
+          title: loop.title,
+          artist: loop.artist,
+          loopKey: loop.key,
         },
       });
     }
@@ -102,24 +104,24 @@ const SelectLoopView = () => {
         <ScrollView className="flex-1 px-5">
           {LOOPS.map((item, i) => (
             <TouchableOpacity
-              key={item.Title + item.Artist}
-              className="flex-row justify-between items-center py-4 border-b border-white/10"
+              key={item.key}
+              className="flex-row items-center justify-between py-4 border-b border-white/10"
               onPress={() => handleRowPress(i)}
             >
               <View className="w-2/6">
                 <Text className="text-white text-md font-rBold">
-                  {item.Title}
+                  {item.title}
                 </Text>
                 <Text className="text-sm text-white font-rRegular">
-                  BPM : {item.BPM}
+                  BPM : {item.bpm}
                 </Text>
               </View>
-              <View className="flex justify-between items-center w-2/6">
+              <View className="flex items-center justify-between w-2/6">
                 <Text className="text-white text-md font-rMedium">
-                  {item.Artist}
+                  {item.artist}
                 </Text>
                 <Text className="text-white text-md font-rRegular">
-                  {item.TimeSignature}
+                  {item.timeSignature}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => handlePlayPause(i)}>
@@ -133,10 +135,16 @@ const SelectLoopView = () => {
           ))}
         </ScrollView>
         <Portal>
-          <Dialog visible={dialogVisible} onDismiss={handleDialogCancel} style={{ borderRadius: 10, }}>
+          <Dialog
+            visible={dialogVisible}
+            onDismiss={handleDialogCancel}
+            style={{ borderRadius: 10 }}
+          >
             <Dialog.Title className="font-rBold">Load File</Dialog.Title>
             <Dialog.Content>
-            <Text className="font-rRegular">Do you want to load this file?</Text>
+              <Text className="font-rRegular">
+                Do you want to load this file?
+              </Text>
             </Dialog.Content>
             <Dialog.Actions>
               <Button onPress={handleDialogCancel}>Cancel</Button>

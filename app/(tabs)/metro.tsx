@@ -12,7 +12,11 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Audio } from "expo-av";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from "expo-audio";
 import audio from "../../constants/audio";
 
 import HeaderComponent from "../../components/headerComponent";
@@ -22,6 +26,11 @@ import PlaySvg from "../../assets/icons/playSvg";
 import PauseSvg from "../../assets/icons/pauseSvg";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import AntDesign from "@expo/vector-icons/AntDesign";
+
+const MIN_BPM = 20;
+const MAX_BPM = 320;
+const METRONOME_LOOP_BPM = 160;
+const MAX_VISUAL_CATCH_UP_BEATS = 8;
 
 const TIME_SIGNATURES = [
   { label: "2 / 4", beats: 2, note: 4 },
@@ -38,43 +47,74 @@ export default function MetroScreen() {
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
+  const isPlayingRef = useRef(false);
   const currentBeatRef = useRef(0);
+  const currentTempoRef = useRef(120);
+  const lastBeatTimeRef = useRef<number | null>(null);
+  const nextBeatTimeRef = useRef<number | null>(null);
 
-  // For gradual tempo transition
-  const currentTempoRef = useRef(120); // Actual current tempo that may be transitioning
-  const targetTempoRef = useRef(120); // Target tempo to transition to
-  const tempoTransitionStartTimeRef = useRef<number | null>(null); // When the transition started
-  const tempoTransitionDurationRef = useRef(1000); // Duration of transition in ms (default 1 second)
+  // Time signature state
+  const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURES[2]); // Default 4/4
+  const previousTimeSignatureBeats = useRef(timeSignature.beats);
+  const timeSignatureBeatsRef = useRef(timeSignature.beats);
+  const [modalVisible, setModalVisible] = useState(false);
 
-  // Instead of setInterval, use a single timeout and reschedule on bpm change
-  const nextBeatTimeout = useRef<NodeJS.Timeout | null>(null);
-  const nextBeatTimeRef = useRef<number | null>(null); // for drift correction
+  const [metronomeSound, setMetronomeSound] = useState<AudioPlayer | null>(
+    null
+  );
+  const metronomeSoundRef = useRef<AudioPlayer | null>(null);
 
-  // Use expo-av's Audio API for metronome sounds
-  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
-  const [accentSound, setAccentSound] = useState<Audio.Sound | null>(null);
+  const getMetronomeLoopSource = (beats: number) => {
+    return audio.metronomeLoops[beats as keyof typeof audio.metronomeLoops];
+  };
+
+  const applyMetronomeRate = (player: AudioPlayer, nextBpm = bpm) => {
+    player.setPlaybackRate(nextBpm / METRONOME_LOOP_BPM);
+  };
+
+  const stopMetronomeSound = () => {
+    const player = metronomeSoundRef.current;
+    if (!player) return;
+    try {
+      player.pause();
+      void player.seekTo(0);
+    } catch (error) {
+      console.error("Error stopping metronome sound:", error);
+    }
+  };
 
   // Load sounds on component mount
   useEffect(() => {
+    let isMounted = true;
+
     const loadSounds = async () => {
       try {
         // Enable audio playback in silent mode (iOS)
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: true,
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          interruptionModeAndroid: "duckOthers",
         });
 
-        // Load the sounds
-        const { sound: beatSnd } = await Audio.Sound.createAsync(
-          audio.metronome_low
+        const metronomeSnd = createAudioPlayer(
+          getMetronomeLoopSource(timeSignatureBeatsRef.current),
+          {
+            downloadFirst: true,
+            keepAudioSessionActive: true,
+            updateInterval: 1000,
+          }
         );
-        const { sound: accentSnd } = await Audio.Sound.createAsync(
-          audio.metronome_bright
-        );
+        metronomeSnd.loop = true;
+        applyMetronomeRate(metronomeSnd);
+        await metronomeSnd.seekTo(0);
 
-        setBeatSound(beatSnd);
-        setAccentSound(accentSnd);
+        if (!isMounted) {
+          metronomeSnd.remove();
+          return;
+        }
+
+        metronomeSoundRef.current = metronomeSnd;
+        setMetronomeSound(metronomeSnd);
       } catch (error) {
         console.error("Failed to load sounds", error);
       }
@@ -84,12 +124,7 @@ export default function MetroScreen() {
 
     // Cleanup sounds on unmount
     return () => {
-      if (beatSound) {
-        beatSound.unloadAsync();
-      }
-      if (accentSound) {
-        accentSound.unloadAsync();
-      }
+      isMounted = false;
     };
   }, []);
 
@@ -97,15 +132,9 @@ export default function MetroScreen() {
   const tapTimesRef = useRef<number[]>([]);
   const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Time signature state
-  const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURES[2]); // Default 4/4
-  const [modalVisible, setModalVisible] = useState(false);
-
   // Helper to clamp BPM between min and max
   const clampBpm = (value: number) => {
-    const min = 20;
-    const max = 320;
-    return Math.max(min, Math.min(max, value));
+    return Math.max(MIN_BPM, Math.min(MAX_BPM, value));
   };
 
   const handleDecrease = () => {
@@ -124,7 +153,7 @@ export default function MetroScreen() {
     holdInterval.current = setInterval(() => {
       setBpm((prev) => {
         const newBpm = clampBpm(prev - 1);
-        if (newBpm === 20 && holdInterval.current) {
+        if (newBpm === MIN_BPM && holdInterval.current) {
           clearInterval(holdInterval.current);
           holdInterval.current = null;
         }
@@ -138,7 +167,7 @@ export default function MetroScreen() {
     holdInterval.current = setInterval(() => {
       setBpm((prev) => {
         const newBpm = clampBpm(prev + 1);
-        if (newBpm === 240 && holdInterval.current) {
+        if (newBpm === MAX_BPM && holdInterval.current) {
           clearInterval(holdInterval.current);
           holdInterval.current = null;
         }
@@ -209,124 +238,60 @@ export default function MetroScreen() {
     }, 2000);
   };
 
-  // Metronome logic with precise timing using expo-av
-  const playBeat = async (beat: number) => {
-    try {
-      if (beat === 0 && accentSound) {
-        // Stop and rewind the sound before playing to ensure consistent playback
-        await accentSound.stopAsync();
-        await accentSound.setPositionAsync(0);
-        await accentSound.playAsync();
-      } else if (beatSound) {
-        await beatSound.stopAsync();
-        await beatSound.setPositionAsync(0);
-        await beatSound.playAsync();
-      }
-    } catch (error) {
-      console.error("Error playing beat:", error);
+  const metronomeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getBeatInterval = () => (60 * 1000) / currentTempoRef.current;
+  const getClockTime = () => globalThis.performance?.now?.() ?? Date.now();
+
+  const clearMetronomeTimer = () => {
+    if (metronomeTimeoutRef.current) {
+      clearTimeout(metronomeTimeoutRef.current);
+      metronomeTimeoutRef.current = null;
     }
   };
 
-  // Create a buffer of scheduled sounds for more precise timing
-  const scheduledBeats = useRef<{ time: number; beat: number }[]>([]);
-  const audioProcessingInterval = useRef<NodeJS.Timeout | null>(null);
+  const scheduleNextTimer = () => {
+    if (!isPlayingRef.current || nextBeatTimeRef.current === null) return;
 
-  // Calculate the current tempo based on transition state
-  const getCurrentTempo = () => {
-    // If no transition is in progress, return the target tempo
-    if (tempoTransitionStartTimeRef.current === null) {
-      return targetTempoRef.current;
-    }
-
-    const now = Date.now();
-    const elapsedTime = now - tempoTransitionStartTimeRef.current;
-    const duration = tempoTransitionDurationRef.current;
-
-    // If transition is complete, return target tempo
-    if (elapsedTime >= duration) {
-      tempoTransitionStartTimeRef.current = null;
-      currentTempoRef.current = targetTempoRef.current;
-      return targetTempoRef.current;
-    }
-
-    // Calculate the current tempo using linear interpolation
-    const startTempo = currentTempoRef.current;
-    const endTempo = targetTempoRef.current;
-    const progress = elapsedTime / duration;
-
-    // Linear interpolation: start + progress * (end - start)
-    const currentTempo = startTempo + progress * (endTempo - startTempo);
-    return currentTempo;
+    clearMetronomeTimer();
+    const delay = Math.max(0, nextBeatTimeRef.current - getClockTime());
+    metronomeTimeoutRef.current = setTimeout(processNextBeat, delay);
   };
 
-  // Advanced scheduling system for precise metronome timing
-  const scheduleBeats = () => {
-    // Get current time
-    const now = Date.now();
+  const processNextBeat = () => {
+    if (!isPlayingRef.current) return;
 
-    // Schedule beats ahead of time (buffer of 4 beats)
-    // This ensures we always have beats ready to play
-    while (scheduledBeats.current.length < 4) {
-      const lastScheduledBeat =
-        scheduledBeats.current[scheduledBeats.current.length - 1];
+    const now = getClockTime();
+    const interval = getBeatInterval();
+    const scheduledTime = nextBeatTimeRef.current ?? now;
+    const catchUpBeats = Math.min(
+      MAX_VISUAL_CATCH_UP_BEATS,
+      Math.max(1, Math.floor((now - scheduledTime) / interval) + 1)
+    );
+    const beat =
+      (currentBeatRef.current + catchUpBeats) % timeSignatureBeatsRef.current;
+    const targetBeatTime = scheduledTime + (catchUpBeats - 1) * interval;
 
-      // If this is the first beat or we're not transitioning, use simple scheduling
-      if (!lastScheduledBeat || tempoTransitionStartTimeRef.current === null) {
-        // Calculate interval for current tempo
-        const currentTempo = getCurrentTempo();
-        const interval = (60 * 1000) / currentTempo;
-
-        const nextBeatTime = lastScheduledBeat
-          ? lastScheduledBeat.time + interval
-          : now + interval;
-
-        const nextBeatNumber = lastScheduledBeat
-          ? (lastScheduledBeat.beat + 1) % timeSignature.beats
-          : (currentBeatRef.current + 1) % timeSignature.beats;
-
-        scheduledBeats.current.push({
-          time: nextBeatTime,
-          beat: nextBeatNumber,
-        });
-      } else {
-        // For transitioning tempo, we need to calculate the exact time for the next beat
-        // based on the tempo at that moment
-        const nextBeatNumber =
-          (lastScheduledBeat.beat + 1) % timeSignature.beats;
-
-        // Estimate when the next beat should occur based on current tempo
-        const currentTempo = getCurrentTempo();
-        const interval = (60 * 1000) / currentTempo;
-        const nextBeatTime = lastScheduledBeat.time + interval;
-
-        scheduledBeats.current.push({
-          time: nextBeatTime,
-          beat: nextBeatNumber,
-        });
-      }
-    }
+    lastBeatTimeRef.current = targetBeatTime;
+    nextBeatTimeRef.current = targetBeatTime + interval;
+    currentBeatRef.current = beat;
+    setCurrentBeat(beat);
+    scheduleNextTimer();
   };
 
-  // Process scheduled beats
-  const processScheduledBeats = () => {
-    const now = Date.now();
+  const rescheduleFromCurrentTempo = () => {
+    if (!isPlayingRef.current) return;
 
-    // Play any beats that are due
-    while (
-      scheduledBeats.current.length > 0 &&
-      scheduledBeats.current[0].time <= now
-    ) {
-      const { beat } = scheduledBeats.current.shift()!;
+    const now = getClockTime();
+    const interval = getBeatInterval();
+    const lastBeatTime = lastBeatTimeRef.current ?? now;
+    nextBeatTimeRef.current =
+      now >= lastBeatTime + interval ? now : lastBeatTime + interval;
 
-      // Update current beat
-      currentBeatRef.current = beat;
-      setCurrentBeat(beat);
+    scheduleNextTimer();
 
-      // Play the beat
-      playBeat(beat);
-
-      // Schedule more beats to maintain the buffer
-      scheduleBeats();
+    if (nextBeatTimeRef.current <= now) {
+      processNextBeat();
     }
   };
 
@@ -334,110 +299,78 @@ export default function MetroScreen() {
     if (isPlaying) return;
 
     // Make sure sounds are loaded
-    if (!beatSound || !accentSound) {
+    if (!metronomeSound) {
       console.warn("Metronome sounds not loaded yet");
       return;
     }
 
+    isPlayingRef.current = true;
     setIsPlaying(true);
     currentBeatRef.current = 0;
     setCurrentBeat(0);
 
     // Initialize tempo references
     currentTempoRef.current = bpm;
-    targetTempoRef.current = bpm;
-    tempoTransitionStartTimeRef.current = null; // No transition in progress
+    lastBeatTimeRef.current = getClockTime();
+    nextBeatTimeRef.current = lastBeatTimeRef.current + getBeatInterval();
 
-    // Clear any existing scheduled beats
-    scheduledBeats.current = [];
-
-    // Play the first beat immediately
-    playBeat(0);
-
-    // Schedule the next beats
-    scheduleBeats();
-
-    // Start the processing interval (check for due beats every 10ms)
-    // This provides much more precise timing than setTimeout
-    if (audioProcessingInterval.current) {
-      clearInterval(audioProcessingInterval.current);
+    try {
+      applyMetronomeRate(metronomeSound, bpm);
+      void metronomeSound.seekTo(0).then(() => {
+        metronomeSound.play();
+      });
+    } catch (error) {
+      console.error("Error starting metronome sound:", error);
     }
 
-    audioProcessingInterval.current = setInterval(() => {
-      processScheduledBeats();
-    }, 10); // Check every 10ms for precise timing
+    scheduleNextTimer();
   };
 
   const stopMetronome = () => {
+    isPlayingRef.current = false;
     setIsPlaying(false);
     currentBeatRef.current = 0;
     setCurrentBeat(0);
 
-    // Reset tempo transition state
+    // Reset timing state
     currentTempoRef.current = bpm;
-    targetTempoRef.current = bpm;
-    tempoTransitionStartTimeRef.current = null;
+    lastBeatTimeRef.current = null;
+    nextBeatTimeRef.current = null;
 
-    // Clear the processing interval
-    if (audioProcessingInterval.current) {
-      clearInterval(audioProcessingInterval.current);
-      audioProcessingInterval.current = null;
-    }
-
-    // Clear scheduled beats
-    scheduledBeats.current = [];
-
-    // Stop any playing sounds
-    if (beatSound) {
-      beatSound.stopAsync().catch(console.error);
-    }
-    if (accentSound) {
-      accentSound.stopAsync().catch(console.error);
-    }
+    clearMetronomeTimer();
+    stopMetronomeSound();
   };
 
   // Handle BPM or time signature changes
   useEffect(() => {
-    // Update target tempo when BPM changes
-    targetTempoRef.current = bpm;
+    const timeSignatureChanged =
+      previousTimeSignatureBeats.current !== timeSignature.beats;
+    previousTimeSignatureBeats.current = timeSignature.beats;
+    timeSignatureBeatsRef.current = timeSignature.beats;
+    currentTempoRef.current = bpm;
 
     if (isPlaying) {
-      // For time signature changes, we need to reset completely
-      if (timeSignature.beats !== scheduledBeats.current[0]?.beat) {
-        // Stop the processing interval
-        if (audioProcessingInterval.current) {
-          clearInterval(audioProcessingInterval.current);
-          audioProcessingInterval.current = null;
+      const player = metronomeSoundRef.current;
+      if (timeSignatureChanged) {
+        currentBeatRef.current %= timeSignature.beats;
+        setCurrentBeat(currentBeatRef.current);
+        if (player) {
+          player.replace(getMetronomeLoopSource(timeSignature.beats));
+          player.loop = true;
+          applyMetronomeRate(player, bpm);
+          void player.seekTo(0).then(() => {
+            player.play();
+          });
         }
-
-        // Clear scheduled beats
-        scheduledBeats.current = [];
-
-        // Reset transition
-        tempoTransitionStartTimeRef.current = null;
-        currentTempoRef.current = bpm;
-
-        // Schedule new beats with the updated time signature
-        scheduleBeats();
-
-        // Restart the processing interval
-        audioProcessingInterval.current = setInterval(() => {
-          processScheduledBeats();
-        }, 10);
+        currentBeatRef.current = 0;
+        setCurrentBeat(0);
+        lastBeatTimeRef.current = getClockTime();
+        nextBeatTimeRef.current = lastBeatTimeRef.current + getBeatInterval();
+      } else if (player) {
+        applyMetronomeRate(player, bpm);
       }
-      // For BPM changes, start a gradual transition
-      else if (Math.abs(currentTempoRef.current - bpm) > 1) {
-        // Start a new tempo transition
-        tempoTransitionStartTimeRef.current = Date.now();
 
-        // Don't clear scheduled beats - they'll be played with gradually changing tempo
-        // Don't restart the processing interval - it's already running
-
-        // The transition will happen in getCurrentTempo() which is called by scheduleBeats()
-      }
-    } else {
-      // If not playing, just update the current tempo immediately
-      currentTempoRef.current = bpm;
+      rescheduleFromCurrentTempo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm, timeSignature]);
@@ -456,21 +389,10 @@ export default function MetroScreen() {
         clearTimeout(tapTimeoutRef.current);
         tapTimeoutRef.current = null;
       }
-      if (audioProcessingInterval.current) {
-        clearInterval(audioProcessingInterval.current);
-        audioProcessingInterval.current = null;
-      }
+      clearMetronomeTimer();
 
-      // Clear scheduled beats
-      scheduledBeats.current = [];
-
-      // Unload audio resources
-      if (beatSound) {
-        beatSound.unloadAsync().catch(console.error);
-      }
-      if (accentSound) {
-        accentSound.unloadAsync().catch(console.error);
-      }
+      metronomeSoundRef.current?.remove();
+      metronomeSoundRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -620,6 +542,7 @@ export default function MetroScreen() {
         <View className="flex items-center">
           <View className="flex flex-row items-end justify-between w-3/5">
             <TouchableOpacity
+              accessibilityLabel="Decrease BPM"
               onPress={handleDecrease}
               onLongPress={handleHoldDecrease}
               onPressOut={handleRelease}
@@ -639,6 +562,7 @@ export default function MetroScreen() {
             />
 
             <TouchableOpacity
+              accessibilityLabel="Increase BPM"
               onPress={handleIncrease}
               onLongPress={handleHoldIncrease}
               onPressOut={handleRelease}

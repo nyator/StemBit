@@ -1,4 +1,5 @@
-import { SafeAreaView, View, Text, StatusBar, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, StatusBar, TouchableOpacity, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import HeaderComponent from "../../components/headerComponent";
 
 import AntDesign from '@expo/vector-icons/AntDesign';

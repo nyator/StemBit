@@ -15,8 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "stembit",
-      "package": "com.nehtek.stembit"
+      "bundleIdentifier": "stembit"
     },
     "android": {
       "adaptiveIcon": {
@@ -31,7 +30,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-audio"
+      "expo-audio",
+      "expo-font"
     ]
   }
 }

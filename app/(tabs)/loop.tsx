@@ -12,8 +12,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
-import { Audio } from "expo-av";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from "expo-audio";
 import audio from "../../constants/audio";
+import { findLoopByKey } from "../../constants/loops";
 
 import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
@@ -22,42 +27,55 @@ import PauseSvg from "../../assets/icons/pauseSvg";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import AntDesign from "@expo/vector-icons/AntDesign";
 
+const MIN_BPM = 20;
+const MAX_BPM = 240;
+const BEATS_PER_BAR = 4;
+
 export default function MetroScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const initialBpm = typeof params.bpm === "string" ? parseInt(params.bpm, 10) : 120;
+  const initialBpm =
+    typeof params.bpm === "string" ? parseInt(params.bpm, 10) : 120;
   const [bpm, setBpm] = useState(isNaN(initialBpm) ? 120 : initialBpm);
-  const selectedTitle = typeof params.title === "string" ? params.title : undefined;
-  const selectedLoopKey = typeof params.loopKey === "string" ? params.loopKey : undefined;
+  const selectedTitle =
+    typeof params.title === "string" ? params.title : undefined;
+  const selectedLoopKey =
+    typeof params.loopKey === "string" ? params.loopKey : undefined;
   const [isPlaying, setIsPlaying] = useState(false);
   // Remove currentBeat from state to avoid unnecessary re-renders
   const currentBeatRef = useRef(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Use expo-av's Audio API for metronome sounds
-  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
-  const [accentSound, setAccentSound] = useState<Audio.Sound | null>(null);
-  const [loopSound, setLoopSound] = useState<Audio.Sound | null>(null);
+  const [beatSound, setBeatSound] = useState<AudioPlayer | null>(null);
+  const [accentSound, setAccentSound] = useState<AudioPlayer | null>(null);
+  const [loopSound, setLoopSound] = useState<AudioPlayer | null>(null);
+  const beatSoundRef = useRef<AudioPlayer | null>(null);
+  const accentSoundRef = useRef<AudioPlayer | null>(null);
+  const loopSoundRef = useRef<AudioPlayer | null>(null);
 
   // Load sounds on component mount
   useEffect(() => {
+    let isMounted = true;
+
     const loadSounds = async () => {
       try {
         // Enable audio playback in silent mode (iOS)
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: true,
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          interruptionModeAndroid: "duckOthers",
         });
 
-        // Load the sounds
-        const { sound: beatSnd } = await Audio.Sound.createAsync(
-          audio.metronome_low
-        );
-        const { sound: accentSnd } = await Audio.Sound.createAsync(
-          audio.metronome_bright
-        );
+        const beatSnd = createAudioPlayer(audio.metronome_low);
+        const accentSnd = createAudioPlayer(audio.metronome_bright);
 
+        if (!isMounted) {
+          beatSnd.remove();
+          accentSnd.remove();
+          return;
+        }
+
+        beatSoundRef.current = beatSnd;
+        accentSoundRef.current = accentSnd;
         setBeatSound(beatSnd);
         setAccentSound(accentSnd);
       } catch (error) {
@@ -69,12 +87,11 @@ export default function MetroScreen() {
 
     // Cleanup sounds on unmount
     return () => {
-      if (beatSound) {
-        beatSound.unloadAsync();
-      }
-      if (accentSound) {
-        accentSound.unloadAsync();
-      }
+      isMounted = false;
+      beatSoundRef.current?.remove();
+      accentSoundRef.current?.remove();
+      beatSoundRef.current = null;
+      accentSoundRef.current = null;
     };
   }, []);
 
@@ -84,29 +101,26 @@ export default function MetroScreen() {
     const loadSelectedLoop = async () => {
       try {
         // Unload any previous loop sound
-        if (loopSound) {
-          await loopSound.unloadAsync();
+        if (loopSoundRef.current) {
+          loopSoundRef.current.remove();
+          loopSoundRef.current = null;
           setLoopSound(null);
         }
 
         if (!selectedLoopKey) return;
 
-        // Map loop keys to assets
-        let source: number | undefined;
-        if (selectedLoopKey === "sample_bpm80") {
-          source = require("../../assets/audio/loops/sample_bpm80.mp3");
-        }
+        const selectedLoop = findLoopByKey(selectedLoopKey);
 
-        if (!source) return;
+        if (!selectedLoop) return;
 
-        const { sound } = await Audio.Sound.createAsync(source, {
-          shouldPlay: false,
-          isLooping: true,
-        });
+        const sound = createAudioPlayer(selectedLoop.source);
+        sound.loop = true;
+
         if (!isCancelled) {
+          loopSoundRef.current = sound;
           setLoopSound(sound);
         } else {
-          await sound.unloadAsync();
+          sound.remove();
         }
       } catch (e) {
         console.error("Failed to load loop sound", e);
@@ -129,9 +143,7 @@ export default function MetroScreen() {
 
   // Helper to clamp BPM between min and max
   const clampBpm = (value: number) => {
-    const min = 20;
-    const max = 240;
-    return Math.max(min, Math.min(max, value));
+    return Math.max(MIN_BPM, Math.min(MAX_BPM, value));
   };
 
   const handleDecrease = () => {
@@ -150,7 +162,7 @@ export default function MetroScreen() {
     holdInterval.current = setInterval(() => {
       setBpm((prev) => {
         const newBpm = clampBpm(prev - 1);
-        if (newBpm === 20 && holdInterval.current) {
+        if (newBpm === MIN_BPM && holdInterval.current) {
           clearInterval(holdInterval.current);
           holdInterval.current = null;
         }
@@ -164,7 +176,7 @@ export default function MetroScreen() {
     holdInterval.current = setInterval(() => {
       setBpm((prev) => {
         const newBpm = clampBpm(prev + 1);
-        if (newBpm === 240 && holdInterval.current) {
+        if (newBpm === MAX_BPM && holdInterval.current) {
           clearInterval(holdInterval.current);
           holdInterval.current = null;
         }
@@ -235,18 +247,17 @@ export default function MetroScreen() {
     }, 2000);
   };
 
-  // Metronome logic with precise timing using expo-av
+  // Metronome logic with precise timing using expo-audio
   const playBeat = async (beat: number) => {
     try {
       if (beat === 0 && accentSound) {
-        // Stop and rewind the sound before playing to ensure consistent playback
-        await accentSound.stopAsync();
-        await accentSound.setPositionAsync(0);
-        await accentSound.playAsync();
+        accentSound.pause();
+        await accentSound.seekTo(0);
+        accentSound.play();
       } else if (beatSound) {
-        await beatSound.stopAsync();
-        await beatSound.setPositionAsync(0);
-        await beatSound.playAsync();
+        beatSound.pause();
+        await beatSound.seekTo(0);
+        beatSound.play();
       }
     } catch (error) {
       console.error("Error playing beat:", error);
@@ -275,8 +286,8 @@ export default function MetroScreen() {
         : now + interval;
 
       const nextBeatNumber = lastScheduledBeat
-        ? (lastScheduledBeat.beat + 1) % 4 // Fixed at 4 beats for loop.tsx
-        : (currentBeatRef.current + 1) % 4;
+        ? (lastScheduledBeat.beat + 1) % BEATS_PER_BAR
+        : (currentBeatRef.current + 1) % BEATS_PER_BAR;
 
       scheduledBeats.current.push({
         time: nextBeatTime,
@@ -307,7 +318,7 @@ export default function MetroScreen() {
     }
   };
 
-  const startLoop = () => {
+  const startLoop = async () => {
     if (isPlaying) return;
 
     // Make sure sounds are loaded
@@ -331,9 +342,12 @@ export default function MetroScreen() {
 
     // Start loop audio if available
     if (loopSound) {
-      loopSound.setPositionAsync(0).then(() => {
-        loopSound.playAsync().catch(() => {});
-      });
+      try {
+        await loopSound.seekTo(0);
+        loopSound.play();
+      } catch (error) {
+        console.error("Error starting loop audio:", error);
+      }
     }
 
     // Schedule the next beats
@@ -365,13 +379,13 @@ export default function MetroScreen() {
 
     // Stop any playing sounds
     if (beatSound) {
-      beatSound.stopAsync().catch(console.error);
+      beatSound.pause();
     }
     if (accentSound) {
-      accentSound.stopAsync().catch(console.error);
+      accentSound.pause();
     }
     if (loopSound) {
-      loopSound.stopAsync().catch(console.error);
+      loopSound.pause();
     }
   };
 
@@ -387,8 +401,6 @@ export default function MetroScreen() {
         audioProcessingInterval.current = null;
       }
 
-      // Clear scheduled beats but remember the current beat
-      const currentBeat = currentBeatRef.current;
       scheduledBeats.current = [];
 
       // Schedule new beats with the updated BPM
@@ -424,16 +436,8 @@ export default function MetroScreen() {
       // Clear scheduled beats
       scheduledBeats.current = [];
 
-      // Unload audio resources
-      if (beatSound) {
-        beatSound.unloadAsync().catch(console.error);
-      }
-      if (accentSound) {
-        accentSound.unloadAsync().catch(console.error);
-      }
-      if (loopSound) {
-        loopSound.unloadAsync().catch(console.error);
-      }
+      loopSoundRef.current?.remove();
+      loopSoundRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -441,10 +445,10 @@ export default function MetroScreen() {
 
 
   return (
-    <SafeAreaView className="flex-1 justify-start items-center bg-primary">
+    <SafeAreaView className="items-center justify-start flex-1 bg-primary">
       <HeaderComponent />
-      <View className="flex-1 justify-start items-center w-full">
-        <View className="flex justify-center items-center py-2 w-3/5">
+      <View className="items-center justify-start flex-1 w-full">
+        <View className="flex items-center justify-center w-3/5 py-2">
           {/* <Text className="text-sm text-white font-rMedium">Select Loop</Text> */}
           <TouchableOpacity
             onPress={() => {
@@ -465,7 +469,7 @@ export default function MetroScreen() {
         </View>
 
         <View className="flex items-center mt-20">
-          <View className="flex flex-row justify-between items-end w-3/5">
+          <View className="flex flex-row items-end justify-between w-3/5">
             <TouchableOpacity
               onPress={handleDecrease}
               onLongPress={handleHoldDecrease}
@@ -495,7 +499,7 @@ export default function MetroScreen() {
             </TouchableOpacity>
           </View>
           <Text className="text-sm text-white font-rMedium">Beats per min</Text>
-          {/* <View className="flex-row justify-between items-center mt-6 w-56">
+          {/* <View className="flex-row items-center justify-between w-56 mt-6">
             <Text className="p-2 text-xl text-white rounded-full bg-accent font-rMedium">/2</Text>
             <Text className="p-2 text-xl text-white rounded-full bg-accent font-rMedium">x2</Text>
           </View> */}
@@ -506,7 +510,7 @@ export default function MetroScreen() {
           onPress={handleTapTempo}
           activeOpacity={0.7}
         >
-          <View className="p-4 rounded-full border-2 border-dashed border-black/30 bg-black/20">
+          <View className="p-4 border-2 border-dashed rounded-full border-black/30 bg-black/20">
             <MaterialCommunityIcons
               name="gesture-double-tap"
               size={60}
@@ -516,7 +520,7 @@ export default function MetroScreen() {
         </TouchableOpacity>
 
         <View
-          className="absolute bottom-20 justify-center items-center w-2/6"
+          className="absolute items-center justify-center w-2/6 bottom-20"
           style={{ flex: 1 }}
         >
           <TouchableOpacity
