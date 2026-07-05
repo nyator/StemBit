@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -13,11 +13,12 @@ import {
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  createAudioPlayer,
-  setAudioModeAsync,
-  type AudioPlayer,
-} from "expo-audio";
-import audio from "../../constants/audio";
+  useMetronome,
+  TIME_SIGNATURES,
+  PLAYBACK_FEELS,
+  MIN_BPM,
+  MAX_BPM,
+} from "../../context/MetronomeContext";
 
 import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
@@ -27,106 +28,21 @@ import PauseSvg from "../../assets/icons/pauseSvg";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import AntDesign from "@expo/vector-icons/AntDesign";
 
-const MIN_BPM = 20;
-const MAX_BPM = 320;
-const METRONOME_LOOP_BPM = 160;
-const MAX_VISUAL_CATCH_UP_BEATS = 8;
-
-const TIME_SIGNATURES = [
-  { label: "2 / 4", beats: 2, note: 4 },
-  { label: "3 / 4", beats: 3, note: 4 },
-  { label: "4 / 4", beats: 4, note: 4 },
-  { label: "5 / 4", beats: 5, note: 4 },
-  { label: "6 / 8", beats: 6, note: 8 },
-  { label: "7 / 8", beats: 7, note: 8 },
-  { label: "9 / 8", beats: 9, note: 8 },
-  { label: "12 / 8", beats: 12, note: 8 },
-];
-
 export default function MetroScreen() {
-  const [bpm, setBpm] = useState(120);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentBeat, setCurrentBeat] = useState(0);
-  const isPlayingRef = useRef(false);
-  const currentBeatRef = useRef(0);
-  const currentTempoRef = useRef(120);
-  const lastBeatTimeRef = useRef<number | null>(null);
-  const nextBeatTimeRef = useRef<number | null>(null);
+  const {
+    bpm,
+    setBpm,
+    isPlaying,
+    currentBeat,
+    timeSignature,
+    setTimeSignature,
+    feelIndex,
+    setFeelIndex,
+    startMetronome,
+    stopMetronome,
+  } = useMetronome();
 
-  // Time signature state
-  const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURES[2]); // Default 4/4
-  const previousTimeSignatureBeats = useRef(timeSignature.beats);
-  const timeSignatureBeatsRef = useRef(timeSignature.beats);
   const [modalVisible, setModalVisible] = useState(false);
-
-  const [metronomeSound, setMetronomeSound] = useState<AudioPlayer | null>(
-    null
-  );
-  const metronomeSoundRef = useRef<AudioPlayer | null>(null);
-
-  const getMetronomeLoopSource = (beats: number) => {
-    return audio.metronomeLoops[beats as keyof typeof audio.metronomeLoops];
-  };
-
-  const applyMetronomeRate = (player: AudioPlayer, nextBpm = bpm) => {
-    player.setPlaybackRate(nextBpm / METRONOME_LOOP_BPM);
-  };
-
-  const stopMetronomeSound = () => {
-    const player = metronomeSoundRef.current;
-    if (!player) return;
-    try {
-      player.pause();
-      void player.seekTo(0);
-    } catch (error) {
-      console.error("Error stopping metronome sound:", error);
-    }
-  };
-
-  // Load sounds on component mount
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadSounds = async () => {
-      try {
-        // Enable audio playback in silent mode (iOS)
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          shouldPlayInBackground: true,
-          interruptionModeAndroid: "duckOthers",
-        });
-
-        const metronomeSnd = createAudioPlayer(
-          getMetronomeLoopSource(timeSignatureBeatsRef.current),
-          {
-            downloadFirst: true,
-            keepAudioSessionActive: true,
-            updateInterval: 1000,
-          }
-        );
-        metronomeSnd.loop = true;
-        applyMetronomeRate(metronomeSnd);
-        await metronomeSnd.seekTo(0);
-
-        if (!isMounted) {
-          metronomeSnd.remove();
-          return;
-        }
-
-        metronomeSoundRef.current = metronomeSnd;
-        setMetronomeSound(metronomeSnd);
-      } catch (error) {
-        console.error("Failed to load sounds", error);
-      }
-    };
-
-    loadSounds();
-
-    // Cleanup sounds on unmount
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // For tap tempo
   const tapTimesRef = useRef<number[]>([]);
@@ -237,165 +153,6 @@ export default function MetroScreen() {
       tapTimesRef.current = [];
     }, 2000);
   };
-
-  const metronomeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const getBeatInterval = () => (60 * 1000) / currentTempoRef.current;
-  const getClockTime = () => globalThis.performance?.now?.() ?? Date.now();
-
-  const clearMetronomeTimer = () => {
-    if (metronomeTimeoutRef.current) {
-      clearTimeout(metronomeTimeoutRef.current);
-      metronomeTimeoutRef.current = null;
-    }
-  };
-
-  const scheduleNextTimer = () => {
-    if (!isPlayingRef.current || nextBeatTimeRef.current === null) return;
-
-    clearMetronomeTimer();
-    const delay = Math.max(0, nextBeatTimeRef.current - getClockTime());
-    metronomeTimeoutRef.current = setTimeout(processNextBeat, delay);
-  };
-
-  const processNextBeat = () => {
-    if (!isPlayingRef.current) return;
-
-    const now = getClockTime();
-    const interval = getBeatInterval();
-    const scheduledTime = nextBeatTimeRef.current ?? now;
-    const catchUpBeats = Math.min(
-      MAX_VISUAL_CATCH_UP_BEATS,
-      Math.max(1, Math.floor((now - scheduledTime) / interval) + 1)
-    );
-    const beat =
-      (currentBeatRef.current + catchUpBeats) % timeSignatureBeatsRef.current;
-    const targetBeatTime = scheduledTime + (catchUpBeats - 1) * interval;
-
-    lastBeatTimeRef.current = targetBeatTime;
-    nextBeatTimeRef.current = targetBeatTime + interval;
-    currentBeatRef.current = beat;
-    setCurrentBeat(beat);
-    scheduleNextTimer();
-  };
-
-  const rescheduleFromCurrentTempo = () => {
-    if (!isPlayingRef.current) return;
-
-    const now = getClockTime();
-    const interval = getBeatInterval();
-    const lastBeatTime = lastBeatTimeRef.current ?? now;
-    nextBeatTimeRef.current =
-      now >= lastBeatTime + interval ? now : lastBeatTime + interval;
-
-    scheduleNextTimer();
-
-    if (nextBeatTimeRef.current <= now) {
-      processNextBeat();
-    }
-  };
-
-  const startMetronome = () => {
-    if (isPlaying) return;
-
-    // Make sure sounds are loaded
-    if (!metronomeSound) {
-      console.warn("Metronome sounds not loaded yet");
-      return;
-    }
-
-    isPlayingRef.current = true;
-    setIsPlaying(true);
-    currentBeatRef.current = 0;
-    setCurrentBeat(0);
-
-    // Initialize tempo references
-    currentTempoRef.current = bpm;
-    lastBeatTimeRef.current = getClockTime();
-    nextBeatTimeRef.current = lastBeatTimeRef.current + getBeatInterval();
-
-    try {
-      applyMetronomeRate(metronomeSound, bpm);
-      void metronomeSound.seekTo(0).then(() => {
-        metronomeSound.play();
-      });
-    } catch (error) {
-      console.error("Error starting metronome sound:", error);
-    }
-
-    scheduleNextTimer();
-  };
-
-  const stopMetronome = () => {
-    isPlayingRef.current = false;
-    setIsPlaying(false);
-    currentBeatRef.current = 0;
-    setCurrentBeat(0);
-
-    // Reset timing state
-    currentTempoRef.current = bpm;
-    lastBeatTimeRef.current = null;
-    nextBeatTimeRef.current = null;
-
-    clearMetronomeTimer();
-    stopMetronomeSound();
-  };
-
-  // Handle BPM or time signature changes
-  useEffect(() => {
-    const timeSignatureChanged =
-      previousTimeSignatureBeats.current !== timeSignature.beats;
-    previousTimeSignatureBeats.current = timeSignature.beats;
-    timeSignatureBeatsRef.current = timeSignature.beats;
-    currentTempoRef.current = bpm;
-
-    if (isPlaying) {
-      const player = metronomeSoundRef.current;
-      if (timeSignatureChanged) {
-        currentBeatRef.current %= timeSignature.beats;
-        setCurrentBeat(currentBeatRef.current);
-        if (player) {
-          player.replace(getMetronomeLoopSource(timeSignature.beats));
-          player.loop = true;
-          applyMetronomeRate(player, bpm);
-          void player.seekTo(0).then(() => {
-            player.play();
-          });
-        }
-        currentBeatRef.current = 0;
-        setCurrentBeat(0);
-        lastBeatTimeRef.current = getClockTime();
-        nextBeatTimeRef.current = lastBeatTimeRef.current + getBeatInterval();
-      } else if (player) {
-        applyMetronomeRate(player, bpm);
-      }
-
-      rescheduleFromCurrentTempo();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm, timeSignature]);
-
-  useEffect(() => {
-    return () => {
-      // Stop the metronome
-      stopMetronome();
-
-      // Clean up all intervals and timeouts
-      if (holdInterval.current) {
-        clearInterval(holdInterval.current);
-        holdInterval.current = null;
-      }
-      if (tapTimeoutRef.current) {
-        clearTimeout(tapTimeoutRef.current);
-        tapTimeoutRef.current = null;
-      }
-      clearMetronomeTimer();
-
-      metronomeSoundRef.current?.remove();
-      metronomeSoundRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Modal for time signature selection
   const renderTimeSignatureModal = () => (
@@ -573,6 +330,23 @@ export default function MetroScreen() {
           </View>
           <Text className="text-sm text-white font-rMedium">Beats per min</Text>
         </View>
+        {/* Playback feel: normal / double time */}
+        <View className="flex-row mt-4 bg-white/10 rounded-xl p-1">
+          {PLAYBACK_FEELS.map((feel, index) => (
+            <TouchableOpacity
+              key={feel.label}
+              accessibilityLabel={feel.label}
+              onPress={() => setFeelIndex(index)}
+              className={`px-4 py-2 rounded-lg ${index === feelIndex ? "bg-accent" : ""}`}
+            >
+              <Text
+                className={`text-sm font-rMedium ${index === feelIndex ? "text-black" : "text-white"}`}
+              >
+                {feel.short}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         {/* Tap to set BPM button */}
         {/* Beat Visuals */}
         {renderBeatVisuals()}
@@ -616,5 +390,3 @@ export default function MetroScreen() {
     </SafeAreaView>
   );
 }
-// ---
-// Summary: The app is slow and the metronome is inconsistent because JS timers and audio are not real-time. For a truly accurate metronome, use a native audio engine or a library with sample-accurate scheduling.

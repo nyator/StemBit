@@ -20,14 +20,6 @@ import PAD_B from "../assets/audio/pads/generated/pad_B.m4a";
 //Metronome
 import metronome_bright from "../assets/audio/clicks/metronome_bright.wav";
 import metronome_low from "../assets/audio/clicks/metronome_low.wav";
-import metronome_loop_2 from "../assets/audio/clicks/generated/metronome_2_base160.wav";
-import metronome_loop_3 from "../assets/audio/clicks/generated/metronome_3_base160.wav";
-import metronome_loop_4 from "../assets/audio/clicks/generated/metronome_4_base160.wav";
-import metronome_loop_5 from "../assets/audio/clicks/generated/metronome_5_base160.wav";
-import metronome_loop_6 from "../assets/audio/clicks/generated/metronome_6_base160.wav";
-import metronome_loop_7 from "../assets/audio/clicks/generated/metronome_7_base160.wav";
-import metronome_loop_9 from "../assets/audio/clicks/generated/metronome_9_base160.wav";
-import metronome_loop_12 from "../assets/audio/clicks/generated/metronome_12_base160.wav";
 
 //Loop
 import sampleLoop from "../assets/audio/loops/sample_bpm80.mp3";
@@ -48,16 +40,6 @@ export default {
   //metronome
   metronome_bright,
   metronome_low,
-  metronomeLoops: {
-    2: metronome_loop_2,
-    3: metronome_loop_3,
-    4: metronome_loop_4,
-    5: metronome_loop_5,
-    6: metronome_loop_6,
-    7: metronome_loop_7,
-    9: metronome_loop_9,
-    12: metronome_loop_12,
-  },
 
   //Loops
   sampleLoop

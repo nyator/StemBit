@@ -40,6 +40,14 @@ const MINOR_NOTE_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
 const MINOR_KEYS = MINOR_NOTE_LETTERS.map((n) => `${n} minor`);
 
 const CROSSFADE_MS = 1200;
+// Loop crossfade: the next copy of the pad starts and fades in over this long
+// while the current copy fades out, so the two overlap by ~3s and the pad never
+// audibly ends and restarts. Longer than the key-switch fade for seamlessness.
+const LOOP_CROSSFADE_MS = 5000;
+// Loop copies start this far into the clip instead of at 0, skipping the pad's
+// intro swell so its recognizable beginning isn't heard on every loop. The
+// first press still starts at 0 for a natural attack.
+const LOOP_START_OFFSET_MS = 5000;
 // Extra headroom so the async prepareLayer/seek finishes before the sample
 // actually runs out (also covers the LOOP_POLL_MS polling granularity).
 const CROSSFADE_MARGIN_MS = 400;
@@ -89,13 +97,14 @@ const createPadPlayer = (source: number): PadPlayer => ({
 const prepareLayer = async (
   player: AudioPlayer,
   source: number,
-  volume: number
+  volume: number,
+  startAtSeconds = 0
 ) => {
   player.pause();
   player.loop = false;
   player.volume = volume;
   player.replace(source);
-  await player.seekTo(0);
+  await player.seekTo(startAtSeconds);
 };
 
 export default function PadScreen() {
@@ -205,7 +214,9 @@ export default function PadScreen() {
         const duration = activePlayer.duration;
         const timeRemaining = duration - activePlayer.currentTime;
 
-        const triggerThreshold = (CROSSFADE_MS + CROSSFADE_MARGIN_MS) / 1000;
+        // Start the crossfade ~3s before the end so the next copy is already
+        // fading in as this one fades out — no gap, no restart.
+        const triggerThreshold = (LOOP_CROSSFADE_MS + CROSSFADE_MARGIN_MS) / 1000;
 
         if (
           player.isLoopCrossfading ||
@@ -221,14 +232,19 @@ export default function PadScreen() {
         const nextPlayer = player.layers[nextLayer];
         const loopToken = player.playToken;
 
-        prepareLayer(nextPlayer, player.currentSource, 0)
+        prepareLayer(
+          nextPlayer,
+          player.currentSource,
+          0,
+          LOOP_START_OFFSET_MS / 1000
+        )
           .then(() => {
             if (loopToken !== player.playToken) return;
 
             nextPlayer.play();
 
-            fadeVolume(nextPlayer, TARGET_VOLUME);
-            fadeVolume(activePlayer, 0, CROSSFADE_MS, () => {
+            fadeVolume(nextPlayer, TARGET_VOLUME, LOOP_CROSSFADE_MS);
+            fadeVolume(activePlayer, 0, LOOP_CROSSFADE_MS, () => {
               if (loopToken !== player.playToken) return;
 
               resetPlayer(activePlayer, 0);
@@ -354,7 +370,7 @@ export default function PadScreen() {
             activeOpacity={0.7}
           >
             <Text className={`font-rBold text-base ${!isMinor ? "text-green-400 font-cBold" : "text-gray-500"}`}>
-              Major Scale
+              Major
             </Text>
           </TouchableOpacity>
 
@@ -368,7 +384,7 @@ export default function PadScreen() {
             activeOpacity={0.7}
           >
             <Text className={`font-rBold text-base ${isMinor ? "text-green-400 font-cBold" : "text-gray-500"}`}>
-              Minor Scale
+              Minor
             </Text>
           </TouchableOpacity>
         </View>
