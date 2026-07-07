@@ -92,6 +92,9 @@ const SelectLoopView = () => {
           title: loop.title,
           artist: loop.artist,
           loopKey: loop.key,
+          // Forces the loop screen to (re)load even when picking the same
+          // loop it already has selected.
+          loadedAt: String(Date.now()),
         },
       });
     }

@@ -13,17 +13,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
 import {
-  createAudioPlayer,
-  setAudioModeAsync,
-  type AudioPlayer,
-} from "expo-audio";
-import audio from "../../constants/audio";
-import { findLoopByKey } from "../../constants/loops";
-import {
-  useLoopMetronome,
+  useLoopPlayback,
   LOOP_MIN_BPM,
   LOOP_MAX_BPM,
-} from "../../context/LoopMetronomeContext";
+} from "../../context/LoopPlaybackContext";
 
 import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
@@ -38,82 +31,34 @@ const MAX_BPM = LOOP_MAX_BPM;
 export default function MetroScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const initialBpm =
-    typeof params.bpm === "string" ? parseInt(params.bpm, 10) : 120;
   const selectedTitle =
     typeof params.title === "string" ? params.title : undefined;
   const selectedLoopKey =
     typeof params.loopKey === "string" ? params.loopKey : undefined;
+  // Changes on every explicit "Load" in the picker, even for the same loop,
+  // so re-selecting the currently loaded loop still reloads it.
+  const loadedAt =
+    typeof params.loadedAt === "string" ? params.loadedAt : undefined;
 
-  // Metronome click track: hidden WebView Web Audio "lookahead scheduler",
-  // shared/mounted above the tab navigator (see
-  // context/LoopMetronomeContext.tsx) so it keeps ticking steadily across
-  // tab switches instead of being throttled while this tab is hidden.
-  const { bpm, setBpm, isPlaying, engineReady, startClick, stopClick } =
-    useLoopMetronome();
+  // Plays the selected backing loop track, warped to the current BPM. No
+  // click here — just the loop audio. Shared/mounted above the tab
+  // navigator (see context/LoopPlaybackContext.tsx) so it's visible/
+  // stoppable from the floating control and stays mutually exclusive with
+  // the Metronome tab.
+  const {
+    bpm,
+    setBpm,
+    isPlaying,
+    isBlockedByOtherEngine,
+    setSelectedLoopKey,
+    startLoop,
+    stopLoop,
+  } = useLoopPlayback();
 
-  const [loopSound, setLoopSound] = useState<AudioPlayer | null>(null);
-  const loopSoundRef = useRef<AudioPlayer | null>(null);
-
-  // Apply the tempo passed in via route params (e.g. from the loop picker)
-  // once on mount.
   useEffect(() => {
-    if (typeof params.bpm === "string" && !isNaN(initialBpm)) {
-      setBpm(clampBpm(initialBpm));
-    }
+    setSelectedLoopKey(selectedLoopKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Enable audio playback in silent mode (iOS) for the backing loop track
-  useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionModeAndroid: "duckOthers",
-    }).catch((error) => {
-      console.error("Failed to set audio mode", error);
-    });
-  }, []);
-
-  // Load selected loop audio when loopKey changes
-  useEffect(() => {
-    let isCancelled = false;
-    const loadSelectedLoop = async () => {
-      try {
-        // Unload any previous loop sound
-        if (loopSoundRef.current) {
-          loopSoundRef.current.remove();
-          loopSoundRef.current = null;
-          setLoopSound(null);
-        }
-
-        if (!selectedLoopKey) return;
-
-        const selectedLoop = findLoopByKey(selectedLoopKey);
-
-        if (!selectedLoop) return;
-
-        const sound = createAudioPlayer(selectedLoop.source);
-        sound.loop = true;
-
-        if (!isCancelled) {
-          loopSoundRef.current = sound;
-          setLoopSound(sound);
-        } else {
-          sound.remove();
-        }
-      } catch (e) {
-        console.error("Failed to load loop sound", e);
-      }
-    };
-
-    loadSelectedLoop();
-
-    return () => {
-      isCancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLoopKey]);
+  }, [selectedLoopKey, loadedAt]);
 
   // For tap tempo
   const tapTimesRef = useRef<number[]>([]);
@@ -227,39 +172,6 @@ export default function MetroScreen() {
     }, 2000);
   };
 
-  const startLoop = async () => {
-    if (isPlaying) return;
-
-    if (!engineReady) {
-      console.warn("Loop sounds not loaded yet");
-      return;
-    }
-    // Ensure loop sound is ready if a loop is selected
-    if (selectedLoopKey && !loopSound) {
-      console.warn("Selected loop audio not loaded yet");
-    }
-
-    startClick();
-
-    // Start loop audio if available
-    if (loopSound) {
-      try {
-        await loopSound.seekTo(0);
-        loopSound.play();
-      } catch (error) {
-        console.error("Error starting loop audio:", error);
-      }
-    }
-  };
-
-  const stopLoop = () => {
-    stopClick();
-
-    if (loopSound) {
-      loopSound.pause();
-    }
-  };
-
   useEffect(() => {
     return () => {
       // Clean up all intervals and timeouts
@@ -271,11 +183,7 @@ export default function MetroScreen() {
         clearTimeout(tapTimeoutRef.current);
         tapTimeoutRef.current = null;
       }
-
-      loopSoundRef.current?.remove();
-      loopSoundRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -357,9 +265,18 @@ export default function MetroScreen() {
           className="absolute items-center justify-center w-2/6 bottom-20"
           style={{ flex: 1 }}
         >
+          {isBlockedByOtherEngine && (
+            <Text className="mb-2 text-xs text-center text-white/60 font-rMedium">
+              Stop the Metronome first
+            </Text>
+          )}
           <TouchableOpacity
             className="justify-center items-center py-3 w-full rounded-[40rem] bg-black border-2 border-accent/50"
             onPress={isPlaying ? stopLoop : startLoop}
+            disabled={!isPlaying && isBlockedByOtherEngine}
+            style={
+              !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
+            }
           >
             <Text className="text-white font-cBold">
               {isPlaying ? <PauseSvg /> : <PlaySvg />}

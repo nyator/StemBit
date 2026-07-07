@@ -3,7 +3,7 @@ import { useRouter, usePathname } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 import { useMetronome } from "../context/MetronomeContext";
-import { useLoopMetronome } from "../context/LoopMetronomeContext";
+import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import icons from "../constants/icons";
 
 type PillProps = {
@@ -56,7 +56,7 @@ export default function FloatingEngineControls() {
   const router = useRouter();
   const pathname = usePathname();
   const metronome = useMetronome();
-  const loop = useLoopMetronome();
+  const loop = useLoopPlayback();
 
   const showMetronome = metronome.isPlaying && pathname !== "/metro";
   const showLoop = loop.isPlaying && pathname !== "/loop";
@@ -80,7 +80,7 @@ export default function FloatingEngineControls() {
       {showLoop && (
         <EnginePill
           onPress={() => router.push("/(tabs)/loop")}
-          onStop={loop.stopClick}
+          onStop={loop.stopLoop}
           accentColor="#08C192"
           label={`${loop.bpm} BPM`}
         />

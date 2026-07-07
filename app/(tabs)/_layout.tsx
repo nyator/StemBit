@@ -1,8 +1,9 @@
 import { Tabs } from "expo-router";
 import { View, Image, Text } from "react-native";
 import icons from "../../constants/icons";
+import { PlaybackLockProvider } from "../../context/PlaybackLockContext";
 import { MetronomeProvider } from "../../context/MetronomeContext";
-import { LoopMetronomeProvider } from "../../context/LoopMetronomeContext";
+import { LoopPlaybackProvider } from "../../context/LoopPlaybackContext";
 import FloatingEngineControls from "../../components/floatingEngineControls";
 
 type TabIconProps = {
@@ -31,11 +32,13 @@ const TabIcon = ({ icon, name, color, focused }: TabIconProps) => (
 
 export default function TabLayout() {
   return (
-    <MetronomeProvider>
-      <LoopMetronomeProvider>
-        <TabsWithFloatingControl />
-      </LoopMetronomeProvider>
-    </MetronomeProvider>
+    <PlaybackLockProvider>
+      <MetronomeProvider>
+        <LoopPlaybackProvider>
+          <TabsWithFloatingControl />
+        </LoopPlaybackProvider>
+      </MetronomeProvider>
+    </PlaybackLockProvider>
   );
 }
 

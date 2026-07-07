@@ -2,6 +2,7 @@ import React from 'react';
 import { render, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import Metro from '../../app/(tabs)/metro';
 import { MetronomeProvider } from '../../context/MetronomeContext';
+import { PlaybackLockProvider } from '../../context/PlaybackLockContext';
 
 jest.mock('@expo/vector-icons/AntDesign', () => 'AntDesign');
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons');
@@ -35,9 +36,11 @@ jest.mock('expo-file-system', () => ({
 describe('<Metro />', () => {
   it('should start at 120 BPM and allow increasing the tempo', async () => {
     render(
-      <MetronomeProvider>
-        <Metro />
-      </MetronomeProvider>
+      <PlaybackLockProvider>
+        <MetronomeProvider>
+          <Metro />
+        </MetronomeProvider>
+      </PlaybackLockProvider>
     );
     await waitFor(() => {
       expect(require('expo-asset').Asset.fromModule).toHaveBeenCalledTimes(2);

@@ -9,7 +9,6 @@ const LoopSoundsLayout = () => {
 
     return (
         <Stack>
-            <Stack.Screen name="index" options={{headerShown: false}}/>
             <Stack.Screen name="sounds" options={{headerShown: false}}/>
         </Stack>
     )

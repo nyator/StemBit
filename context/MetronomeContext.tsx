@@ -12,6 +12,7 @@ import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import audio from "../constants/audio";
 import { buildMetronomeHtml } from "../constants/metronomeEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
+import { usePlaybackLock } from "./PlaybackLockContext";
 
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
@@ -47,6 +48,7 @@ type MetronomeContextValue = {
   feelIndex: number;
   setFeelIndex: (index: number) => void;
   engineReady: boolean;
+  isBlockedByOtherEngine: boolean;
   startMetronome: () => void;
   stopMetronome: () => void;
 };
@@ -64,6 +66,9 @@ const MetronomeContext = createContext<MetronomeContextValue | null>(null);
 // clock exactly like backgrounding does. Mounting it here means it keeps
 // ticking steadily no matter which tab is active.
 export function MetronomeProvider({ children }: { children: ReactNode }) {
+  const { activeEngine, requestStart, release } = usePlaybackLock();
+  const isBlockedByOtherEngine = activeEngine !== null && activeEngine !== "metro";
+
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
@@ -113,6 +118,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     setIsPlaying(false);
     setCurrentBeat(0);
     postToEngine({ type: "stop" });
+    release("metro");
   };
 
   // The metronome only makes sense in the foreground: pause it if the app
@@ -148,6 +154,11 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
 
     if (!engineReady) {
       console.warn("Metronome engine not loaded yet");
+      return;
+    }
+
+    if (!requestStart("metro")) {
+      console.warn("Stop the Loop click track before starting the Metronome");
       return;
     }
 
@@ -196,6 +207,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
         feelIndex,
         setFeelIndex,
         engineReady,
+        isBlockedByOtherEngine,
         startMetronome,
         stopMetronome,
       }}

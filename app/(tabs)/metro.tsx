@@ -38,6 +38,7 @@ export default function MetroScreen() {
     setTimeSignature,
     feelIndex,
     setFeelIndex,
+    isBlockedByOtherEngine,
     startMetronome,
     stopMetronome,
   } = useMetronome();
@@ -371,12 +372,19 @@ export default function MetroScreen() {
             style={{ flex: 1 }}
           >
             <View className="absolute left-0 right-0 items-center top-6">
-              {/* <Text className="text-xl text-white font-cBold">{bpm}</Text>
-              <Text className="text-sm text-white font-rMedium">Beats per min</Text> */}
+              {isBlockedByOtherEngine && (
+                <Text className="text-xs text-center text-white/60 font-rMedium">
+                  Stop the Loop click track first
+                </Text>
+              )}
             </View>
             <TouchableOpacity
               className="items-center justify-center"
               onPress={isPlaying ? stopMetronome : startMetronome}
+              disabled={!isPlaying && isBlockedByOtherEngine}
+              style={
+                !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
+              }
             >
               <Text className="mt-2 text-white font-cBold">
                 {isPlaying ? <PauseSvg /> : <PlaySvg />}
