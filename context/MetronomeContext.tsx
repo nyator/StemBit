@@ -17,26 +17,33 @@ import { usePlaybackLock } from "./PlaybackLockContext";
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
 
+// `accents` are the 0-based beats that start a rhythmic group. Beat 0 gets
+// the full bright click; the other listed beats get a softer bright click so
+// compound and odd meters are felt in their natural groupings instead of as
+// a flat pulse (e.g. 6/8 = 3+3, 7/8 = 2+2+3, 12/8 = 3+3+3+3).
 export const TIME_SIGNATURES = [
-  { label: "2 / 4", beats: 2, note: 4 },
-  { label: "3 / 4", beats: 3, note: 4 },
-  { label: "4 / 4", beats: 4, note: 4 },
-  { label: "5 / 4", beats: 5, note: 4 },
-  { label: "6 / 8", beats: 6, note: 8 },
-  { label: "7 / 8", beats: 7, note: 8 },
-  { label: "9 / 8", beats: 9, note: 8 },
-  { label: "12 / 8", beats: 12, note: 8 },
+  { label: "2 / 4", beats: 2, note: 4, accents: [0] },
+  { label: "3 / 4", beats: 3, note: 4, accents: [0] },
+  { label: "4 / 4", beats: 4, note: 4, accents: [0] },
+  { label: "5 / 4", beats: 5, note: 4, accents: [0, 3] }, // 3+2
+  { label: "6 / 8", beats: 6, note: 8, accents: [0, 3] }, // 3+3
+  { label: "7 / 8", beats: 7, note: 8, accents: [0, 2, 4] }, // 2+2+3
+  { label: "9 / 8", beats: 9, note: 8, accents: [0, 3, 6] }, // 3+3+3
+  { label: "12 / 8", beats: 12, note: 8, accents: [0, 3, 6, 9] }, // 3+3+3+3
 ];
 
 export type TimeSignature = (typeof TIME_SIGNATURES)[number];
 
 // Playback feel: changes how fast the clicks actually fall relative to the
-// set BPM, without changing the BPM number itself. Double time halves the
-// gap between clicks (1 2 3 4 1 2 3 4).
+// set BPM, without changing the BPM number itself. Half time doubles the gap
+// between clicks; double time halves it (1 2 3 4 1 2 3 4).
 export const PLAYBACK_FEELS = [
+  { label: "Half Time", short: "½×", multiplier: 0.5 },
   { label: "Normal", short: "1×", multiplier: 1 },
   { label: "Double Time", short: "2×", multiplier: 2 },
 ];
+
+export const DEFAULT_FEEL_INDEX = 1; // Normal
 
 type MetronomeContextValue = {
   bpm: number;
@@ -75,7 +82,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   const isPlayingRef = useRef(false);
 
   const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURES[2]); // Default 4/4
-  const [feelIndex, setFeelIndex] = useState(0); // Default Normal
+  const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX); // Default Normal
   const speedMultiplier = PLAYBACK_FEELS[feelIndex].multiplier;
   const getEffectiveBpm = (nextBpm = bpm, nextMultiplier = speedMultiplier) =>
     nextBpm * nextMultiplier;
@@ -169,6 +176,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       type: "start",
       bpm: getEffectiveBpm(),
       beats: timeSignature.beats,
+      accents: timeSignature.accents,
     });
   };
 
@@ -183,7 +191,11 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isPlaying) {
       setCurrentBeat(0);
-      postToEngine({ type: "setBeats", beats: timeSignature.beats });
+      postToEngine({
+        type: "setBeats",
+        beats: timeSignature.beats,
+        accents: timeSignature.accents,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeSignature]);

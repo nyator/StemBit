@@ -31,6 +31,11 @@ export const buildMetronomeHtml = ({
         var isPlaying = false;
         var tempo = 120;
         var beatsPerMeasure = 4;
+        // Beat indices (0-based) that mark the start of a rhythmic group.
+        // Beat 0 is always the primary accent (bright click); any other
+        // listed beat gets a softer bright click so compound/odd meters
+        // (6/8, 7/8, ...) are felt in their groupings, not as a flat pulse.
+        var accents = [0];
         var currentBeatNumber = 0;
         var nextNoteTime = 0.0;
         var lookaheadMs = 25.0;
@@ -101,11 +106,22 @@ export const buildMetronomeHtml = ({
 
         function scheduleNote(beatNumber, time) {
           var ctx = audioContext;
-          var buffer = beatNumber === 0 ? brightBuffer : lowBuffer;
+          var isPrimaryAccent = beatNumber === 0;
+          var isSecondaryAccent =
+            !isPrimaryAccent && accents.indexOf(beatNumber) !== -1;
+          // Primary accent: full bright click. Secondary (group) accents:
+          // the same bright click at reduced gain — audibly "lifted" above
+          // the regular low clicks without competing with the downbeat.
+          var buffer =
+            isPrimaryAccent || isSecondaryAccent ? brightBuffer : lowBuffer;
+          var gain = isSecondaryAccent ? 0.6 : 1.0;
           if (buffer) {
             var source = ctx.createBufferSource();
             source.buffer = buffer;
-            source.connect(ctx.destination);
+            var gainNode = ctx.createGain();
+            gainNode.gain.value = gain;
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
             source.start(time);
             scheduledSources.push(source);
             source.onended = function () {
@@ -137,10 +153,19 @@ export const buildMetronomeHtml = ({
           timerId = setTimeout(scheduler, lookaheadMs);
         }
 
-        function start(nextTempo, nextBeats) {
+        function setAccents(nextAccents) {
+          if (Object.prototype.toString.call(nextAccents) === "[object Array]" && nextAccents.length > 0) {
+            accents = nextAccents;
+          } else {
+            accents = [0];
+          }
+        }
+
+        function start(nextTempo, nextBeats, nextAccents) {
           if (isPlaying) return;
           if (nextTempo) tempo = nextTempo;
           if (nextBeats) beatsPerMeasure = nextBeats;
+          if (nextAccents) setAccents(nextAccents);
           var ctx = ensureContext();
           currentBeatNumber = 0;
           nextNoteTime = ctx.currentTime + 0.05;
@@ -172,8 +197,9 @@ export const buildMetronomeHtml = ({
           tempo = nextTempo;
         }
 
-        function setBeats(nextBeats) {
+        function setBeats(nextBeats, nextAccents) {
           beatsPerMeasure = nextBeats;
+          setAccents(nextAccents);
           currentBeatNumber = 0;
         }
 
@@ -186,7 +212,7 @@ export const buildMetronomeHtml = ({
           }
           switch (data.type) {
             case "start":
-              start(data.bpm, data.beats);
+              start(data.bpm, data.beats, data.accents);
               break;
             case "stop":
               stop();
@@ -195,7 +221,7 @@ export const buildMetronomeHtml = ({
               setTempo(data.bpm);
               break;
             case "setBeats":
-              setBeats(data.beats);
+              setBeats(data.beats, data.accents);
               break;
             default:
               break;

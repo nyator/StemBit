@@ -6,7 +6,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import LaunchPadComponent from "../../components/launchPad";
 import HeaderComponent from "../../components/headerComponent";
-// import OptionField from "../../components/optionField";
 
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
@@ -354,14 +353,6 @@ export default function PadScreen() {
     <SafeAreaView className="items-center justify-start flex-1 bg-primary">
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full px-5">
-        {/* <View className="flex flex-row gap-2 w-full">
-          <OptionField
-            label="Key Type"
-            options={['Major', 'Minor']}
-            selected={majorMinor}
-            onSelect={setMajorMinor}
-          />
-        </View> */}
         <View className="flex flex-row items-center justify-center w-full mt-9 border-b border-white/10">
           <TouchableOpacity
             className={`px-10 py-4 items-center justify-center border-b-2 -mb-[1px] ${!isMinor ? "border-green-400" : "border-transparent"

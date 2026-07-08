@@ -18,59 +18,57 @@ const LoginScreen = () => {
   const [error, setError] = useState("");
   const [showToast, setShowToast] = useState(false);
 
-  // const submit = async () => {
-  //   setError("");
-  //   if (!form.email || !form.password) {
-  //     setError("Both email and password are required.");
-  //     setShowToast(true);
-  //     setTimeout(() => setShowToast(false), 3000);
-  //     return;
-  //   }
+  const isValidEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  //   const isValidEmail = (email: string) => {
-  //   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  //   return emailRegex.test(email);
-  // };
+  const showError = (message: string) => {
+    setError(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
 
-  //   if (!isValidEmail(form.email)) {
-  //     setError("Please enter a valid email address.");
-  //     setShowToast(true);
-  //     setTimeout(() => setShowToast(false), 3000);
-  //     return;
-  //   }
-
-  //   setIsSubmitting(true);
-
-  //   try {
-  //     await loginUser({ email: form.email, password: form.password });
-  //     router.replace("/(tabs)/loop");
-  //   } catch (error: any) {
-  //     let message = "Login failed. Please try again.";
-  //     const errMsg = error?.message || error?.toString?.() || "";
-
-  //     if (errMsg) {
-  //       if (
-  //         errMsg.toLowerCase().includes("invalid credentials") ||
-  //         errMsg.toLowerCase().includes("incorrect")
-  //       ) {
-  //         message = "Invalid email or password.";
-  //       } else if (errMsg.toLowerCase().includes("email")) {
-  //         message = "Invalid email address.";
-  //       } else if (errMsg.toLowerCase().includes("password")) {
-  //         message = "Invalid password.";
-  //       }
-  //     }
-
-  //     setError(message);
-  //     setShowToast(true);
-  //     setTimeout(() => setShowToast(false), 3000);
-  //   } finally {
-  //     setIsSubmitting(false);
-  //   }
-  // };
+  // DEV BYPASS: skips authentication and jumps straight into the app.
+  // Set to false to use the real Appwrite login below (lib/appwrite.ts now
+  // uses the correct createEmailPasswordSession API).
+  const DEV_SKIP_AUTH = true;
 
   const submit = async () => {
-    router.replace("/(tabs)/loop");
+    if (DEV_SKIP_AUTH) {
+      router.replace("/(tabs)/loop");
+      return;
+    }
+
+    setError("");
+    if (!form.email || !form.password) {
+      showError("Both email and password are required.");
+      return;
+    }
+    if (!isValidEmail(form.email)) {
+      showError("Please enter a valid email address.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await loginUser({ email: form.email, password: form.password });
+      router.replace("/(tabs)/loop");
+    } catch (error: any) {
+      const errMsg = (error?.message || "").toLowerCase();
+      let message = "Login failed. Please try again.";
+      if (
+        errMsg.includes("invalid credentials") ||
+        errMsg.includes("incorrect")
+      ) {
+        message = "Invalid email or password.";
+      } else if (errMsg.includes("email")) {
+        message = "Invalid email address.";
+      } else if (errMsg.includes("password")) {
+        message = "Invalid password.";
+      }
+      showError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect } from "react";
 import {
   View,
   Text,
@@ -6,8 +6,6 @@ import {
   Image,
   TouchableOpacity,
   TextInput,
-  Modal,
-  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -17,6 +15,7 @@ import {
   LOOP_MIN_BPM,
   LOOP_MAX_BPM,
 } from "../../context/LoopPlaybackContext";
+import { useBpmControl } from "../../hooks/useBpmControl";
 
 import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
@@ -25,10 +24,7 @@ import PauseSvg from "../../assets/icons/pauseSvg";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import AntDesign from "@expo/vector-icons/AntDesign";
 
-const MIN_BPM = LOOP_MIN_BPM;
-const MAX_BPM = LOOP_MAX_BPM;
-
-export default function MetroScreen() {
+export default function LoopScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const selectedTitle =
@@ -60,138 +56,28 @@ export default function MetroScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLoopKey, loadedAt]);
 
-  // For tap tempo
-  const tapTimesRef = useRef<number[]>([]);
-  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [modalVisible, setModalVisible] = useState(false);
-
-  // Helper to clamp BPM between min and max
-  const clampBpm = (value: number) => {
-    return Math.max(MIN_BPM, Math.min(MAX_BPM, value));
-  };
-
-  const handleDecrease = () => {
-    setBpm((prev) => clampBpm(prev - 1));
-  };
-
-  const handleIncrease = () => {
-    setBpm((prev) => clampBpm(prev + 1));
-  };
-
-  // Use a ref to store the interval id for holding decrease/increase
-  const holdInterval = useRef<NodeJS.Timeout | null>(null);
-
-  const handleHoldDecrease = () => {
-    if (holdInterval.current) return; // Prevent multiple intervals
-    holdInterval.current = setInterval(() => {
-      setBpm((prev) => {
-        const newBpm = clampBpm(prev - 1);
-        if (newBpm === MIN_BPM && holdInterval.current) {
-          clearInterval(holdInterval.current);
-          holdInterval.current = null;
-        }
-        return newBpm;
-      });
-    }, 70);
-  };
-
-  const handleHoldIncrease = () => {
-    if (holdInterval.current) return; // Prevent multiple intervals
-    holdInterval.current = setInterval(() => {
-      setBpm((prev) => {
-        const newBpm = clampBpm(prev + 1);
-        if (newBpm === MAX_BPM && holdInterval.current) {
-          clearInterval(holdInterval.current);
-          holdInterval.current = null;
-        }
-        return newBpm;
-      });
-    }, 70);
-  };
-
-  const handleRelease = () => {
-    if (holdInterval.current) {
-      clearInterval(holdInterval.current);
-      holdInterval.current = null;
-    }
-  };
-
-  // Handle direct BPM input
-  const handleBpmInput = (text: string) => {
-    // Only allow numbers
-    const numeric = text.replace(/[^0-9]/g, "");
-    if (numeric.length === 0) {
-      setBpm(20); // fallback to min if cleared
-      return;
-    }
-    let value = parseInt(numeric, 10);
-    if (isNaN(value)) value = 20;
-    setBpm(clampBpm(value));
-  };
-
-  // Tap to set BPM
-  const handleTapTempo = () => {
-    const now = Date.now();
-
-    // If last tap was more than 2 seconds ago, reset
-    if (
-      tapTimesRef.current.length > 0 &&
-      now - tapTimesRef.current[tapTimesRef.current.length - 1] > 2000
-    ) {
-      tapTimesRef.current = [];
-    }
-
-    tapTimesRef.current.push(now);
-
-    // Only keep the last 6 taps for smoothing
-    if (tapTimesRef.current.length > 6) {
-      tapTimesRef.current.shift();
-    }
-
-    if (tapTimesRef.current.length >= 2) {
-      // Calculate intervals between taps
-      const intervals = [];
-      for (let i = 1; i < tapTimesRef.current.length; i++) {
-        intervals.push(tapTimesRef.current[i] - tapTimesRef.current[i - 1]);
-      }
-      // Average interval
-      const avgInterval =
-        intervals.reduce((a, b) => a + b, 0) / intervals.length;
-      // BPM = 60000 / avgInterval
-      const newBpm = clampBpm(Math.round(60000 / avgInterval));
-      setBpm(newBpm);
-    }
-
-    // Clear tap times if no tap for 2 seconds
-    if (tapTimeoutRef.current) {
-      clearTimeout(tapTimeoutRef.current);
-    }
-    tapTimeoutRef.current = setTimeout(() => {
-      tapTimesRef.current = [];
-    }, 2000);
-  };
-
-  useEffect(() => {
-    return () => {
-      // Clean up all intervals and timeouts
-      if (holdInterval.current) {
-        clearInterval(holdInterval.current);
-        holdInterval.current = null;
-      }
-      if (tapTimeoutRef.current) {
-        clearTimeout(tapTimeoutRef.current);
-        tapTimeoutRef.current = null;
-      }
-    };
-  }, []);
+  const {
+    bpmText,
+    handleBpmTextChange,
+    commitBpmText,
+    increase,
+    decrease,
+    startHoldIncrease,
+    startHoldDecrease,
+    endHold,
+    handleTapTempo,
+  } = useBpmControl({
+    bpm,
+    setBpm,
+    minBpm: LOOP_MIN_BPM,
+    maxBpm: LOOP_MAX_BPM,
+  });
 
   return (
     <SafeAreaView className="items-center justify-start flex-1 bg-primary">
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full">
         <View className="flex items-center justify-center w-3/5 py-2">
-          {/* <Text className="text-sm text-white font-rMedium">Select Loop</Text> */}
           <TouchableOpacity
             onPress={() => {
               router.push("/(loops)/sounds");
@@ -213,9 +99,10 @@ export default function MetroScreen() {
         <View className="flex items-center mt-20">
           <View className="flex flex-row items-end justify-between w-3/5">
             <TouchableOpacity
-              onPress={handleDecrease}
-              onLongPress={handleHoldDecrease}
-              onPressOut={handleRelease}
+              accessibilityLabel="Decrease BPM"
+              onPress={decrease}
+              onLongPress={startHoldDecrease}
+              onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
               <AntDesign name="minus" size={30} color="white" />
@@ -223,8 +110,9 @@ export default function MetroScreen() {
 
             <TextInput
               className="w-20 text-4xl text-center text-white font-cBold"
-              value={bpm.toString()}
-              onChangeText={handleBpmInput}
+              value={bpmText}
+              onChangeText={handleBpmTextChange}
+              onEndEditing={commitBpmText}
               keyboardType="numeric"
               maxLength={3}
               selectTextOnFocus
@@ -232,19 +120,16 @@ export default function MetroScreen() {
             />
 
             <TouchableOpacity
-              onPress={handleIncrease}
-              onLongPress={handleHoldIncrease}
-              onPressOut={handleRelease}
+              accessibilityLabel="Increase BPM"
+              onPress={increase}
+              onLongPress={startHoldIncrease}
+              onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
               <AntDesign name="plus" size={30} color="white" />
             </TouchableOpacity>
           </View>
           <Text className="text-sm text-white font-rMedium">Beats per min</Text>
-          {/* <View className="flex-row items-center justify-between w-56 mt-6">
-            <Text className="p-2 text-xl text-white rounded-full bg-accent font-rMedium">/2</Text>
-            <Text className="p-2 text-xl text-white rounded-full bg-accent font-rMedium">x2</Text>
-          </View> */}
         </View>
         {/* Tap to set BPM button */}
         <TouchableOpacity

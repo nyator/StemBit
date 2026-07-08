@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   MIN_BPM,
   MAX_BPM,
 } from "../../context/MetronomeContext";
+import { useBpmControl } from "../../hooks/useBpmControl";
 
 import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
@@ -45,115 +46,17 @@ export default function MetroScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
 
-  // For tap tempo
-  const tapTimesRef = useRef<number[]>([]);
-  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Helper to clamp BPM between min and max
-  const clampBpm = (value: number) => {
-    return Math.max(MIN_BPM, Math.min(MAX_BPM, value));
-  };
-
-  const handleDecrease = () => {
-    setBpm((prev) => clampBpm(prev - 1));
-  };
-
-  const handleIncrease = () => {
-    setBpm((prev) => clampBpm(prev + 1));
-  };
-
-  // Use a ref to store the interval id for holding decrease/increase
-  const holdInterval = useRef<NodeJS.Timeout | null>(null);
-
-  const handleHoldDecrease = () => {
-    if (holdInterval.current) return; // Prevent multiple intervals
-    holdInterval.current = setInterval(() => {
-      setBpm((prev) => {
-        const newBpm = clampBpm(prev - 1);
-        if (newBpm === MIN_BPM && holdInterval.current) {
-          clearInterval(holdInterval.current);
-          holdInterval.current = null;
-        }
-        return newBpm;
-      });
-    }, 70);
-  };
-
-  const handleHoldIncrease = () => {
-    if (holdInterval.current) return; // Prevent multiple intervals
-    holdInterval.current = setInterval(() => {
-      setBpm((prev) => {
-        const newBpm = clampBpm(prev + 1);
-        if (newBpm === MAX_BPM && holdInterval.current) {
-          clearInterval(holdInterval.current);
-          holdInterval.current = null;
-        }
-        return newBpm;
-      });
-    }, 70);
-  };
-
-  const handleRelease = () => {
-    if (holdInterval.current) {
-      clearInterval(holdInterval.current);
-      holdInterval.current = null;
-    }
-  };
-
-  // Handle direct BPM input
-  const handleBpmInput = (text: string) => {
-    // Only allow numbers
-    const numeric = text.replace(/[^0-9]/g, "");
-    if (numeric.length === 0) {
-      setBpm(20); // fallback to min if cleared
-      return;
-    }
-    let value = parseInt(numeric, 10);
-    if (isNaN(value)) value = 20;
-    setBpm(clampBpm(value));
-  };
-
-  // Tap to set BPM
-  const handleTapTempo = () => {
-    const now = Date.now();
-
-    // If last tap was more than 2 seconds ago, reset
-    if (
-      tapTimesRef.current.length > 0 &&
-      now - tapTimesRef.current[tapTimesRef.current.length - 1] > 2000
-    ) {
-      tapTimesRef.current = [];
-    }
-
-    tapTimesRef.current.push(now);
-
-    // Only keep the last 6 taps for smoothing
-    if (tapTimesRef.current.length > 6) {
-      tapTimesRef.current.shift();
-    }
-
-    if (tapTimesRef.current.length >= 2) {
-      // Calculate intervals between taps
-      const intervals = [];
-      for (let i = 1; i < tapTimesRef.current.length; i++) {
-        intervals.push(tapTimesRef.current[i] - tapTimesRef.current[i - 1]);
-      }
-      // Average interval
-      const avgInterval =
-        intervals.reduce((a, b) => a + b, 0) / intervals.length;
-      // BPM = 60000 / avgInterval
-      const newBpm = clampBpm(Math.round(60000 / avgInterval));
-      setBpm(newBpm);
-    }
-
-    // Clear tap times if no tap for 2 seconds
-    if (tapTimeoutRef.current) {
-      clearTimeout(tapTimeoutRef.current);
-    }
-    tapTimeoutRef.current = setTimeout(() => {
-      tapTimesRef.current = [];
-    }, 2000);
-  };
+  const {
+    bpmText,
+    handleBpmTextChange,
+    commitBpmText,
+    increase,
+    decrease,
+    startHoldIncrease,
+    startHoldDecrease,
+    endHold,
+    handleTapTempo,
+  } = useBpmControl({ bpm, setBpm, minBpm: MIN_BPM, maxBpm: MAX_BPM });
 
   // Modal for time signature selection
   const renderTimeSignatureModal = () => (
@@ -219,11 +122,20 @@ export default function MetroScreen() {
   );
 
   // --- Beat Visuals ---
-  // We'll show a row of circles, one for each beat, highlight the current one.
+  // A row of circles, one per beat. The downbeat lights up green, secondary
+  // group accents (e.g. beat 4 of 6/8) light a dimmer green, other beats
+  // white. Idle group-accent dots are slightly brighter so the meter's
+  // grouping is visible even before pressing play.
   const renderBeatVisuals = () => {
     const beats = [];
     for (let i = 0; i < timeSignature.beats; i++) {
       const isCurrent = i === currentBeat;
+      const isSecondaryAccent = i !== 0 && timeSignature.accents.includes(i);
+      const activeColor =
+        i === 0 ? "#08C192" : isSecondaryAccent ? "#4ADBB4" : "#E6E6E6";
+      const idleColor = isSecondaryAccent
+        ? "rgba(8,193,146,0.3)"
+        : "rgba(255,255,255,0.15)";
       beats.push(
         <View
           key={i}
@@ -232,24 +144,12 @@ export default function MetroScreen() {
             height: 14,
             borderRadius: 14,
             marginHorizontal: 7,
-            backgroundColor: isCurrent
-              ? i === 0
-                ? "#08C192"
-                : "#E6E6E6" // Accent beat is yellow, others green
-              : "rgba(255,255,255,0.15)",
+            backgroundColor: isCurrent ? activeColor : idleColor,
             borderWidth: isCurrent ? 3 : 1,
-            borderColor: isCurrent
-              ? i === 0
-                ? "#08C192"
-                : "#E6E6E6"
-              : "rgba(255,255,255,0.25)",
+            borderColor: isCurrent ? activeColor : "rgba(255,255,255,0.25)",
             justifyContent: "center",
             alignItems: "center",
-            shadowColor: isCurrent
-              ? i === 0
-                ? "#08C192"
-                : "#E6E6E6" // Accent beat is yellow, others green
-              : "rgba(255,255,255,0.15)",
+            shadowColor: isCurrent ? activeColor : idleColor,
             shadowOpacity: isCurrent ? 0.5 : 0,
             shadowRadius: isCurrent ? 8 : 0,
             elevation: isCurrent ? 6 : 0,
@@ -277,9 +177,6 @@ export default function MetroScreen() {
       <HeaderComponent />
       <View className="items-center justify-center flex-1 w-full">
         <View className="flex flex-col items-center justify-center mb-10">
-          {/* <Text className="text-sm text-white font-rMedium">
-            Time Signature
-          </Text> */}
           <TouchableOpacity
             onPress={() => setModalVisible(true)}
             className="px-3 py-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center "
@@ -301,9 +198,9 @@ export default function MetroScreen() {
           <View className="flex flex-row items-end justify-between w-3/5">
             <TouchableOpacity
               accessibilityLabel="Decrease BPM"
-              onPress={handleDecrease}
-              onLongPress={handleHoldDecrease}
-              onPressOut={handleRelease}
+              onPress={decrease}
+              onLongPress={startHoldDecrease}
+              onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
               <AntDesign name="minus" size={30} color="white" />
@@ -311,8 +208,9 @@ export default function MetroScreen() {
 
             <TextInput
               className="w-20 text-4xl text-center text-white font-cBold"
-              value={bpm.toString()}
-              onChangeText={handleBpmInput}
+              value={bpmText}
+              onChangeText={handleBpmTextChange}
+              onEndEditing={commitBpmText}
               keyboardType="numeric"
               maxLength={3}
               selectTextOnFocus
@@ -321,9 +219,9 @@ export default function MetroScreen() {
 
             <TouchableOpacity
               accessibilityLabel="Increase BPM"
-              onPress={handleIncrease}
-              onLongPress={handleHoldIncrease}
-              onPressOut={handleRelease}
+              onPress={increase}
+              onLongPress={startHoldIncrease}
+              onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
               <AntDesign name="plus" size={30} color="white" />
