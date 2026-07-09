@@ -24,28 +24,37 @@ const RegisterScreen = () => {
     return form.password === form.confirmPassword;
   };
 
+  const showError = (message: string) => {
+    setError(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2500);
+  };
+
   const submit = async () => {
     setError("");
     if (!form.email || !form.password) {
-      setError("All fields (email and password) are required.");
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 2500);
+      showError("All fields (email and password) are required.");
       return;
     }
     if (!passwordsMatch()) {
-      setError("Passwords do not match");
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 2500);
+      showError("Passwords do not match");
       return;
     }
     try {
       setIsSubmitting(true);
       await createUser({ email: form.email, password: form.password });
       router.replace("/verification-code");
-    } catch (error) {
-      setError("Error message");
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 2500);  
+    } catch (error: any) {
+      const errMsg = (error?.message || "").toLowerCase();
+      let message = "Signup failed. Please try again.";
+      if (errMsg.includes("already exists")) {
+        message = "An account with this email already exists.";
+      } else if (errMsg.includes("password")) {
+        message = "Password must be at least 8 characters.";
+      } else if (errMsg.includes("email")) {
+        message = "Please enter a valid email address.";
+      }
+      showError(message);
     } finally {
       setIsSubmitting(false);
     }

@@ -10,6 +10,7 @@ import HeaderComponent from "../../components/headerComponent";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import audio from "../../constants/audio";
+import { usePreferences } from "../../context/PreferencesContext";
 
 const NOTE_INDEX: Record<string, number> = {
   C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5,
@@ -107,6 +108,7 @@ const prepareLayer = async (
 };
 
 export default function PadScreen() {
+  const { prefs } = usePreferences();
   const [keySelected, setKeySelected] = useState("");
   const [majorMinor, setMajorMinor] = useState("major");
   const fadeTimersRef = useRef<Map<AudioPlayer, TimerHandle>>(new Map());
@@ -297,7 +299,9 @@ export default function PadScreen() {
   }, [clearAllFades, clearFade, padPlayer]);
 
   const handlePadPress = async (idx: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (prefs.haptics) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
 
     const isSelected = keySelected === `${idx}`;
 

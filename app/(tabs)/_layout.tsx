@@ -4,6 +4,7 @@ import icons from "../../constants/icons";
 import { PlaybackLockProvider } from "../../context/PlaybackLockContext";
 import { MetronomeProvider } from "../../context/MetronomeContext";
 import { LoopPlaybackProvider } from "../../context/LoopPlaybackContext";
+import { SessionsProvider } from "../../context/SessionsContext";
 import FloatingEngineControls from "../../components/floatingEngineControls";
 
 type TabIconProps = {
@@ -35,7 +36,9 @@ export default function TabLayout() {
     <PlaybackLockProvider>
       <MetronomeProvider>
         <LoopPlaybackProvider>
-          <TabsWithFloatingControl />
+          <SessionsProvider>
+            <TabsWithFloatingControl />
+          </SessionsProvider>
         </LoopPlaybackProvider>
       </MetronomeProvider>
     </PlaybackLockProvider>

@@ -1,59 +1,50 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { StatusBar } from "react-native";
-import {useRouter, Redirect} from "expo-router";
+import { useRouter } from "expo-router";
 
+import ScreenHeader from "../../components/ui/screenHeader";
 import FormField from "../../components/formField";
 import CustomButton from "../../components/customButton";
 
 const ForgotPasswordScreen = () => {
   const router = useRouter();
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-  });
+  const [email, setEmail] = useState("");
 
   const getCodeSubmit = () => {
-    router.push("/reset-password")
-    // setForm({})
-  
-  }
-  return (
-    <SafeAreaView className="flex-1">
-      <View className="flex-1 px-5">
-        <View className="flex flex-row justify-center items-center mt-10 mb-5">
-          <Text className="text-5xl text-white font-rBlack mb-4">Stem</Text>
-          <Text className="text-5xl text-accent font-rBlack mb-4">Bits</Text>
-        </View>
-        <View className="flex items-start">
-          <Text className="text-white text-2xl font-rBold">
-            Forgot Password
-          </Text>
-          <View className="flex flex-col items-center gap-6 w-full">
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e) => setForm({ ...form, email: e })}
-              otherStyles="mt-5"
-              placeholder="Enter Your Email"
-              keyboardType="email-address"
-            />
+    router.push("/reset-password");
+  };
 
-            <CustomButton
-              title="Get Reset Code"
-              containerStyles="w-full"
-              handlePress={getCodeSubmit}
-            />
-          </View>
+  return (
+    <SafeAreaView className="flex-1 bg-primary">
+      <StatusBar barStyle="light-content" />
+      <ScreenHeader title="Forgot Password" />
+
+      <View className="flex-1 px-5">
+        <Text className="mt-2 mb-1 text-sm leading-5 text-white/60 font-rRegular">
+          Enter the email on your account and we'll send you a reset code.
+        </Text>
+        <View className="flex flex-col items-center w-full gap-6">
+          <FormField
+            title="Email"
+            value={email}
+            handleChangeText={setEmail}
+            otherStyles="mt-4"
+            placeholder="Enter your email"
+            keyboardType="email-address"
+          />
+          <CustomButton
+            title="Get Reset Code"
+            containerStyles="w-full"
+            handlePress={getCodeSubmit}
+          />
         </View>
-        <View className="flex flex-row right-2/4 absolute bottom-0">
-          <Text className="text-white/50 font-rMedium">by</Text>
-          <Text className="text-accent font-rMedium"> oneha</Text>
+
+        <View className="absolute bottom-0 flex-row right-2/4">
+          <Text className="text-white/50 font-rMedium">by </Text>
+          <Text className="text-accent font-rMedium">nehtek</Text>
         </View>
       </View>
-      <StatusBar barStyle="light-content" />
-      {/*<Redirect href="/reset-password" />*/}
     </SafeAreaView>
   );
 };

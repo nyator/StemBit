@@ -37,6 +37,7 @@ export default function MetroScreen() {
     currentBeat,
     timeSignature,
     setTimeSignature,
+    accents,
     feelIndex,
     setFeelIndex,
     isBlockedByOtherEngine,
@@ -130,7 +131,7 @@ export default function MetroScreen() {
     const beats = [];
     for (let i = 0; i < timeSignature.beats; i++) {
       const isCurrent = i === currentBeat;
-      const isSecondaryAccent = i !== 0 && timeSignature.accents.includes(i);
+      const isSecondaryAccent = i !== 0 && accents.includes(i);
       const activeColor =
         i === 0 ? "#08C192" : isSecondaryAccent ? "#4ADBB4" : "#E6E6E6";
       const idleColor = isSecondaryAccent

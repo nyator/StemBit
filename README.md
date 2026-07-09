@@ -12,56 +12,75 @@ StemBit is a React Native mobile application designed for musicians and performe
   - [Pad](#pad)
   - [Session](#session)
   - [Profile & Auth](#profile--auth)
-  - [Settings](#settings)
+- [Audio Architecture](#audio-architecture)
+- [Adding Loops to the Catalog](#adding-loops-to-the-catalog)
 - [Technical Stack](#technical-stack)
 - [Installation & Setup](#installation--setup)
-- [Usage](#usage)
 - [Contribution Guidelines](#contribution-guidelines)
 
 ---
 
 ## Features
 
-### Metronome (`metro.tsx`)
-- Accurate beat scheduling with drift correction.
-- Custom time signatures and tap tempo.
-- Visual feedback with animated beat indicators.
+### Metronome (`app/(tabs)/metro.tsx`)
+- Sample-accurate click scheduling on the Web Audio hardware clock (immune to JS thread jitter).
+- Time signatures with musical accent groupings: compound and odd meters click in their natural groups (6/8 = 3+3, 7/8 = 2+2+3, 5/4 = 3+2, ...). Downbeat gets the full bright click, group starts a softer bright click.
+- Playback feels: Half Time (½×), Normal (1×), Double Time (2×) without changing the displayed BPM.
+- Tap tempo with median-based outlier rejection (one sloppy tap doesn't skew the tempo), hold-to-repeat +/- steppers, and direct BPM entry.
+- Beat indicator dots reflect the meter's accent groups, even while stopped.
 
-### Loop (`loop.tsx`)
-- Select and play preset loops.
-- BPM control and tap tempo.
-- Visual feedback and play/pause controls.
+### Loop (`app/(tabs)/loop.tsx`)
+- Browse the loop catalog by **category** (Worship, Praise, Funk, ...) or by **artist**, with filter chips and preview playback.
+- Gapless, sample-accurate looping — encoder padding in MP3/AAC files is trimmed automatically and loop length is snapped to the musical grid.
+- Tempo warping is **pitch-preserving** (WSOLA time-stretch): change the speed, the key stays put. 1× plays the untouched original audio.
+- Whole catalog is preloaded and decoded at app start, so loading and playing a loop is instant.
 
-### Pad (`pad.tsx`)
-- Play musical pads in major/minor keys.
-- Audio playback with looping and stop controls.
-- Visual feedback for active pads.
+### Pad (`app/(tabs)/pad.tsx`)
+- Sustained pads in all 12 major and 7 minor keys (minor plays the relative major clip).
+- Pre-pitched clips per chromatic root (rendered offline via `scripts/generate_pads.sh`) — no unreliable runtime pitch shifting.
+- Dual-layer player with self-crossfading loop so pads never audibly restart; smooth crossfade on key changes.
 
-### Session (`session.tsx`)
-- Manage session setlists.
-- Add/edit sessions (future expansion).
-- Scrollable list of sessions with details.
+### Session (`app/(tabs)/session.tsx`)
+- Manage session setlists (in progress).
 
-### Profile & Auth (`app/(profile)`, `app/(auths)`)
-- User profile management.
-- Authentication: register, login, forgot/reset password.
-- Animated splash/onboarding screens.
+### Profile & Auth (`app/(settings)`, `app/(auths)`)
+- Authentication via Appwrite: register, login, forgot/reset password.
+- Login currently has a `DEV_SKIP_AUTH` flag enabled in `app/(auths)/login.tsx` — set it to `false` to require real credentials.
 
-### Settings (`index.tsx`)
-- Placeholder for user preferences and app settings.
+---
+
+## Audio Architecture
+
+Three independent audio engines, each mounted once above the tab navigator so they keep running across tab switches, with a floating pill control to see/stop them from anywhere:
+
+- **Metronome engine** (`constants/metronomeEngine.ts`): hidden WebView running a Web Audio "lookahead scheduler" (Chris Wilson's two-clocks pattern). Accent patterns are passed per time signature.
+- **Loop engine** (`constants/loopEngine.ts`): hidden WebView. Decodes loops into buffers, trims encoder silence, snaps loop points to whole beats at the loop's native BPM, and loops via `AudioBufferSourceNode` (sample-accurate). BPM changes re-render the loop region through an inline WSOLA time-stretcher and crossfade at the matching musical phase — pitch never changes.
+- **Pad player**: expo-audio dual-layer crossfade (pads don't need sample-accurate looping; long crossfades are the point).
+
+`context/PlaybackLockContext.tsx` keeps the metronome and loop engines mutually exclusive so two clock sources never fight.
+
+Shared BPM UI logic (draft-based text entry, hold-to-repeat steppers, outlier-rejecting tap tempo) lives in `hooks/useBpmControl.ts`.
+
+---
+
+## Adding Loops to the Catalog
+
+1. Drop the audio file into `assets/audio/loops/` (MP3 is fine — padding is trimmed automatically).
+2. Import it in `constants/audio.js` and add it to the exported object.
+3. Add one entry to `LOOPS` in `constants/loops.ts` with `key`, `title`, `artist`, `category`, `bpm`, `timeSignature`, and `source`.
+
+Categories are defined in `LOOP_CATEGORIES` (same file). Artists are derived automatically from the catalog. The browser UI, filter chips, counts, and preload all pick up new entries with no further changes.
 
 ---
 
 ## Technical Stack
 
-- **Framework:** React Native
-- **Navigation:** expo-router
+- **Framework:** React Native + Expo (expo-router navigation)
 - **UI Styling:** Tailwind CSS (NativeWind)
-- **Audio:** expo-audio
+- **Audio:** Web Audio (via react-native-webview) for metronome & loops; expo-audio for pads & previews
 - **Icons:** @expo/vector-icons
-- **Animation:** react-native Animated API, moti
 - **Backend:** Appwrite (authentication and data)
-- **Other:** Expo, TypeScript
+- **Language:** TypeScript
 
 ---
 
@@ -76,33 +95,32 @@ StemBit is a React Native mobile application designed for musicians and performe
 2. **Install dependencies:**
    ```sh
    npm install
-   # or
-   yarn install
    ```
 
-3. **Start the Expo development server:**
+3. **Configure environment:**
+   ```sh
+   cp .env.example .env
+   # fill in EXPO_PUBLIC_APPWRITE_DEV_KEY (Appwrite console -> Project -> Settings -> Dev keys)
+   ```
+   Never commit `.env`. The dev key is only needed for development builds.
+
+4. **Start the dev server:**
    ```sh
    npm start
-   # or
-   yarn start
    ```
 
-4. **Run on your device:**
-   - Use the Expo Go app or an emulator.
+5. **Run on your device:**
+   ```sh
+   npm run ios
+   # or
+   npm run android
+   ```
 
----
-
-## Usage
-
-- **Onboarding:** Launch the app to view animated splash screens. Use "Skip" or the forward button to proceed.
-- **Authentication:** Register or log in to access main features.
-- **Tabs:**
-  - **Loop:** Select and play loops, adjust BPM, tap tempo.
-  - **Pad:** Play musical pads in major/minor keys.
-  - **Session:** Manage setlists and sessions.
-  - **Metronome:** Use the metronome with custom time signatures and tap tempo.
-- **Profile:** View and edit user info.
-- **Settings:** (Coming soon) Configure app preferences.
+6. **Run tests / type check:**
+   ```sh
+   npm test
+   npx tsc --noEmit
+   ```
 
 ---
 
@@ -113,29 +131,29 @@ StemBit is a React Native mobile application designed for musicians and performe
 3. Write clear, concise commits and include tests if applicable.
 4. Submit a pull request with a detailed description.
 
-**Code Style:**  
+**Code Style:**
 - Use TypeScript for all files.
 - Follow the existing folder structure.
 - Use Tailwind CSS classes for styling.
 - Keep components modular and reusable.
+- Note: the engine files build HTML template literals — never use backticks inside their inline scripts/comments.
 
 ---
-
 
 ## File Structure Overview
 
 - `app/` - Main application screens and navigation
   - `(tabs)/` - Main tab screens: `loop.tsx`, `pad.tsx`, `session.tsx`, `metro.tsx`
   - `(auths)/` - Authentication screens: `login.tsx`, `register.tsx`, etc.
-  - `(profile)/` - User profile and help screens
-  - `index.tsx` - Settings/configuration
-- `components/` - Reusable UI components (e.g., header, buttons, toast)
-- `constants/` - Static assets and configuration (icons, audio)
-- `context/` - React context providers (e.g., AuthContext)
-- `lib/` - API and backend integration (e.g., Appwrite)
-- `assets/` - Images, icons, fonts
-- `global.css` - Global styles (used with NativeWind)
-- `tailwind.config.js` - Tailwind/NativeWind configuration
+  - `(loops)/` - Loop browser (`sounds.tsx`: categories/artists + filter chips)
+  - `(settings)/` - Settings, user profile, and help screens
+- `components/` - Reusable UI components (header, buttons, toast, loop list)
+- `constants/` - Static config and the audio engines (`metronomeEngine.ts`, `loopEngine.ts`, `loops.ts`, `audio.js`, `icons.js`)
+- `context/` - Providers: `MetronomeContext`, `LoopPlaybackContext`, `PlaybackLockContext`
+- `hooks/` - Shared hooks (`useBpmControl.ts`)
+- `lib/` - Backend integration (`appwrite.ts`)
+- `utils/` - Helpers (`loadAssetBase64.ts`) and tests
+- `assets/` - Images, icons, fonts, audio
 
 ---
 

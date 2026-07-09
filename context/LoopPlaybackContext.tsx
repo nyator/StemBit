@@ -10,7 +10,7 @@ import { Alert, AppState } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { setAudioModeAsync } from "expo-audio";
 
-import { findLoopByKey } from "../constants/loops";
+import { LOOPS, findLoopByKey } from "../constants/loops";
 import { buildLoopEngineHtml } from "../constants/loopEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
@@ -37,15 +37,15 @@ const LoopPlaybackContext = createContext<LoopPlaybackContextValue | null>(
 // constants/loops.ts).
 //
 // Playback happens inside a hidden WebView running a Web Audio engine
-// (constants/loopEngine.ts) rather than expo-audio: AVPlayer/ExoPlayer
-// looping seeks back to 0 (never sample-accurate) and MP3/AAC decode with
-// encoder padding at both edges, so `player.loop = true` always stumbled at
-// the loop point. The engine loops the decoded buffer sample-accurately with
-// silence-trimmed, beat-snapped loop points.
+// (constants/loopEngine.ts): sample-accurate gapless looping with
+// silence-trimmed, beat-snapped loop points — things AVPlayer/ExoPlayer
+// looping can't do.
 //
-// Mounted above the tab navigator (app/(tabs)/_layout.tsx) like the other
-// engines so it can be seen/stopped from the floating control and kept
-// mutually exclusive with the Metronome tab via PlaybackLockContext.
+// The whole catalog is preloaded and decoded into the engine as soon as it
+// boots, so selecting a loop is a pointer swap and pressing play is always
+// instant. If play is somehow pressed mid-load (e.g. first seconds of app
+// start), it's queued and fires the moment the loop is ready rather than
+// asking the user to try again.
 export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const { activeEngine, requestStart, release } = usePlaybackLock();
   const isBlockedByOtherEngine =
@@ -58,31 +58,60 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // The tempo the loaded loop was recorded at; BPM changes are warped onto
   // it via playback rate (bpm / nativeBpm = 1x at the loop's own tempo).
   const nativeBpmRef = useRef<number | null>(null);
+  const currentKeyRef = useRef<string | null>(null);
   const [loopReady, setLoopReady] = useState(false);
   const loopReadyRef = useRef(false);
-  // Bumped on every setSelectedLoopKey so a slow asset load can't apply a
-  // stale loop over a newer selection.
-  const loadTokenRef = useRef(0);
+  // Play was pressed while the loop was still decoding: start as soon as
+  // the engine reports it loaded.
+  const pendingPlayRef = useRef(false);
 
   const webViewRef = useRef<WebView>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
-  // The WebView page posts "ready" once its script has attached message
-  // listeners. Any "load" posted before that is silently dropped, so loads
-  // requested earlier are parked here and flushed on "ready".
+
+  // Messages posted before the WebView page has attached its listeners are
+  // silently dropped, so everything is queued until its "ready" handshake.
   const engineReadyRef = useRef(false);
-  const pendingLoadRef = useRef<Record<string, unknown> | null>(null);
+  const messageQueueRef = useRef<Record<string, unknown>[]>([]);
+  // Loop keys whose preload has been handed to the engine (or is in flight).
+  const preloadStartedRef = useRef<Set<string>>(new Set());
 
   const postToEngine = (message: Record<string, unknown>) => {
-    webViewRef.current?.postMessage(JSON.stringify(message));
-  };
-
-  const requestEngineLoad = (message: Record<string, unknown>) => {
     if (engineReadyRef.current) {
-      postToEngine(message);
+      webViewRef.current?.postMessage(JSON.stringify(message));
     } else {
-      pendingLoadRef.current = message;
+      messageQueueRef.current.push(message);
     }
   };
+
+  // Read a loop's asset and hand it to the engine to decode ahead of time.
+  const preloadLoop = (key: string) => {
+    if (preloadStartedRef.current.has(key)) return;
+    preloadStartedRef.current.add(key);
+
+    const loop = findLoopByKey(key);
+    if (!loop) return;
+
+    loadAssetBase64(loop.source)
+      .then((base64) => {
+        postToEngine({
+          type: "preload",
+          key: loop.key,
+          base64,
+          nativeBpm: loop.bpm,
+        });
+      })
+      .catch((error) => {
+        // Allow a retry on next select.
+        preloadStartedRef.current.delete(key);
+        console.error("Failed to preload loop", key, error);
+      });
+  };
+
+  // Warm the whole catalog at startup so play is always instant.
+  useEffect(() => {
+    LOOPS.forEach((loop) => preloadLoop(loop.key));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep the app's audio session configured for playback in silent mode
   // (iOS). The WebView plays through the same session.
@@ -97,6 +126,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopLoop = () => {
+    pendingPlayRef.current = false;
     isPlayingRef.current = false;
     setIsPlaying(false);
     postToEngine({ type: "stop" });
@@ -115,66 +145,120 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getPlaybackRate = (nextBpm = bpm) =>
+    nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
+
+  const beginPlayback = () => {
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+    postToEngine({ type: "play", rate: getPlaybackRate() });
+  };
+
   const handleWebViewMessage = (event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === "ready") {
+        // Fires on first boot and again if the WebView ever reloads (its
+        // caches are wiped then, so everything must be re-sent).
         engineReadyRef.current = true;
-        if (pendingLoadRef.current) {
-          postToEngine(pendingLoadRef.current);
-          pendingLoadRef.current = null;
+        const queued = messageQueueRef.current;
+        messageQueueRef.current = [];
+        queued.forEach((message) =>
+          webViewRef.current?.postMessage(JSON.stringify(message))
+        );
+        preloadStartedRef.current.clear();
+        LOOPS.forEach((loop) => preloadLoop(loop.key));
+        if (currentKeyRef.current && nativeBpmRef.current) {
+          postToEngine({
+            type: "select",
+            key: currentKeyRef.current,
+            nativeBpm: nativeBpmRef.current,
+          });
         }
       } else if (data.type === "loaded") {
+        if (data.key !== currentKeyRef.current) return; // stale select
         loopReadyRef.current = true;
         setLoopReady(true);
+        if (pendingPlayRef.current) {
+          pendingPlayRef.current = false;
+          beginPlayback();
+        }
       } else if (data.type === "error") {
+        // Self-heal: the engine has no bytes for the current loop (e.g. a
+        // preload was lost) — re-read the asset and select again with the
+        // data attached. The pending play, if any, stays queued and fires
+        // when the retried select reports "loaded".
+        if (
+          data.code === "missing-data" &&
+          data.key &&
+          data.key === currentKeyRef.current
+        ) {
+          const loop = findLoopByKey(data.key);
+          if (loop) {
+            loadAssetBase64(loop.source)
+              .then((base64) => {
+                if (currentKeyRef.current !== loop.key) return;
+                postToEngine({
+                  type: "select",
+                  key: loop.key,
+                  nativeBpm: loop.bpm,
+                  base64,
+                });
+              })
+              .catch((error) => {
+                console.error("Loop reload failed", error);
+              });
+            return;
+          }
+        }
+
         console.error("Loop engine error:", data.message);
+        if (pendingPlayRef.current) {
+          pendingPlayRef.current = false;
+          isPlayingRef.current = false;
+          setIsPlaying(false);
+          release("loop");
+        }
       }
     } catch (error) {
       // Ignore malformed messages
     }
   };
 
-  // Load the selected loop's audio into the engine, resetting the tempo
+  // Make the given loop the engine's active loop, resetting the tempo
   // control to the loop's own native BPM so it starts back at 1x speed.
   const setSelectedLoopKey = (key: string | undefined) => {
-    loadTokenRef.current += 1;
-    const token = loadTokenRef.current;
-
     loopReadyRef.current = false;
     setLoopReady(false);
     stopLoop();
 
     if (!key) {
+      currentKeyRef.current = null;
       nativeBpmRef.current = null;
       return;
     }
 
     const selectedLoop = findLoopByKey(key);
     if (!selectedLoop) {
+      currentKeyRef.current = null;
       nativeBpmRef.current = null;
       return;
     }
 
+    currentKeyRef.current = selectedLoop.key;
     nativeBpmRef.current = selectedLoop.bpm;
     setBpm(selectedLoop.bpm);
 
-    loadAssetBase64(selectedLoop.source)
-      .then((base64) => {
-        if (token !== loadTokenRef.current) return; // superseded
-        requestEngineLoad({
-          type: "load",
-          base64,
-          nativeBpm: selectedLoop.bpm,
-        });
-      })
-      .catch((error) => {
-        console.error("Failed to load loop sound", error);
-      });
+    // Normally instant: the engine already holds the decoded buffer from
+    // the startup preload. preloadLoop is a no-op if it's in flight, and a
+    // recovery path if the original preload failed.
+    preloadLoop(selectedLoop.key);
+    postToEngine({
+      type: "select",
+      key: selectedLoop.key,
+      nativeBpm: selectedLoop.bpm,
+    });
   };
-
-  const getPlaybackRate = (nextBpm = bpm) =>
-    nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
 
   // Warp the loop's playback rate to match the current BPM relative to the
   // tempo it was recorded at (e.g. sample_bpm80 at bpm=160 plays at 2x).
@@ -193,19 +277,21 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!loopReadyRef.current) {
-      Alert.alert("Loading", "The loop is still loading — try again in a moment.");
-      return;
-    }
-
     if (!requestStart("loop")) {
       console.warn("Stop the Metronome before starting the Loop");
       return;
     }
 
-    isPlayingRef.current = true;
-    setIsPlaying(true);
-    postToEngine({ type: "play", rate: getPlaybackRate() });
+    if (!loopReadyRef.current) {
+      // Still decoding (only possible in the first moments after app
+      // start): show the playing state now and start the instant it lands.
+      pendingPlayRef.current = true;
+      isPlayingRef.current = true;
+      setIsPlaying(true);
+      return;
+    }
+
+    beginPlayback();
   };
 
   useEffect(() => {

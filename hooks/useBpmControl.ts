@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
 
+import { usePreferences } from "../context/PreferencesContext";
+
 type UseBpmControlOptions = {
   bpm: number;
   setBpm: React.Dispatch<React.SetStateAction<number>>;
@@ -25,6 +27,7 @@ export function useBpmControl({
   minBpm,
   maxBpm,
 }: UseBpmControlOptions) {
+  const { prefs } = usePreferences();
   const clampBpm = useCallback(
     (value: number) => Math.max(minBpm, Math.min(maxBpm, value)),
     [minBpm, maxBpm]
@@ -86,7 +89,9 @@ export function useBpmControl({
   const tapTimesRef = useRef<number[]>([]);
 
   const handleTapTempo = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (prefs.haptics) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
 
     const now = Date.now();
     const taps = tapTimesRef.current;

@@ -1,155 +1,109 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  Switch,
-  TouchableOpacity,
-  StatusBar,
-  ScrollView,
-} from "react-native";
+import { ScrollView, StatusBar, Text, TouchableOpacity, Alert, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
 
-const IndexScreen = () => {
+import ScreenHeader from "../../components/ui/screenHeader";
+import {
+  SettingLink,
+  SettingSwitch,
+  SettingSection,
+} from "../../components/ui/settingRow";
+import { usePreferences } from "../../context/PreferencesContext";
+import { logoutUser } from "../../lib/appwrite";
+import { APP_VERSION, SUPPORT_EMAIL } from "../../constants/theme";
+
+const SettingsScreen = () => {
   const router = useRouter();
-  const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(true);
-  const [soundEffects, setSoundEffects] = useState(true);
+  const { prefs, setPref } = usePreferences();
 
-  const handleGoBack = () => {
-    router.back();
+  const handleLogout = () => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await logoutUser();
+          } catch {
+            // No active session (e.g. dev bypass) — proceed anyway.
+          }
+          router.replace("/(auths)/login");
+        },
+      },
+    ]);
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-primary justify-center">
+    <SafeAreaView className="flex-1 bg-primary">
       <StatusBar barStyle="light-content" />
-
-      {/* Header */}
-      <View className="flex-row justify-between items-center px-5 my-5">
-        <TouchableOpacity
-          onPress={handleGoBack}
-          className="p-2 rounded-full bg-white/10"
-        >
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <Text className="text-2xl text-white font-rBold">Settings</Text>
-        <View style={{ width: 32 }}></View>
-        {/* Empty view for alignment */}
-      </View>
+      <ScreenHeader title="Settings" />
 
       <ScrollView className="flex-1 px-5">
-        {/* Account Section */}
-        <View className="mb-8">
-          <Text className="text-xl text-accent font-rBold mb-4">Account</Text>
-
-          <TouchableOpacity
+        <SettingSection title="Account">
+          <SettingLink
+            icon="person-outline"
+            label="Profile"
+            sublabel="Your account details"
             onPress={() => router.push("/user")}
-            className="flex-row justify-between items-center py-4 border-b border-white/10"
-          >
-            <Text className="text-white text-lg font-rMedium">Profile</Text>
-            <Ionicons name="chevron-forward" size={20} color="white" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
+          />
+          <SettingLink
+            icon="key-outline"
+            label="Change Password"
             onPress={() => router.push("/(auths)/reset-password")}
-            className="flex-row justify-between items-center py-4 border-b border-white/10"
-          >
-            <Text className="text-white text-lg font-rMedium">
-              Change Password
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="white" />
-          </TouchableOpacity>
-        </View>
+          />
+        </SettingSection>
 
-        {/* Preferences Section */}
-        <View className="mb-8">
-          <Text className="text-xl text-accent font-rBold mb-4">
-            Preferences
-          </Text>
+        <SettingSection title="Playback">
+          <SettingSwitch
+            icon="pulse-outline"
+            label="Meter Accents"
+            sublabel="Accent group beats in 6/8, 7/8, 5/4 and other meters"
+            value={prefs.meterAccents}
+            onValueChange={(value) => setPref("meterAccents", value)}
+          />
+          <SettingSwitch
+            icon="radio-button-on-outline"
+            label="Haptic Feedback"
+            sublabel="Vibrate on pad presses and tap tempo"
+            value={prefs.haptics}
+            onValueChange={(value) => setPref("haptics", value)}
+          />
+        </SettingSection>
 
-          <View className="flex-row justify-between items-center py-4 border-b border-white/10">
-            <Text className="text-white text-lg font-rMedium">
-              Notifications
-            </Text>
-            <Switch
-              value={notifications}
-              onValueChange={setNotifications}
-              trackColor={{ false: "#767577", true: "#098F6D" }}
-              thumbColor="#f4f3f4"
-            />
-          </View>
-
-          <View className="flex-row justify-between items-center py-4 border-b border-white/10">
-            <Text className="text-white text-lg font-rMedium">Dark Mode</Text>
-            <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
-              trackColor={{ false: "#767577", true: "#098F6D" }}
-              thumbColor="#f4f3f4"
-            />
-          </View>
-
-          <View className="flex-row justify-between items-center py-4 border-b border-white/10">
-            <Text className="text-white text-lg font-rMedium">
-              Sound Effects
-            </Text>
-            <Switch
-              value={soundEffects}
-              onValueChange={setSoundEffects}
-              trackColor={{ false: "#767577", true: "#098F6D" }}
-              thumbColor="#f4f3f4"
-            />
-          </View>
-        </View>
-
-        {/* About Section */}
-        <View className="mb-8">
-          <Text className="text-xl text-accent font-rBold mb-4">About</Text>
-
-          <TouchableOpacity
+        <SettingSection title="About">
+          <SettingLink
+            icon="help-circle-outline"
+            label="Help & Support"
             onPress={() => router.push("/help")}
-            className="flex-row justify-between items-center py-4 border-b border-white/10"
-          >
-            <Text className="text-white text-lg font-rMedium">
-              Help & Support
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="white" />
-          </TouchableOpacity>
+          />
+          <SettingLink
+            icon="mail-outline"
+            label="Contact Us"
+            sublabel={SUPPORT_EMAIL}
+            onPress={() =>
+              Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=StemBit`).catch(
+                () => {}
+              )
+            }
+          />
+          <SettingLink
+            icon="information-circle-outline"
+            label="Version"
+            value={APP_VERSION}
+            onPress={() => {}}
+          />
+        </SettingSection>
 
-          <TouchableOpacity className="flex-row justify-between items-center py-4 border-b border-white/10">
-            <Text className="text-white text-lg font-rMedium">
-              Privacy Policy
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="white" />
-          </TouchableOpacity>
-
-          <TouchableOpacity className="flex-row justify-between items-center py-4 border-b border-white/10">
-            <Text className="text-white text-lg font-rMedium">
-              Terms of Service
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="white" />
-          </TouchableOpacity>
-
-          <View className="py-4">
-            <Text className="text-white/10 text-lg font-rMedium">
-              Version 1.0.0
-            </Text>
-          </View>
-        </View>
-
-        {/* Logout Button */}
         <TouchableOpacity
-          className="py-4 mb-10 bg-red-600 rounded-xl"
-          onPress={() => router.replace("/(auths)/")}
+          className="items-center py-4 mb-10 border rounded-2xl border-error/40 bg-error/10"
+          onPress={handleLogout}
         >
-          <Text className="text-white text-center text-lg font-rBold">
-            Logout
-          </Text>
+          <Text className="text-base text-error font-rBold">Log Out</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-export default IndexScreen;
+export default SettingsScreen;

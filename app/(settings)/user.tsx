@@ -1,224 +1,160 @@
-import React, { useState } from "react";
-import { Dimensions } from "react-native";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   StatusBar,
-  TouchableOpacity,
   ScrollView,
-  Image,
   Alert,
+  Platform,
+  ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import CustomButton from "../../components/customButton";
 
+import ScreenHeader from "../../components/ui/screenHeader";
+import { SettingLink, SettingSection } from "../../components/ui/settingRow";
+import { getUserDetails, updateUserName } from "../../lib/appwrite";
+import { COLORS } from "../../constants/theme";
+
+type AccountInfo = {
+  name: string;
+  email: string;
+  memberSince: string;
+};
+
+// Profile: real account data from Appwrite. When there's no session (the
+// dev auth bypass), it says so instead of showing placeholder people.
 const UserScreen = () => {
-  const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("John Doe");
-  const [email, setEmail] = useState("john@example.com");
-  const [bio, setBio] = useState(
-    "Software developer passionate about mobile apps and technology."
-  );
-  const [location, setLocation] = useState("San Francisco, CA");
-  const [joinDate] = useState("August 2023");
+  const { width } = useWindowDimensions();
+  const avatarSize = Math.min(width * 0.28, 110);
 
-  const handleGoBack = () => {
-    router.back();
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadAccount = async () => {
+    try {
+      const user = await getUserDetails();
+      setAccount({
+        name: user.name || "Musician",
+        email: user.email,
+        memberSince: new Date(user.registration).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "long",
+        }),
+      });
+    } catch {
+      setAccount(null); // no active session
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSave = () => {
-    // In a real app, you would save the data to a backend or local storage
-    setEditing(false);
-    Alert.alert("Success", "Profile updated successfully!");
+  useEffect(() => {
+    loadAccount();
+  }, []);
+
+  const handleRename = () => {
+    if (!account) return;
+    if (Platform.OS !== "ios") return; // Alert.prompt is iOS-only
+    Alert.prompt(
+      "Display Name",
+      undefined,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Save",
+          onPress: async (text?: string) => {
+            const name = (text ?? "").trim();
+            if (!name) return;
+            try {
+              await updateUserName(name);
+              setAccount((prev) => (prev ? { ...prev, name } : prev));
+            } catch {
+              Alert.alert("Update failed", "Could not update your name. Try again.");
+            }
+          },
+        },
+      ],
+      "plain-text",
+      account.name
+    );
   };
 
-  const handleEdit = () => {
-    setEditing(true);
-  };
-
-  const handleCancel = () => {
-    // Reset to original values if needed
-    setEditing(false);
-  };
-
-  // Responsive avatar size (30% of screen width, max 120)
-  const screenWidth = Dimensions.get('window').width;
-  const avatarSize = Math.min(screenWidth * 0.3, 120);
+  const initial = (account?.name || account?.email || "?")
+    .charAt(0)
+    .toUpperCase();
 
   return (
     <SafeAreaView className="flex-1 bg-primary">
       <StatusBar barStyle="light-content" />
+      <ScreenHeader title="Profile" />
 
-      {/* Header */}
-      <View className="flex-row justify-between items-center px-4 md:px-8 my-5 mb-1">
-        <TouchableOpacity
-          onPress={handleGoBack}
-          className="p-2 rounded-full bg-white/10"
-        >
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView className="flex-1 px-4 md:px-8">
-        {/* Profile Picture */}
-        <View className="items-center my-4 md:my-8">
-          <View className="relative" style={{ width: avatarSize, height: avatarSize }}>
+      {loading ? (
+        <View className="items-center justify-center flex-1">
+          <ActivityIndicator color={COLORS.accent} />
+        </View>
+      ) : (
+        <ScrollView className="flex-1 px-5">
+          {/* Avatar */}
+          <View className="items-center my-6">
             <View
-              className="rounded-full bg-accent/20 items-center justify-center"
+              className="items-center justify-center rounded-full bg-accent/20 border border-accent/40"
               style={{ width: avatarSize, height: avatarSize }}
             >
-              <Ionicons name="person" size={avatarSize * 0.5} color="#098F6D" />
-            </View>
-            {editing && (
-              <TouchableOpacity
-                className="absolute bottom-0 right-0 bg-accent rounded-full"
-                style={{ padding: avatarSize * 0.13 }}
-                onPress={() =>
-                  Alert.alert(
-                    "Feature",
-                    "Photo upload would be implemented here"
-                  )
-                }
+              <Text
+                className="text-accent font-cBold"
+                style={{ fontSize: avatarSize * 0.4 }}
               >
-                <Ionicons name="camera" size={avatarSize * 0.15} color="white" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {/* Profile Information */}
-        <View className="bg-white/5 rounded-xl p-4 md:p-6 mb-6">
-          <View className="mb-3 md:mb-4">
-            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Name</Text>
-            {editing ? (
-              <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
-                value={name}
-                onChangeText={setName}
-                placeholder="Enter your name"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-              />
-            ) : (
-              <Text className="text-white text-lg md:text-xl font-rBold">{name}</Text>
-            )}
-          </View>
-
-          <View className="mb-3 md:mb-4">
-            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Email</Text>
-            {editing ? (
-              <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter your email"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                keyboardType="email-address"
-              />
-            ) : (
-              <Text className="text-white text-lg md:text-xl">{email}</Text>
-            )}
-          </View>
-
-          <View className="mb-3 md:mb-4">
-            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Bio</Text>
-            {editing ? (
-              <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
-                value={bio}
-                onChangeText={setBio}
-                placeholder="Tell us about yourself"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            ) : (
-              <Text className="text-white text-base md:text-lg">{bio}</Text>
-            )}
-          </View>
-
-          <View className="mb-3 md:mb-4">
-            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Location</Text>
-            {editing ? (
-              <TextInput
-                className="bg-white/10 text-white font-rMedium p-3 rounded-lg text-base md:text-lg"
-                value={location}
-                onChangeText={setLocation}
-                placeholder="Your location"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-              />
-            ) : (
-              <Text className="text-white text-base md:text-lg">{location}</Text>
-            )}
-          </View>
-
-          <View>
-            <Text className="text-accent font-rMedium mb-1 text-base md:text-lg">Member Since</Text>
-            <Text className="text-white text-base md:text-lg">{joinDate}</Text>
-          </View>
-        </View>
-
-        {/* Stats Section */}
-        <View className="bg-white/5 rounded-xl p-4 md:p-6 mb-6">
-          <Text className="text-lg md:text-xl text-accent font-rBold mb-4">
-            Activity Stats
-          </Text>
-
-          <View className="flex-row justify-between mb-3">
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 mr-2 min-w-0">
-              <Text className="text-xl md:text-2xl text-white font-rBold">12</Text>
-              <Text className="text-white/70 text-xs md:text-base">Projects</Text>
-            </View>
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 ml-2 min-w-0">
-              <Text className="text-xl md:text-2xl text-white font-rBold">156</Text>
-              <Text className="text-white/70 text-xs md:text-base">Hours</Text>
-            </View>
-          </View>
-
-          <View className="flex-row justify-between">
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 mr-2 min-w-0">
-              <Text className="text-xl md:text-2xl text-white font-rBold">8</Text>
-              <Text className="text-white/70 text-xs md:text-base">Badges</Text>
-            </View>
-            <View className="items-center bg-white/10 rounded-lg p-3 flex-1 ml-2 min-w-0">
-              <Text className="text-xl md:text-2xl text-white font-rBold">4.8</Text>
-              <Text className="text-white/70 text-xs md:text-base">Rating</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        {editing ? (
-          <View className="flex-row mb-8 md:mb-10">
-            <TouchableOpacity
-              className="flex-1 py-3 md:py-4 bg-white/10 rounded-xl mr-2"
-              onPress={handleCancel}
-            >
-              <Text className="text-white text-center text-base md:text-lg font-rMedium">
-                Cancel
+                {initial}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              className="flex-1 py-3 md:py-4 bg-accent rounded-xl ml-2"
-              onPress={handleSave}
-            >
-              <Text className="text-white text-center text-base md:text-lg font-rBold">
-                Save
+            </View>
+            <Text className="mt-4 text-2xl text-white font-rBold">
+              {account ? account.name : "Not signed in"}
+            </Text>
+            {account && (
+              <Text className="mt-1 text-sm text-white/50 font-rRegular">
+                {account.email}
               </Text>
-            </TouchableOpacity>
+            )}
           </View>
-        ) : (
-          <CustomButton
-            title="Edit Profile"
-            handlePress={handleEdit}
-            containerStyles="mb-8 md:mb-10"
-          />
-        )}
-      </ScrollView>
+
+          {account ? (
+            <SettingSection title="Account">
+              <SettingLink
+                icon="create-outline"
+                label="Display Name"
+                value={account.name}
+                onPress={handleRename}
+              />
+              <SettingLink
+                icon="mail-outline"
+                label="Email"
+                value={account.email}
+                onPress={() => {}}
+              />
+              <SettingLink
+                icon="calendar-outline"
+                label="Member Since"
+                value={account.memberSince}
+                onPress={() => {}}
+              />
+            </SettingSection>
+          ) : (
+            <View className="items-center px-8 py-10 rounded-2xl bg-white/5">
+              <Ionicons
+                name="person-circle-outline"
+                size={40}
+                color="rgba(255,255,255,0.3)"
+              />
+              <Text className="mt-3 text-center text-white/50 font-rMedium">
+                You're using StemBit without an account. Sign in to sync your
+                profile across devices.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };

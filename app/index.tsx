@@ -1,25 +1,30 @@
-import { Text, View } from "react-native";
+import { Text, View, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Redirect } from "expo-router";
-import { StatusBar } from "react-native";
+
+import { usePreferences } from "../context/PreferencesContext";
 
 import "../global.css";
 
+// Launch gate: brand splash while preferences load, then route — first-time
+// users see onboarding, returning users go straight to login.
 export default function Page() {
+  const { prefs, isLoaded } = usePreferences();
+
   return (
-    <SafeAreaView className="flex-1 justify-center items-center mx-auto max-w-sm">
-      <View className="flex flex-row justify-center items-center w-full">
-        <Text className="pt-5 text-7xl tracking-tighter text-white font-rBlack">
+    <SafeAreaView className="items-center justify-center flex-1 max-w-sm mx-auto">
+      <View className="flex flex-row items-center justify-center w-full">
+        <Text className="pt-5 tracking-tighter text-white text-7xl font-rBlack">
           Stem
         </Text>
-        <Text className="pt-5 text-7xl tracking-tighter font-rBlack text-accent">
+        <Text className="pt-5 tracking-tighter text-7xl font-rBlack text-accent">
           Bits
         </Text>
-        {/* <Text className="text-2xl text-blue-500 underline font-cSemibold"  onPress={() => router.replace("/(tabs)/loop")}> Tabs </Text> */}
       </View>
       <StatusBar barStyle="light-content" />
-      {/* <Redirect href="/(tabs)/loop" /> */}
-      <Redirect href="/(auths)" />
+      {isLoaded && (
+        <Redirect href={prefs.seenOnboarding ? "/(auths)/login" : "/(auths)"} />
+      )}
     </SafeAreaView>
   );
 }

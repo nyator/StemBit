@@ -13,6 +13,7 @@ import audio from "../constants/audio";
 import { buildMetronomeHtml } from "../constants/metronomeEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
+import { usePreferences } from "./PreferencesContext";
 
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
@@ -52,6 +53,7 @@ type MetronomeContextValue = {
   currentBeat: number;
   timeSignature: TimeSignature;
   setTimeSignature: (timeSignature: TimeSignature) => void;
+  accents: number[];
   feelIndex: number;
   setFeelIndex: (index: number) => void;
   engineReady: boolean;
@@ -74,6 +76,7 @@ const MetronomeContext = createContext<MetronomeContextValue | null>(null);
 // ticking steadily no matter which tab is active.
 export function MetronomeProvider({ children }: { children: ReactNode }) {
   const { activeEngine, requestStart, release } = usePlaybackLock();
+  const { prefs } = usePreferences();
   const isBlockedByOtherEngine = activeEngine !== null && activeEngine !== "metro";
 
   const [bpm, setBpm] = useState(120);
@@ -83,6 +86,9 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
 
   const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURES[2]); // Default 4/4
   const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX); // Default Normal
+  // Preference: group accents in compound/odd meters (settings -> Playback).
+  // Off = only the downbeat is accented, in any meter.
+  const effectiveAccents = prefs.meterAccents ? timeSignature.accents : [0];
   const speedMultiplier = PLAYBACK_FEELS[feelIndex].multiplier;
   const getEffectiveBpm = (nextBpm = bpm, nextMultiplier = speedMultiplier) =>
     nextBpm * nextMultiplier;
@@ -176,7 +182,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       type: "start",
       bpm: getEffectiveBpm(),
       beats: timeSignature.beats,
-      accents: timeSignature.accents,
+      accents: effectiveAccents,
     });
   };
 
@@ -194,11 +200,11 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       postToEngine({
         type: "setBeats",
         beats: timeSignature.beats,
-        accents: timeSignature.accents,
+        accents: effectiveAccents,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeSignature]);
+  }, [timeSignature, prefs.meterAccents]);
 
   useEffect(() => {
     return () => {
@@ -216,6 +222,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
         currentBeat,
         timeSignature,
         setTimeSignature,
+        accents: effectiveAccents,
         feelIndex,
         setFeelIndex,
         engineReady,

@@ -6,7 +6,13 @@ import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { LOOPS, type Loop } from "../constants/loops";
 
-const SelectLoopView = () => {
+type SelectLoopViewProps = {
+  // Which loops to show — defaults to the full catalog. The browser screen
+  // passes a category- or artist-filtered subset.
+  loops?: Loop[];
+};
+
+const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const playbackSubscriptionRef =
@@ -35,7 +41,7 @@ const SelectLoopView = () => {
 
     await unloadCurrentSound();
 
-    const sound = createAudioPlayer(LOOPS[index].source);
+    const sound = createAudioPlayer(loops[index].source);
     soundRef.current = sound;
     sound.play();
     setPlayingIndex(index);
@@ -58,6 +64,13 @@ const SelectLoopView = () => {
       }
     };
   }, []);
+
+  // Row indices shift when the filter changes, so stop any running preview
+  // rather than letting it point at the wrong row.
+  React.useEffect(() => {
+    unloadCurrentSound();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loops]);
 
   const loadLoop = (loop: Loop) => {
     // Stop any preview that's still playing before handing off.
@@ -94,10 +107,21 @@ const SelectLoopView = () => {
     );
   };
 
+  if (loops.length === 0) {
+    return (
+      <View className="flex-1 items-center justify-center px-10">
+        <Ionicons name="musical-notes-outline" size={40} color="rgba(255,255,255,0.3)" />
+        <Text className="mt-4 text-center text-white/50 font-rMedium">
+          No loops here yet — they'll show up as the catalog grows.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView className="flex-1 px-5">
-        {LOOPS.map((item, i) => (
+        {loops.map((item, i) => (
           <TouchableOpacity
             key={item.key}
             className="flex-row items-center justify-between py-4 border-b border-white/10"
@@ -117,6 +141,9 @@ const SelectLoopView = () => {
               </Text>
               <Text className="text-white text-md font-rRegular">
                 {item.timeSignature}
+              </Text>
+              <Text className="text-xs text-accent font-rMedium">
+                {item.category}
               </Text>
             </View>
             <TouchableOpacity onPress={() => handlePlayPause(i)}>

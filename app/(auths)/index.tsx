@@ -1,167 +1,167 @@
-import { View, Text, TouchableOpacity, Image } from "react-native";
-import React, { useState, useRef, useEffect } from "react";
+import { useRef, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  FlatList,
+  useWindowDimensions,
+  StatusBar,
+  type ViewToken,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { StatusBar } from "react-native";
 import { useRouter } from "expo-router";
-
-import icons from "../../constants/icons";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { Animated } from "react-native";
+import { usePreferences } from "../../context/PreferencesContext";
+import { COLORS } from "../../constants/theme";
 
-const splashPages = [
+const SLIDES = [
   {
-    id: "1",
-    title: "The Breakdown 🎧",
+    id: "loops",
+    title: "Loops that never stumble",
     subtitle:
-      "Lorem ipsum dolor sit amet consectetur. Aliquet hac arcu sed pellentesque nunc eget.",
+      "Backing loops for worship, praise and funk — looped sample-accurately, warped to any tempo without changing key.",
     image: require("../../assets/images/splash1.png"),
   },
   {
-    id: "2",
-    title: "Practice And Performances 🎛️",
+    id: "tools",
+    title: "Your practice toolkit",
     subtitle:
-      "Lorem ipsum dolor sit amet consectetur. Aliquet hac arcu sed pellentesque nunc eget.",
+      "A rock-solid metronome with real meter accents, tap tempo, and sustained pads in every key — everything on one dark, stage-ready screen.",
     image: require("../../assets/images/splash2.png"),
   },
   {
-    id: "3",
-    title: "Buckle Up 🚀‍",
+    id: "sessions",
+    title: "Built for the show",
     subtitle:
-      "Lorem ipsum dolor sit amet consectetur. Aliquet hac arcu sed pellentesque nunc eget.",
+      "Turn your set into a session: an ordered list of loops you can fire instantly between songs. Rehearse it, then play it.",
     image: require("../../assets/images/splash3.png"),
   },
 ];
 
-export default function IndexScreen() {
+// First-launch onboarding: swipeable feature slides, shown once (the seen
+// flag persists via PreferencesContext; app/index.tsx routes past this for
+// returning users).
+export default function OnboardingScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const { setPref } = usePreferences();
   const [page, setPage] = useState(0);
-  // Create animated values for each dot
-  const dotAnimations = useRef(
-    splashPages.map(() => ({
-      width: new Animated.Value(8),
-      backgroundColor: new Animated.Value(0),
-    }))
-  ).current;
+  const listRef = useRef<FlatList>(null);
 
-  // Update animations when page changes
-  useEffect(() => {
-    splashPages.forEach((_, idx) => {
-      Animated.parallel([
-        Animated.timing(dotAnimations[idx].width, {
-          toValue: page === idx ? 25 : 8,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-        Animated.timing(dotAnimations[idx].backgroundColor, {
-          toValue: page === idx ? 1 : 0,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-      ]).start();
-    });
-  }, [page]);
-
-  const handleNext = () => {
-    if (page < splashPages.length - 1) {
-      setPage(page + 1);
-    }
-  };
-  const handleBack = () => {
-    if (page > 0) {
-      setPage(page - 1);
-    }
-  };
-
-  const handleGetStarted = () => {
+  const finish = () => {
+    setPref("seenOnboarding", true);
     router.replace("/login");
   };
 
+  const goTo = (index: number) => {
+    listRef.current?.scrollToIndex({ index, animated: true });
+  };
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length > 0 && viewableItems[0].index != null) {
+        setPage(viewableItems[0].index);
+      }
+    }
+  ).current;
+
+  const isLast = page === SLIDES.length - 1;
+
   return (
-    <SafeAreaView className="flex-1 justify-center items-center bg-primary">
+    <SafeAreaView className="flex-1 bg-primary">
       <StatusBar barStyle="light-content" />
-      <View className="flex-1 items-center px-5">
-        <View className="flex-row justify-center items-center py-7 w-screen">
-          <Text className="text-center text-white font-rMedium">
-            {splashPages[page].id} | {splashPages.length}
-          </Text>
-          {page < 2 && (
-            <TouchableOpacity
-              className="flex absolute right-7 rounded text-end"
-              onPress={handleGetStarted}
-            >
-              <Text className="text-xl text-white underline font-rRegular">
-                Skip
-              </Text>
-            </TouchableOpacity>
-          )}
+
+      {/* Top bar: brand + skip */}
+      <View className="flex-row items-center justify-between px-6 pt-2">
+        <View className="flex-row">
+          <Text className="text-2xl text-white font-rBlack">Stem</Text>
+          <Text className="text-2xl text-accent font-rBlack">Bits</Text>
         </View>
+        {!isLast && (
+          <TouchableOpacity onPress={finish} hitSlop={8}>
+            <Text className="text-base text-white/60 font-rMedium">Skip</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
-        <View className="mb-6 w-[28rem] h-[28rem] justify-start items-center overflow-hidden">
-          <Image
-            source={splashPages[page].image}
-            // style={{ width: 200, height: 200, borderRadius: 100 }}
-            className="object-contain w-full h-full"
-          />
-        </View>
-
-        <View className="flex justify-center items-start px-5 mb-4 w-screen">
-          <Text className="text-white text-[40px] max-w-[26rem] text-start font-rBold text-nowrap">
-            {splashPages[page].title}
-          </Text>
-        </View>
-
-        <Text className="mb-6 text-lg text-white">
-          {splashPages[page].subtitle}
-        </Text>
-
-        <View className="flex absolute bottom-10 flex-row justify-between items-center px-24 mt-8 w-screen">
-          <View className="flex-row justify-end items-end">
-            {splashPages.map((_, idx) => (
-              <Animated.View
-                key={idx}
-                style={{
-                  height: 8,
-                  width: dotAnimations[idx].width,
-                  borderRadius: 4,
-                  marginHorizontal: 4,
-                  backgroundColor: dotAnimations[
-                    idx
-                  ].backgroundColor.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["rgba(255,255,255,0.3)", "#fff"],
-                  }),
-                }}
-              />
-            ))}
-          </View>
-          {page < splashPages.length - 1 ? (
-            <TouchableOpacity
-              className="p-2 bg-[#098F6D] rounded-full "
-              onPress={handleNext}
-            >
-              <View className="flex-row items-center p-2 rounded-full bg-accent">
-                <Ionicons name="chevron-forward" size={24} color="#CFFCE8" />
-              </View>
-            </TouchableOpacity>
-          ) : (
-            // <View className="flex items-end">
-            <TouchableOpacity
-              onPress={handleGetStarted}
-              // className=""
+      {/* Swipeable slides */}
+      <FlatList
+        ref={listRef}
+        data={SLIDES}
+        keyExtractor={(item) => item.id}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
+        renderItem={({ item }) => (
+          <View style={{ width }} className="items-center justify-center px-8">
+            <View
+              style={{ width: width * 0.8, height: width * 0.8 }}
+              className="items-center justify-center mb-8 overflow-hidden"
             >
               <Image
-                source={icons.logoButton}
-                style={{ width: 50, height: 50 }}
-                className="object-contain"
+                source={item.image}
+                resizeMode="contain"
+                style={{ width: "100%", height: "100%" }}
               />
+            </View>
+            <Text className="mb-3 text-3xl text-center text-white font-rBold">
+              {item.title}
+            </Text>
+            <Text className="text-base leading-6 text-center text-white/60 font-rRegular">
+              {item.subtitle}
+            </Text>
+          </View>
+        )}
+      />
+
+      {/* Bottom bar: dots + next / get started */}
+      <View className="px-8 pb-6">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center">
+            {SLIDES.map((slide, idx) => (
+              <TouchableOpacity key={slide.id} onPress={() => goTo(idx)} hitSlop={6}>
+                <View
+                  style={{
+                    height: 8,
+                    width: page === idx ? 24 : 8,
+                    borderRadius: 4,
+                    marginRight: 8,
+                    backgroundColor:
+                      page === idx ? COLORS.accent : "rgba(255,255,255,0.25)",
+                  }}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {isLast ? (
+            <TouchableOpacity
+              onPress={finish}
+              className="flex-row items-center px-6 py-3 rounded-full bg-accent"
+            >
+              <Text className="mr-2 text-base text-black font-rBold">
+                Get Started
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color="black" />
             </TouchableOpacity>
-            // </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => goTo(page + 1)}
+              className="p-4 rounded-full bg-accent"
+              accessibilityLabel="Next"
+            >
+              <Ionicons name="chevron-forward" size={22} color="black" />
+            </TouchableOpacity>
           )}
         </View>
 
-        <View className="flex absolute bottom-0 right-2/4 flex-row">
-          <Text className="text-white/50 font-rMedium">by </Text>
+        <View className="flex-row justify-center mt-5">
+          <Text className="text-white/40 font-rMedium">by </Text>
           <Text className="text-accent font-rMedium">nehtek</Text>
         </View>
       </View>

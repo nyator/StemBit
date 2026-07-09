@@ -45,6 +45,10 @@ export const logoutUser = async () => {
   return account.deleteSession("current");
 };
 
+export const updateUserName = async (name: string) => {
+  return account.updateName(name);
+};
+
 export const getUserDetails = async () => {
   return account.get();
 };
