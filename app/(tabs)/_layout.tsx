@@ -4,7 +4,6 @@ import icons from "../../constants/icons";
 import { PlaybackLockProvider } from "../../context/PlaybackLockContext";
 import { MetronomeProvider } from "../../context/MetronomeContext";
 import { LoopPlaybackProvider } from "../../context/LoopPlaybackContext";
-import { SessionsProvider } from "../../context/SessionsContext";
 import FloatingEngineControls from "../../components/floatingEngineControls";
 
 type TabIconProps = {
@@ -36,9 +35,7 @@ export default function TabLayout() {
     <PlaybackLockProvider>
       <MetronomeProvider>
         <LoopPlaybackProvider>
-          <SessionsProvider>
-            <TabsWithFloatingControl />
-          </SessionsProvider>
+          <TabsWithFloatingControl />
         </LoopPlaybackProvider>
       </MetronomeProvider>
     </PlaybackLockProvider>
@@ -92,22 +89,6 @@ function TabsWithFloatingControl() {
               <TabIcon
                 icon={icons.wpad}
                 name="WPad"
-                color={focused ? "#08C192" : "#fff"}
-                focused={focused}
-              />
-            ),
-          }}
-        />
-
-        <Tabs.Screen
-          name="session"
-          options={{
-            title: "session",
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <TabIcon
-                icon={icons.session}
-                name="Session"
                 color={focused ? "#08C192" : "#fff"}
                 focused={focused}
               />
