@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { View, type ViewStyle } from "react-native";
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
 
@@ -39,9 +40,21 @@ const STOPS = [
 type AmbientGlowProps = {
   /** Position the 460x454 painted box; it is absolutely positioned. */
   style?: ViewStyle;
+  /**
+   * Multiplies the stop opacities. 1 is the Figma value, which composites to
+   * roughly a 17/255 difference against the canvas -- readable on a desktop
+   * monitor but close to invisible on a phone. Raise this if the bloom needs
+   * to actually register on device.
+   */
+  intensity?: number;
 };
 
-export default function AmbientGlow({ style }: AmbientGlowProps) {
+export default function AmbientGlow({ style, intensity = 1 }: AmbientGlowProps) {
+  // Unique per instance: two glows share a screen on some layouts, and under
+  // react-native-web the gradient ids land in one document-wide namespace, so
+  // a fixed id would make the second glow reference the first one's gradient.
+  const gradientId = `ambientGlow-${useId()}`;
+
   return (
     <View
       pointerEvents="none"
@@ -49,18 +62,18 @@ export default function AmbientGlow({ style }: AmbientGlowProps) {
     >
       <Svg width={GLOW_WIDTH} height={GLOW_HEIGHT} viewBox="0 0 460 454">
         <Defs>
-          <RadialGradient id="ambientGlow" cx="50%" cy="50%" r="50%">
+          <RadialGradient id={gradientId} cx="50%" cy="50%" r="50%">
             {STOPS.map(({ offset, opacity }) => (
               <Stop
                 key={offset}
                 offset={offset}
                 stopColor={COLORS.glow}
-                stopOpacity={opacity}
+                stopOpacity={Math.min(1, opacity * intensity)}
               />
             ))}
           </RadialGradient>
         </Defs>
-        <Ellipse cx={230} cy={227} rx={230} ry={227} fill="url(#ambientGlow)" />
+        <Ellipse cx={230} cy={227} rx={230} ry={227} fill={`url(#${gradientId})`} />
       </Svg>
     </View>
   );
