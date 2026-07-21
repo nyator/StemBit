@@ -1,11 +1,11 @@
 import { View, Text, TouchableOpacity, Image } from "react-native";
 import { useRouter, usePathname } from "expo-router";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 import { useMetronome } from "../context/MetronomeContext";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import icons from "../constants/icons";
 import { COLORS } from "../constants/theme";
+import { Stop } from "./icons";
 
 type PillProps = {
   onPress: () => void;
@@ -43,7 +43,7 @@ function EnginePill({ onPress, onStop, accentColor, label }: PillProps) {
         hitSlop={8}
         className="p-1 rounded-full bg-white/10"
       >
-        <MaterialCommunityIcons name="stop" size={18} color="white" />
+        <Stop size={18} />
       </TouchableOpacity>
     </TouchableOpacity>
   );

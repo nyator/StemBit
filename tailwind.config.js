@@ -39,10 +39,12 @@ module.exports = {
         },
         ink: {
           DEFAULT: "#FFFFFF",
-          onBrand: "#E7E7E7",
-          muted: "#A0A0AB",
-          faint: "rgba(255,255,255,0.41)",
-          inverse: "#010101",
+          onBrand: "#E7E7E7", // label on the gradient button
+          muted: "#A0A0AB", // group headers, meta values
+          dim: "#9C9C9C", // onboarding nav labels
+          soft: "rgba(255,255,255,0.7)", // supporting copy under a heading
+          faint: "rgba(255,255,255,0.41)", // legal copy
+          inverse: "#010101", // label on white surfaces
         },
         // Separators. The design uses a desaturated teal-navy haze rather than
         // a grey line, so these are deliberately not white alphas.

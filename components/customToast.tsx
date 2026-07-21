@@ -1,8 +1,7 @@
 import { View, Text } from "react-native";
 import React from "react";
+import { TickCircle, Warning2 } from "./icons";
 
-import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 type customToastProps = {
   type: "success" | "error" | "warning";
@@ -17,13 +16,13 @@ export default function CustomToast({ type, title, desc }: customToastProps) {
     >
       <View className={`flex flex-row justify-center items-center gap-[2px]`}>
         {type === "success" && (
-          <Ionicons name="checkmark-done-circle" size={22} color="#10B981" />
+          <TickCircle size={22} color="#10B981" />
         )}
         {type === "error" && (
-          <MaterialIcons name="error" size={22} color="#EF4444" />
+          <Warning2 size={22} color="#EF4444" />
         )}
         {type === "warning" && (
-          <Ionicons name="warning" size={22} color="#F59E0B" />
+          <Warning2 size={22} color="#F59E0B" />
         )}
         <Text className="text-[15px] text-black font-satoshiMedium">
           {title ? title : "title"}

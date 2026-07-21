@@ -1,8 +1,8 @@
 import { View, Text, TextInput, TouchableOpacity, Image } from "react-native";
 import React, { useState } from "react";
 
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { COLORS } from "../constants/theme";
+import { Eye, EyeSlash } from "./icons";
 
 type FormFieldProps = {
   title?: string;
@@ -41,9 +41,9 @@ const FormField = ({
         {(title === "Password" || title === "Confirm Password") && (
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
             {!showPassword ? (
-              <Ionicons name="eye-off-outline" size={18} color="white" />
+              <EyeSlash size={18} color="white" />
             ) : (
-              <Ionicons name="eye-outline" size={18} color="white" />
+              <Eye size={18} color="white" />
             )}
           </TouchableOpacity>
         )}

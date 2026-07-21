@@ -10,12 +10,13 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import { SettingLink, SettingSection } from "../../components/ui/settingRow";
 import { getUserDetails, updateUserName } from "../../lib/appwrite";
 import { COLORS } from "../../constants/theme";
+import { Edit2, Sms, Calendar } from "../../components/icons";
+import { ProfileCircle } from "../../components/icons";
 
 type AccountInfo = {
   name: string;
@@ -122,19 +123,19 @@ const UserScreen = () => {
           {account ? (
             <SettingSection title="Account">
               <SettingLink
-                icon="create-outline"
+                icon={Edit2}
                 label="Display Name"
                 value={account.name}
                 onPress={handleRename}
               />
               <SettingLink
-                icon="mail-outline"
+                icon={Sms}
                 label="Email"
                 value={account.email}
                 onPress={() => {}}
               />
               <SettingLink
-                icon="calendar-outline"
+                icon={Calendar}
                 label="Member Since"
                 value={account.memberSince}
                 onPress={() => {}}
@@ -142,11 +143,8 @@ const UserScreen = () => {
             </SettingSection>
           ) : (
             <View className="items-center px-8 py-10 rounded-2xl bg-white/5">
-              <Ionicons
-                name="person-circle-outline"
-                size={40}
-                color="rgba(255,255,255,0.3)"
-              />
+              <ProfileCircle size={40}
+                color="rgba(255,255,255,0.3)" />
               <Text className="mt-3 text-center text-white/50 font-satoshiMedium">
                 You're using StemBit without an account. Sign in to sync your
                 profile across devices.

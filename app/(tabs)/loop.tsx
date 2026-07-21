@@ -21,8 +21,7 @@ import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
 import PlaySvg from "../../assets/icons/playSvg";
 import PauseSvg from "../../assets/icons/pauseSvg";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import AntDesign from "@expo/vector-icons/AntDesign";
+import { AddCircle, MinusCircle, Musicnote } from "../../components/icons";
 
 export default function LoopScreen() {
   const router = useRouter();
@@ -105,7 +104,7 @@ export default function LoopScreen() {
               onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
-              <AntDesign name="minus" size={30} color="white" />
+              <MinusCircle size={30} color="white" />
             </TouchableOpacity>
 
             <TextInput
@@ -126,7 +125,7 @@ export default function LoopScreen() {
               onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
-              <AntDesign name="plus" size={30} color="white" />
+              <AddCircle size={30} color="white" />
             </TouchableOpacity>
           </View>
           <Text className="text-sm text-white font-satoshiMedium">Beats per min</Text>
@@ -138,11 +137,8 @@ export default function LoopScreen() {
           activeOpacity={0.7}
         >
           <View className="p-4 border-2 border-dashed rounded-full border-black/30 bg-black/20">
-            <MaterialCommunityIcons
-              name="gesture-double-tap"
-              size={60}
-              color="black"
-            />
+            <Musicnote size={60}
+              color="black" />
           </View>
         </TouchableOpacity>
 

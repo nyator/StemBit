@@ -27,8 +27,7 @@ import { COLORS } from "../../constants/theme";
 import EclipseSvg from "../../assets/icons/eclipseSvg";
 import PlaySvg from "../../assets/icons/playSvg";
 import PauseSvg from "../../assets/icons/pauseSvg";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import AntDesign from "@expo/vector-icons/AntDesign";
+import { AddCircle, MinusCircle, Musicnote, TickCircle } from "../../components/icons";
 
 export default function MetroScreen() {
   const {
@@ -107,12 +106,9 @@ export default function MetroScreen() {
                   {item.label}
                 </Text>
                 {item.label === timeSignature.label && (
-                  <MaterialCommunityIcons
-                    name="check-circle"
-                    size={18}
+                  <TickCircle size={18}
                     color="#000"
-                    style={{ marginLeft: 8 }}
-                  />
+                    style={{ marginLeft: 8 }} />
                 )}
               </TouchableOpacity>
             )}
@@ -205,7 +201,7 @@ export default function MetroScreen() {
               onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
-              <AntDesign name="minus" size={30} color="white" />
+              <MinusCircle size={30} color="white" />
             </TouchableOpacity>
 
             <TextInput
@@ -226,7 +222,7 @@ export default function MetroScreen() {
               onPressOut={endHold}
               className="p-2 rounded-lg bg-white/10"
             >
-              <AntDesign name="plus" size={30} color="white" />
+              <AddCircle size={30} color="white" />
             </TouchableOpacity>
           </View>
           <Text className="text-sm text-white font-satoshiMedium">Beats per min</Text>
@@ -257,11 +253,8 @@ export default function MetroScreen() {
           activeOpacity={0.7}
         >
           <View className="p-4 border-2 border-dashed rounded-full border-black/30 bg-black/20">
-            <MaterialCommunityIcons
-              name="gesture-double-tap"
-              size={30}
-              color="black"
-            />
+            <Musicnote size={30}
+              color="black" />
           </View>
         </TouchableOpacity>
 

@@ -5,8 +5,6 @@ import { MetronomeProvider } from '../../context/MetronomeContext';
 import { PlaybackLockProvider } from '../../context/PlaybackLockContext';
 import { PreferencesProvider } from '../../context/PreferencesContext';
 
-jest.mock('@expo/vector-icons/AntDesign', () => 'AntDesign');
-jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons');
 
 // The metronome's timing engine runs inside a WebView (see
 // constants/metronomeEngine.ts) — mock it out along with the asset loading

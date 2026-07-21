@@ -39,7 +39,7 @@ export type TimeSignature = (typeof TIME_SIGNATURES)[number];
 // set BPM, without changing the BPM number itself. Half time doubles the gap
 // between clicks; double time halves it (1 2 3 4 1 2 3 4).
 export const PLAYBACK_FEELS = [
-  { label: "Half Time", short: "½×", multiplier: 0.5 },
+  { label: "Half Time", short: "0.5×", multiplier: 0.5 },
   { label: "Normal", short: "1×", multiplier: 1 },
   { label: "Double Time", short: "2×", multiplier: 2 },
 ];

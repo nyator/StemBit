@@ -1,7 +1,6 @@
 import { View, Text, TouchableOpacity } from 'react-native'
 import React from 'react'
 import { Stack, useRouter } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons' // or any icon library you use
 
 
 const LoopSoundsLayout = () => {

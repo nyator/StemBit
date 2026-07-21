@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ReactNode } from "react";
+import { ArrowLeft } from "../icons";
 
 type ScreenHeaderProps = {
   title: string;
@@ -29,12 +29,12 @@ export default function ScreenHeader({
           className="p-2 rounded-full bg-white/10"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={22} color="white" />
+          <ArrowLeft size={22} color="white" />
         </TouchableOpacity>
       ) : (
         <View style={{ width: 38 }} />
       )}
-      <Text className="text-xl text-white font-satoshiBold">{title}</Text>
+      <Text className="text-2xl text-white font-spaceBold">{title}</Text>
       <View style={{ minWidth: 38, alignItems: "flex-end" }}>{action}</View>
     </View>
   );

@@ -1,37 +1,39 @@
 import { View, Text, StatusBar, ScrollView, TouchableOpacity, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import { COLORS, SUPPORT_EMAIL } from "../../constants/theme";
+import {
+  Clipboard,
+  type IconComponent,
+  Musicnote,
+  Setting4,
+  Sms,
+  VideoCircle,
+} from "../../components/icons";
 
 const GUIDES: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconComponent;
   title: string;
   body: string;
 }[] = [
   {
-    icon: "musical-notes-outline",
+    icon: Musicnote,
     title: "Bits (Loops)",
     body: "Browse loops by category or artist, preview them, and load one with the Load dialog. Change the BPM freely — loops warp to your tempo without changing key, and the loop point stays seamless.",
   },
   {
-    icon: "grid-outline",
-    title: "WPad",
+    icon: Clipboard,
+    title: "Pad",
     body: "Sustained pads in every major and minor key. Tap a key to fade it in; tap again to stop. Switching keys crossfades smoothly so you can move with the song.",
   },
   {
-    icon: "speedometer-outline",
+    icon: Setting4,
     title: "Metronome",
-    body: "Set the tempo with +/- (hold to scrub), type it in, or tap the tempo pad in time. Choose a time signature — compound and odd meters click in their natural groups. Use ½× / 1× / 2× to change the feel without changing the BPM.",
+    body: "Set the tempo with +/- (hold to scrub), type it in, or tap the tempo pad in time. Choose a time signature — compound and odd meters click in their natural groups. Use 0.5× / 1× / 2× to change the feel without changing the BPM.",
   },
   {
-    icon: "list-outline",
-    title: "Sessions",
-    body: "A session is your setlist: an ordered list of loops for a show. Build it at rehearsal, then tap any loop to load it instantly between songs. Long-press to rename, reorder with the arrows.",
-  },
-  {
-    icon: "play-circle-outline",
+    icon: VideoCircle,
     title: "One sound at a time",
     body: "The metronome and loop player never fight: starting one asks you to stop the other. A floating pill shows anything playing from another tab — tap it to jump there, or hit its stop button.",
   },
@@ -51,7 +53,7 @@ const Help = () => {
           >
             <View className="flex-row items-center mb-2">
               <View className="items-center justify-center w-8 h-8 mr-3 rounded-lg bg-brand/20">
-                <Ionicons name={guide.icon} size={17} color={COLORS.brand} />
+                <guide.icon size={17} color={COLORS.brand} />
               </View>
               <Text className="text-base text-white font-satoshiBold">
                 {guide.title}
@@ -71,7 +73,7 @@ const Help = () => {
             ).catch(() => {})
           }
         >
-          <Ionicons name="mail-outline" size={18} color="black" />
+          <Sms size={18} color="black" />
           <Text className="ml-2 text-base text-black font-satoshiBold">
             Email Support
           </Text>

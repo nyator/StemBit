@@ -29,20 +29,27 @@ export const COLORS = {
   borderDial: "rgba(3,40,54,0.26)", // metronome dial ring
   borderSegment: "rgba(47,47,47,0.7)", // segmented control, unselected
   borderGlass: "rgba(255,255,255,0.12)", // floating nav bar
-  borderAccent: "rgba(103,175,203,0.26)", // primary gradient button
+  borderBrand: "rgba(103,175,203,0.26)", // primary gradient button
+  borderIdle: "#4F4F4F", // unselected radio ring
+
+  // Slider track behind the filled portion.
+  track: "#2D3332",
 
   // Brand. It's a gradient, not a flat color -- prefer GRADIENTS.brand and
   // reach for these only where a single value is required.
   brand: "#008BC2", // active nav label, flat fallback
   brandFrom: "#58BEEC", // gradient start
   brandTo: "#007EB7", // gradient end
-  brandBlue: "#2563EB", // switch, "on" track
+  brandBlue: "#2563EB", // Figma's control blue -- superseded by CONTROL below
 
   // Text
   text: "#FFFFFF",
   textOnBrand: "#E7E7E7", // label on the gradient button
   textMuted: "#A0A0AB", // BPM caption, group headers, meta values
+  textDim: "#9C9C9C", // onboarding nav labels and body copy
+  textSoft: "rgba(255,255,255,0.7)", // supporting copy under a heading
   textFaint: "rgba(255,255,255,0.41)", // legal copy
+  hairlineOnDark: "rgba(255,255,255,0.3)", // onboarding arrow strokes
   textInverse: "#010101", // label on white buttons
 
   white: "#FFFFFF",
@@ -53,6 +60,25 @@ export const COLORS = {
   danger: "#EF4444",
   success: "#10B981",
   warning: "#F59E0B",
+} as const;
+
+/* -------------------------------------------------------------------------- */
+/* Controls                                                                    */
+/* -------------------------------------------------------------------------- */
+
+// Switches, radios and sliders share one fill so they read as the same family
+// when they sit in adjacent rows of the same screen -- which they do on the
+// Audio Output / Volume screen.
+//
+// Figma draws these in #2563EB, a generic system blue. We use the brand accent
+// instead so the controls belong to the rest of the UI rather than looking
+// borrowed from the OS. Change `active` here and every control follows.
+export const CONTROL = {
+  active: COLORS.brand, // filled radio, switch "on" track, slider fill
+  idle: "#3A3A3F", // switch "off" track
+  track: COLORS.track, // slider's unfilled remainder
+  knob: "#F4F3F4", // switch thumb
+  ring: COLORS.white, // outline on a selected radio
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -213,4 +239,4 @@ export const SIZES = {
 /* -------------------------------------------------------------------------- */
 
 export const APP_VERSION = "1.0.0";
-export const SUPPORT_EMAIL = "support@nehtek.com";
+export const SUPPORT_EMAIL = "support.sb@builtelo.com";

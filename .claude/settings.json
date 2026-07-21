@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"^\\(android|ios\\)$|podspec\")",
+      "Bash(node -p \"require\\('./app.json'\\).expo.newArchEnabled\")",
+      "Bash(node -e ' *)",
+      "Bash(node -p \"require\\('./node_modules/expo-constants/package.json'\\).version\")",
+      "Bash(node -e \"const a=require\\('./app.json'\\).expo; console.log\\('version:', a.version, '| ios.buildNumber:', a.ios?.buildNumber ?? 'unset', '| android.versionCode:', a.android?.versionCode ?? 'unset'\\)\")"
+    ]
+  }
+}

@@ -1,6 +1,16 @@
-import { ScrollView, StatusBar, Text, TouchableOpacity, Alert, Linking } from "react-native";
+import {
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  Alert,
+  Linking,
+  Platform,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import Constants from "expo-constants";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import {
@@ -10,7 +20,28 @@ import {
 } from "../../components/ui/settingRow";
 import { usePreferences } from "../../context/PreferencesContext";
 import { logoutUser } from "../../lib/appwrite";
-import { APP_VERSION, SUPPORT_EMAIL } from "../../constants/theme";
+import {
+  ProfileCircle,
+  VolumeHigh,
+  DocumentText,
+  ShieldSecurity,
+  NotificationBing,
+  Flash,
+  MessageQuestion,
+} from "../../components/icons";
+
+// Read from app.json via expo-constants rather than a hardcoded constant, so
+// these can't drift from what actually ships.
+//
+// The build number is whatever the store sees: iOS calls it buildNumber,
+// Android versionCode. Neither is set in app.json yet, so this renders an em
+// dash until one is added (or until every build bumps it via EAS).
+const VERSION = Constants.expoConfig?.version ?? "—";
+const BUILD =
+  Platform.select({
+    ios: Constants.expoConfig?.ios?.buildNumber,
+    android: Constants.expoConfig?.android?.versionCode?.toString(),
+  }) ?? "—";
 
 const SettingsScreen = () => {
   const router = useRouter();
@@ -39,31 +70,33 @@ const SettingsScreen = () => {
       <StatusBar barStyle="light-content" />
       <ScreenHeader title="Settings" />
 
-      <ScrollView className="flex-1 px-5">
+      <ScrollView className="flex-1 px-5 ">
         <SettingSection title="Account">
           <SettingLink
-            icon="person-outline"
+            icon={ProfileCircle}
             label="Profile"
-            sublabel="Your account details"
             onPress={() => router.push("/user")}
-          />
-          <SettingLink
-            icon="key-outline"
-            label="Change Password"
-            onPress={() => router.push("/(auths)/reset-password")}
           />
         </SettingSection>
 
-        <SettingSection title="Playback">
+        <SettingSection title=" Audio / Playback">
+          <SettingLink
+            icon={VolumeHigh}
+            label="Audio Output / Volume"
+            onPress={() => router.push("/audiovolume")}
+          />
+        </SettingSection>
+
+        <SettingSection title=" App">
           <SettingSwitch
-            icon="pulse-outline"
-            label="Meter Accents"
-            sublabel="Accent group beats in 6/8, 7/8, 5/4 and other meters"
+            icon={NotificationBing}
+            label="Notification"
             value={prefs.meterAccents}
+            border={true}
             onValueChange={(value) => setPref("meterAccents", value)}
           />
           <SettingSwitch
-            icon="radio-button-on-outline"
+            icon={Flash}
             label="Haptic Feedback"
             sublabel="Vibrate on pad presses and tap tempo"
             value={prefs.haptics}
@@ -73,34 +106,39 @@ const SettingsScreen = () => {
 
         <SettingSection title="About">
           <SettingLink
-            icon="help-circle-outline"
+            icon={MessageQuestion}
             label="Help & Support"
+            border={true}
             onPress={() => router.push("/help")}
           />
           <SettingLink
-            icon="mail-outline"
-            label="Contact Us"
-            sublabel={SUPPORT_EMAIL}
-            onPress={() =>
-              Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=StemBit`).catch(
-                () => {}
-              )
-            }
+            icon={DocumentText}
+            label="Terms of Service"
+            border={true}
+            onPress={() => router.push("/termsofservice")}
           />
           <SettingLink
-            icon="information-circle-outline"
-            label="Version"
-            value={APP_VERSION}
-            onPress={() => {}}
+            icon={ShieldSecurity}
+            label="Privacy Policy"
+            onPress={() => router.push("/privacypolicy")}
           />
         </SettingSection>
 
         <TouchableOpacity
-          className="items-center py-4 mb-10 border rounded-2xl border-danger/40 bg-danger/10"
+          className="self-center items-center py-2 border rounded-2xl bg-white w-28"
           onPress={handleLogout}
         >
-          <Text className="text-base text-danger font-satoshiBold">Log Out</Text>
+          <Text className="text-base font-spaceBold">Log Out</Text>
         </TouchableOpacity>
+
+        <View className="items-center mt-3 mb-10">
+          <Text className="text-sm text-ink-muted font-spaceRegular">
+            version {VERSION}
+          </Text>
+          <Text className="text-overline text-sm text-ink-muted font-spaceRegular">
+            build {BUILD}
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
