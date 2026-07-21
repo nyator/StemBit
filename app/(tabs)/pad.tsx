@@ -11,6 +11,10 @@ import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import audio from "../../constants/audio";
 import { usePreferences } from "../../context/PreferencesContext";
+import { COLORS } from "../../constants/theme";
+import { Setting4 } from "../../components/icons";
+import AmbientGlow from "../../components/ui/ambientGlow";
+import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 
 const NOTE_INDEX: Record<string, number> = {
   C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5,
@@ -35,9 +39,19 @@ function sourceForKey(note: string, minor: boolean) {
 
 const DEFAULT_PAD_SOURCE: number = audio.pads.C;
 
-const MAJOR_KEYS = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"];
-const MINOR_NOTE_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
-const MINOR_KEYS = MINOR_NOTE_LETTERS.map((n) => `${n} minor`);
+// Same 12 chromatic pads for both major and minor -- only the sample source
+// (relative major clip, see sourceForKey) and the active color differ.
+const KEYS = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"];
+
+// Sharp keys show their enharmonic flat name too, matching the Figma pad grid
+// (e.g. "C#/Db"). Natural keys are unambiguous, so they're left as-is.
+const KEY_DISPLAY_LABELS: Record<string, string> = {
+  "A#": "A#/Bb",
+  "C#": "C#/Db",
+  "D#": "D#/Eb",
+  "F#": "F#/Gb",
+  "G#": "G#/Ab",
+};
 
 const CROSSFADE_MS = 1200;
 // Loop crossfade: the next copy of the pad starts and fades in over this long
@@ -121,7 +135,7 @@ export default function PadScreen() {
   const padPlayer = padPlayerRef.current;
 
   const isMinor = majorMinor.toLowerCase() === "minor";
-  const activeKeys = isMinor ? MINOR_KEYS : MAJOR_KEYS;
+  const activeKeys = KEYS;
 
   useEffect(() => {
     setAudioModeAsync({
@@ -311,7 +325,7 @@ export default function PadScreen() {
       return;
     }
 
-    const noteLetter = isMinor ? MINOR_NOTE_LETTERS[idx] : MAJOR_KEYS[idx];
+    const noteLetter = KEYS[idx];
     const source = sourceForKey(noteLetter, isMinor);
 
     padPlayer.playToken += 1;
@@ -355,40 +369,64 @@ export default function PadScreen() {
 
   return (
     <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
+
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full px-5">
-        <View className="flex flex-row items-center justify-center w-full mt-9 border-b border-white/10">
-          <TouchableOpacity
-            className={`px-10 py-4 items-center justify-center border-b-2 -mb-[1px] ${!isMinor ? "border-green-400" : "border-transparent"
-              }`}
-            onPress={() => setMajorMinor("major")}
-            activeOpacity={0.7}
-          >
-            <Text className={`font-satoshiBold text-base ${!isMinor ? "text-green-400 font-spaceBold" : "text-gray-500"}`}>
-              Major
-            </Text>
-          </TouchableOpacity>
 
-          {/* Clean Divider */}
-          <View className="w-[1px] h-4 bg-white/10 mx-2" />
+        <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+        <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
 
-          <TouchableOpacity
-            className={`px-10 py-4 items-center justify-center border-b-2 -mb-[1px] ${isMinor ? "border-green-400" : "border-transparent"
-              }`}
-            onPress={() => setMajorMinor("minor")}
-            activeOpacity={0.7}
-          >
-            <Text className={`font-satoshiBold text-base ${isMinor ? "text-green-400 font-spaceBold" : "text-gray-500"}`}>
-              Minor
-            </Text>
-          </TouchableOpacity>
+        <View>
+          <View className="flex flex-row items-center justify-between w-full mt-9">
+            <View className="flex-row p-1 rounded-xl bg-white/10">
+              <TouchableOpacity
+                accessibilityLabel="Major"
+                onPress={() => setMajorMinor("major")}
+                className="px-4 py-2 rounded-lg"
+                style={{ backgroundColor: !isMinor ? COLORS.brand : "transparent" }}
+              >
+                <Text
+                  className="text-md font-satoshiMedium"
+                  style={{ color: !isMinor ? COLORS.white : COLORS.white }}
+                >
+                  Maj
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                accessibilityLabel="Minor"
+                onPress={() => setMajorMinor("minor")}
+                className="px-4 py-2 rounded-lg"
+                style={{ backgroundColor: isMinor ? COLORS.danger : "transparent" }}
+              >
+                <Text
+                  className="text-md font-satoshiMedium"
+                  style={{ color: isMinor ? COLORS.white : COLORS.white }}
+                >
+                  Min
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Options screen TBD -- just the entry point for now. */}
+            <TouchableOpacity
+              className="items-center justify-center w-9 h-9 rounded-full bg-white/5"
+              onPress={() => { }}
+              activeOpacity={0.7}
+              accessibilityLabel="Pad options"
+            >
+              <Setting4 size={20} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
         </View>
+
         <View className="flex flex-row flex-wrap items-center justify-center w-full mt-5">
           {activeKeys.map((key, idx) => (
             <LaunchPadComponent
               key={key}
               isPlaying={keySelected === `${idx}`}
-              selectKey={key}
+              activeColor={isMinor ? COLORS.danger : COLORS.brand}
+              selectKey={KEY_DISPLAY_LABELS[key] ?? key}
               onPress={() => handlePadPress(idx)}
             />
           ))}

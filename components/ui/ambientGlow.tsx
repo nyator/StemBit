@@ -43,13 +43,14 @@ type AmbientGlowProps = {
   /**
    * Multiplies the stop opacities. 1 is the Figma value, which composites to
    * roughly a 17/255 difference against the canvas -- readable on a desktop
-   * monitor but close to invisible on a phone. Raise this if the bloom needs
-   * to actually register on device.
+   * monitor but close to invisible on a phone. Defaults to 2.5, which brings
+   * that difference up to a phone-visible ~43/255; override per-instance if a
+   * screen needs it dimmer or stronger.
    */
   intensity?: number;
 };
 
-export default function AmbientGlow({ style, intensity = 1 }: AmbientGlowProps) {
+export default function AmbientGlow({ style, intensity = 2.5 }: AmbientGlowProps) {
   // Unique per instance: two glows share a screen on some layouts, and under
   // react-native-web the gradient ids land in one document-wide namespace, so
   // a fixed id would make the second glow reference the first one's gradient.

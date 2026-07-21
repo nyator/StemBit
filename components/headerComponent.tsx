@@ -1,6 +1,6 @@
-import {View, Text, Image, TouchableOpacity} from "react-native";
-import icons from "../constants/icons";
+import {View, Text, TouchableOpacity} from "react-native";
 import {useRouter} from "expo-router";
+import { Setting2, Setting4 } from "./icons";
 
 const HeaderComponent = () => {
     const router = useRouter();
@@ -9,26 +9,24 @@ const HeaderComponent = () => {
         <View className="flex flex-row justify-between items-center px-5 my-5 w-full">
             <View className="flex flex-row justify-between items-center w-2/5">
                 <View className="flex flex-row justify-center items-center">
-                    <Text className="text-3xl text-white font-satoshiBold">Stem</Text>
-                    <Text className="text-3xl text-brand font-satoshiBold">Bits</Text>
+                    <Text className="text-3xl text-white font-wordmark">Stembits</Text>
                 </View>
             </View>
 
-            <View>
+            <View className="flex-row">
                 <TouchableOpacity
-                    className="p-2 rounded-full bg-white/10"
+                    className="p-2 rounded-full"
+                    onPress={() => router.push("/(settings)/audiovolume")}
+                    accessibilityLabel="Go to settings"
+                >
+                    <Setting4 size={24} color="white" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    className="p-2 rounded-full"
                     onPress={() => router.push("/(settings)")}
                     accessibilityLabel="Go to settings"
                 >
-                    <Image
-                        source={icons.setting}
-                        resizeMode="contain"
-                        style={{
-                            width: 24,
-                            height: 24,
-                        }}
-                        tintColor="white"
-                    />
+                    <Setting2 size={24} color="white" />
                 </TouchableOpacity>
             </View>
         </View>

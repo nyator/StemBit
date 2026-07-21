@@ -3,14 +3,12 @@ import {
   View,
   Text,
   StatusBar,
-  Image,
   TouchableOpacity,
   TextInput,
   Modal,
   Pressable,
   FlatList,
 } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useMetronome,
@@ -22,12 +20,18 @@ import {
 import { useBpmControl } from "../../hooks/useBpmControl";
 
 import HeaderComponent from "../../components/headerComponent";
-import icons from "../../constants/icons";
-import { COLORS } from "../../constants/theme";
-import EclipseSvg from "../../assets/icons/eclipseSvg";
-import PlaySvg from "../../assets/icons/playSvg";
-import PauseSvg from "../../assets/icons/pauseSvg";
-import { AddCircle, MinusCircle, Musicnote, TickCircle } from "../../components/icons";
+import AmbientGlow from "../../components/ui/ambientGlow";
+import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import { GlowRing } from "../../components/ui/dialGlowRing";
+import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
+import {
+  AddCircle,
+  MinusCircle,
+  Information,
+  PlayFilled,
+  Stop,
+  TickCircle,
+} from "../../components/icons";
 
 export default function MetroScreen() {
   const {
@@ -70,7 +74,6 @@ export default function MetroScreen() {
       <Pressable
         style={{
           flex: 1,
-          // backgroundColor: "rgba(0,0,0,0.4)",
           justifyContent: "flex-end",
           alignItems: "stretch",
         }}
@@ -120,8 +123,8 @@ export default function MetroScreen() {
   );
 
   // --- Beat Visuals ---
-  // A row of circles, one per beat. The downbeat lights up green, secondary
-  // group accents (e.g. beat 4 of 6/8) light a dimmer green, other beats
+  // A row of dots, one per beat. The downbeat lights up brand blue; secondary
+  // group accents (e.g. beat 4 of 6/8) light a dimmer blue, other beats
   // white. Idle group-accent dots are slightly brighter so the meter's
   // grouping is visible even before pressing play.
   const renderBeatVisuals = () => {
@@ -130,82 +133,78 @@ export default function MetroScreen() {
       const isCurrent = i === currentBeat;
       const isSecondaryAccent = i !== 0 && accents.includes(i);
       const activeColor =
-        i === 0 ? COLORS.brand : isSecondaryAccent ? COLORS.brandFrom : COLORS.textOnBrand;
+        i === 0 ? COLORS.brand : isSecondaryAccent ? COLORS.brandFrom : COLORS.text;
       const idleColor = isSecondaryAccent
-        ? "rgba(8,193,146,0.3)"
+        ? "rgba(0,139,194,0.3)"
         : "rgba(255,255,255,0.15)";
       beats.push(
         <View
           key={i}
           style={{
-            width: 14,
-            height: 14,
-            borderRadius: 14,
-            marginHorizontal: 7,
+            width: isCurrent ? 12 : 8,
+            height: isCurrent ? 12 : 8,
+            borderRadius: 6,
+            marginHorizontal: 3,
             backgroundColor: isCurrent ? activeColor : idleColor,
-            borderWidth: isCurrent ? 3 : 1,
-            borderColor: isCurrent ? activeColor : "rgba(255,255,255,0.25)",
-            justifyContent: "center",
-            alignItems: "center",
-            shadowColor: isCurrent ? activeColor : idleColor,
-            shadowOpacity: isCurrent ? 0.5 : 0,
-            shadowRadius: isCurrent ? 8 : 0,
-            elevation: isCurrent ? 6 : 0,
           }}
-        ></View>
+        />
       );
     }
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "center",
-          alignItems: "center",
-          marginTop: 18,
-          marginBottom: 8,
-        }}
-      >
+      <View className="flex-row items-center justify-center" style={{ height: 12 }}>
         {beats}
       </View>
     );
   };
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
+    <SafeAreaView className="items-center justify-start flex-1 overflow-hidden bg-canvas">
+      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
+
       <HeaderComponent />
-      <View className="items-center justify-center flex-1 w-full">
-        <View className="flex flex-col items-center justify-center mb-10">
+
+      <View className="items-center justify-center flex-1 w-full px-instrument">
+        {/* Time Signature */}
+        <View className="items-center gap-[10px] mb-[18px]">
+          <View className="flex-row items-center gap-[5px]">
+            <Text className="text-white text-label font-spaceBold">Time Signature</Text>
+            <Information size={16} />
+          </View>
           <TouchableOpacity
             onPress={() => setModalVisible(true)}
-            className="px-3 py-2 w-full bg-white/10 rounded-xl border-[1.2px] border-black/40 flex flex-row justify-stretch items-center "
+            style={{ width: SIZES.segmentWidth }}
+            className="items-center justify-center py-[7px] bg-white rounded-sm"
           >
-            <View className="flex-row mr-2">
-              <Image
-                source={icons.timeSign}
-                className="w-8 h-8"
-                tintColor="#ffffff"
-              />
-            </View>
-            <View className="w-[2px] h-8 bg-black/40 mr-3"></View>
-            <Text className="text-lg text-white font-satoshiBold ">
+            <Text className="text-black text-title font-spaceBold">
               {timeSignature.label}
             </Text>
           </TouchableOpacity>
         </View>
-        <View className="flex items-center">
-          <View className="flex flex-row items-end justify-between w-3/5">
-            <TouchableOpacity
-              accessibilityLabel="Decrease BPM"
-              onPress={decrease}
-              onLongPress={startHoldDecrease}
-              onPressOut={endHold}
-              className="p-2 rounded-lg bg-white/10"
-            >
-              <MinusCircle size={30} color="white" />
-            </TouchableOpacity>
 
+        {/* Dial */}
+        <View
+          className="items-center justify-center w-full mb-[18px]"
+          style={{ height: 249 }}
+        >
+          <GlowRing size={288} radius={119.5} strokeWidth={1} blur={12} opacity={0.15} />
+          <GlowRing size={244} radius={109} strokeWidth={2} blur={6} opacity={0.3} />
+          <View
+            className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
+            style={{
+              width: SIZES.dial,
+              height: SIZES.dial,
+              borderWidth: 3,
+              ...SHADOWS.glow,
+            }}
+          >
             <TextInput
-              className="w-20 text-4xl text-center text-white font-spaceBold"
+              className="p-0 text-center font-spaceBold"
+              style={{
+                minWidth: 110,
+                fontSize: 48,
+                color: isPlaying ? COLORS.brand : COLORS.white,
+              }}
               value={bpmText}
               onChangeText={handleBpmTextChange}
               onEndEditing={commitBpmText}
@@ -214,78 +213,98 @@ export default function MetroScreen() {
               selectTextOnFocus
               underlineColorAndroid="transparent"
             />
+            <Text className="uppercase text-label text-ink-muted font-satoshiBold">
+              BPM
+            </Text>
+          </View>
+        </View>
 
-            <TouchableOpacity
-              accessibilityLabel="Increase BPM"
-              onPress={increase}
-              onLongPress={startHoldIncrease}
-              onPressOut={endHold}
-              className="p-2 rounded-lg bg-white/10"
-            >
-              <AddCircle size={30} color="white" />
-            </TouchableOpacity>
-          </View>
-          <Text className="text-sm text-white font-satoshiMedium">Beats per min</Text>
-        </View>
-        {/* Playback feel: normal / double time */}
-        <View className="flex-row mt-4 bg-white/10 rounded-xl p-1">
-          {PLAYBACK_FEELS.map((feel, index) => (
-            <TouchableOpacity
-              key={feel.label}
-              accessibilityLabel={feel.label}
-              onPress={() => setFeelIndex(index)}
-              className={`px-4 py-2 rounded-lg ${index === feelIndex ? "bg-brand" : ""}`}
-            >
-              <Text
-                className={`text-sm font-satoshiMedium ${index === feelIndex ? "text-black" : "text-white"}`}
-              >
-                {feel.short}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {/* Tap to set BPM button */}
-        {/* Beat Visuals */}
         {renderBeatVisuals()}
+
+        {/* Tap tempo */}
         <TouchableOpacity
-          className=" mt-10 p-2 rounded-full bg-brand border-2 border-brand-to"
           onPress={handleTapTempo}
-          activeOpacity={0.7}
+          className="items-center justify-center mt-[18px] px-[12px] py-[6px] border-2 border-hairline-strong rounded-sm"
         >
-          <View className="p-4 border-2 border-dashed rounded-full border-black/30 bg-black/20">
-            <Musicnote size={30}
-              color="black" />
-          </View>
+          <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
         </TouchableOpacity>
 
-        <View className="relative items-center justify-center mt-6">
-          <EclipseSvg />
-          <View
-            className="absolute inset-0 items-center justify-center"
-            style={{ flex: 1 }}
+        {/* Transport: -/play-stop/+ */}
+        <View className="flex-row items-center gap-[10px] mt-[10px]">
+          <TouchableOpacity
+            accessibilityLabel="Decrease BPM"
+            onPress={decrease}
+            onLongPress={startHoldDecrease}
+            onPressOut={endHold}
+            className="p-2 rounded-lg bg-white/10"
           >
-            <View className="absolute left-0 right-0 items-center top-6">
-              {isBlockedByOtherEngine && (
-                <Text className="text-xs text-center text-white/60 font-satoshiMedium">
-                  Stop the Loop click track first
-                </Text>
-              )}
-            </View>
-            <TouchableOpacity
-              className="items-center justify-center"
-              onPress={isPlaying ? stopMetronome : startMetronome}
-              disabled={!isPlaying && isBlockedByOtherEngine}
-              style={
-                !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
-              }
-            >
-              <Text className="mt-2 text-white font-spaceBold">
-                {isPlaying ? <PauseSvg /> : <PlaySvg />}
-              </Text>
-            </TouchableOpacity>
+            <MinusCircle size={SIZES.transportSecondary} color={COLORS.white} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel={isPlaying ? "Stop metronome" : "Start metronome"}
+            onPress={isPlaying ? stopMetronome : startMetronome}
+            disabled={!isPlaying && isBlockedByOtherEngine}
+            style={
+              !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
+            }
+          >
+            {isPlaying ? (
+              <Stop size={SIZES.transportPrimary} />
+            ) : (
+              <PlayFilled size={SIZES.transportPrimary} />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel="Increase BPM"
+            onPress={increase}
+            onLongPress={startHoldIncrease}
+            onPressOut={endHold}
+            className="p-2 rounded-lg bg-white/10"
+          >
+            <AddCircle size={SIZES.transportSecondary} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
+        {isBlockedByOtherEngine && (
+          <Text className="mt-2 text-xs text-center text-white/60 font-satoshiMedium">
+            Stop the Loop click track first
+          </Text>
+        )}
+
+        {/* Subdivision */}
+        <View className="items-start w-full mt-[18px]">
+          <View className="flex-row items-center gap-[5px] mb-[10px]">
+            <Text className="text-white text-label font-spaceBold">Subdivision</Text>
+            <Information size={16} />
+          </View>
+          <View className="flex-row items-center justify-between w-full">
+            {PLAYBACK_FEELS.map((feel, index) => {
+              const selected = index === feelIndex;
+              return (
+                <TouchableOpacity
+                  key={feel.label}
+                  accessibilityLabel={feel.label}
+                  onPress={() => setFeelIndex(index)}
+                  style={{ width: SIZES.segmentWidth }}
+                  className={`items-center justify-center py-[7px] rounded-sm ${
+                    selected
+                      ? "bg-white"
+                      : "bg-surface-muted border border-hairline-segment"
+                  }`}
+                >
+                  <Text
+                    className={`text-title font-spaceBold ${selected ? "text-black" : "text-white"}`}
+                  >
+                    {feel.short}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </View>
+
       {renderTimeSignatureModal()}
       <StatusBar barStyle="light-content" />
     </SafeAreaView>
