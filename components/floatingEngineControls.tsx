@@ -5,6 +5,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useMetronome } from "../context/MetronomeContext";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import icons from "../constants/icons";
+import { COLORS } from "../constants/theme";
 
 type PillProps = {
   onPress: () => void;
@@ -18,7 +19,7 @@ function EnginePill({ onPress, onStop, accentColor, label }: PillProps) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.85}
-      className="flex-row items-center px-4 py-3 border rounded-full shadow-lg bg-primary border-white/20"
+      className="flex-row items-center px-4 py-3 border rounded-full shadow-lg bg-canvas border-white/20"
       style={{ elevation: 8 }}
     >
       <View
@@ -35,7 +36,7 @@ function EnginePill({ onPress, onStop, accentColor, label }: PillProps) {
         className="w-5 h-5 mr-2"
         tintColor="#ffffff"
       />
-      <Text className="mr-3 text-white font-rBold">{label}</Text>
+      <Text className="mr-3 text-white font-satoshiBold">{label}</Text>
       <TouchableOpacity
         accessibilityLabel="Stop"
         onPress={onStop}
@@ -81,7 +82,7 @@ export default function FloatingEngineControls() {
         <EnginePill
           onPress={() => router.push("/(tabs)/loop")}
           onStop={loop.stopLoop}
-          accentColor="#08C192"
+          accentColor={COLORS.brand}
           label={`${loop.bpm} BPM`}
         />
       )}
@@ -89,7 +90,7 @@ export default function FloatingEngineControls() {
         <EnginePill
           onPress={() => router.push("/(tabs)/metro")}
           onStop={metronome.stopMetronome}
-          accentColor={metronome.currentBeat === 0 ? "#08C192" : "#E6E6E6"}
+          accentColor={metronome.currentBeat === 0 ? COLORS.brand : COLORS.textOnBrand}
           label={`${metronome.bpm} BPM`}
         />
       )}

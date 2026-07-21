@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { View, Image, Text } from "react-native";
 import icons from "../../constants/icons";
+import { COLORS } from "../../constants/theme";
 import { PlaybackLockProvider } from "../../context/PlaybackLockContext";
 import { MetronomeProvider } from "../../context/MetronomeContext";
 import { LoopPlaybackProvider } from "../../context/LoopPlaybackContext";
@@ -22,7 +23,7 @@ const TabIcon = ({ icon, name, color, focused }: TabIconProps) => (
       tintColor={color}
     />
     <Text
-      className={`${focused ? "font-rBlack" : "font-rBold"} text-[12px]`}
+      className={`${focused ? "font-satoshiBold" : "font-satoshiBold"} text-[12px]`}
       style={{ color }}
     >
       {name}
@@ -73,7 +74,7 @@ function TabsWithFloatingControl() {
               <TabIcon
                 icon={icons.play}
                 name="Bits"
-                color={focused ? "#08C192" : "#fff"}
+                color={focused ? COLORS.brand : COLORS.white}
                 focused={focused}
               />
             ),
@@ -89,7 +90,7 @@ function TabsWithFloatingControl() {
               <TabIcon
                 icon={icons.wpad}
                 name="WPad"
-                color={focused ? "#08C192" : "#fff"}
+                color={focused ? COLORS.brand : COLORS.white}
                 focused={focused}
               />
             ),
@@ -105,7 +106,7 @@ function TabsWithFloatingControl() {
               <TabIcon
                 icon={icons.metronome}
                 name="Metronome"
-                color={focused ? "#08C192" : "#fff"}
+                color={focused ? COLORS.brand : COLORS.white}
                 focused={focused}
               />
             ),

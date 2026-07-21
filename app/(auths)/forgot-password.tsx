@@ -16,12 +16,12 @@ const ForgotPasswordScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-primary">
+    <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
       <ScreenHeader title="Forgot Password" />
 
       <View className="flex-1 px-5">
-        <Text className="mt-2 mb-1 text-sm leading-5 text-white/60 font-rRegular">
+        <Text className="mt-2 mb-1 text-sm leading-5 text-white/60 font-satoshiRegular">
           Enter the email on your account and we'll send you a reset code.
         </Text>
         <View className="flex flex-col items-center w-full gap-6">
@@ -41,8 +41,8 @@ const ForgotPasswordScreen = () => {
         </View>
 
         <View className="absolute bottom-0 flex-row right-2/4">
-          <Text className="text-white/50 font-rMedium">by </Text>
-          <Text className="text-accent font-rMedium">nehtek</Text>
+          <Text className="text-white/50 font-satoshiMedium">by </Text>
+          <Text className="text-brand font-satoshiMedium">nehtek</Text>
         </View>
       </View>
     </SafeAreaView>

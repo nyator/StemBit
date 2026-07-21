@@ -76,11 +76,11 @@ const LoginScreen = () => {
       <StatusBar barStyle="light-content" />
       <View className="flex-1 px-5">
         <View className="flex flex-row justify-center items-center mt-10 mb-5">
-          <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
-          <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
+          <Text className="mb-4 text-5xl text-white font-satoshiBold">Stem</Text>
+          <Text className="mb-4 text-5xl text-brand font-satoshiBold">Bits</Text>
         </View>
         <View className="flex items-start">
-          <Text className="text-2xl text-white font-rBold">Login</Text>
+          <Text className="text-2xl text-white font-satoshiBold">Login</Text>
           <View className="flex relative flex-col gap-6 items-center w-full">
             <FormField
               title="Email"
@@ -100,7 +100,7 @@ const LoginScreen = () => {
             <TouchableOpacity className="flex items-end w-full">
               <Link
                 href="/forgot-password"
-                className="text-xl text-white font-rRegular"
+                className="text-xl text-white font-satoshiRegular"
               >
                 Forgot Password
               </Link>
@@ -114,19 +114,19 @@ const LoginScreen = () => {
             />
 
             {showToast && error && (
-              <Text className="absolute bottom-5 py-3 w-full text-center text-red-500 font-rMedium">
+              <Text className="absolute bottom-5 py-3 w-full text-center text-red-500 font-satoshiMedium">
                 {error}
               </Text>
             )}
 
             <View className="flex flex-row mt-2">
-              <Text className="text-xl text-white font-rMedium">
+              <Text className="text-xl text-white font-satoshiMedium">
                 Don't have an account?
               </Text>
               <TouchableOpacity>
                 <Link
                   href="/register"
-                  className="text-xl underline text-accent font-rMedium"
+                  className="text-xl underline text-brand font-satoshiMedium"
                 >
                   {" "}
                   Signup
@@ -136,8 +136,8 @@ const LoginScreen = () => {
           </View>
         </View>
         <View className="flex absolute bottom-0 right-2/4 flex-row">
-          <Text className="text-white/50 font-rMedium">by </Text>
-          <Text className="text-accent font-rMedium">nehtek</Text>
+          <Text className="text-white/50 font-satoshiMedium">by </Text>
+          <Text className="text-brand font-satoshiMedium">nehtek</Text>
         </View>
       </View>
     </SafeAreaView>

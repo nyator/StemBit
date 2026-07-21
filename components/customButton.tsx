@@ -23,12 +23,12 @@ const CustomButton = ({
       onPress={handlePress}
       activeOpacity={0.7}
       disabled={isLoading}
-      className={`flex justify-center items-center rounded-xl bg-accent min-h-[50px] ${containerStyles}`}
+      className={`flex justify-center items-center rounded-xl bg-brand min-h-[50px] ${containerStyles}`}
     >
       {isLoading ? (
         <ActivityIndicator color="#fff" />
       ) : (
-        <Text className={`text-xl text-white font-rBold ${textStyles}`}>{title}</Text>
+        <Text className={`text-xl text-white font-satoshiBold ${textStyles}`}>{title}</Text>
       )}
     </TouchableOpacity>
   );

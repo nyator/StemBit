@@ -111,7 +111,7 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
     return (
       <View className="flex-1 items-center justify-center px-10">
         <Ionicons name="musical-notes-outline" size={40} color="rgba(255,255,255,0.3)" />
-        <Text className="mt-4 text-center text-white/50 font-rMedium">
+        <Text className="mt-4 text-center text-white/50 font-satoshiMedium">
           No loops here yet — they'll show up as the catalog grows.
         </Text>
       </View>
@@ -128,21 +128,21 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
             onPress={() => handleRowPress(item)}
           >
             <View className="w-2/6">
-              <Text className="text-white text-md font-rBold">
+              <Text className="text-white text-md font-satoshiBold">
                 {item.title}
               </Text>
-              <Text className="text-sm text-white font-rRegular">
+              <Text className="text-sm text-white font-satoshiRegular">
                 BPM : {item.bpm}
               </Text>
             </View>
             <View className="flex items-center justify-between w-2/6">
-              <Text className="text-white text-md font-rMedium">
+              <Text className="text-white text-md font-satoshiMedium">
                 {item.artist}
               </Text>
-              <Text className="text-white text-md font-rRegular">
+              <Text className="text-white text-md font-satoshiRegular">
                 {item.timeSignature}
               </Text>
-              <Text className="text-xs text-accent font-rMedium">
+              <Text className="text-xs text-brand font-satoshiMedium">
                 {item.category}
               </Text>
             </View>

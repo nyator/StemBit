@@ -35,7 +35,7 @@ const SettingsScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-primary">
+    <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
       <ScreenHeader title="Settings" />
 
@@ -96,10 +96,10 @@ const SettingsScreen = () => {
         </SettingSection>
 
         <TouchableOpacity
-          className="items-center py-4 mb-10 border rounded-2xl border-error/40 bg-error/10"
+          className="items-center py-4 mb-10 border rounded-2xl border-danger/40 bg-danger/10"
           onPress={handleLogout}
         >
-          <Text className="text-base text-error font-rBold">Log Out</Text>
+          <Text className="text-base text-danger font-satoshiBold">Log Out</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

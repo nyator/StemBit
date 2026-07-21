@@ -34,7 +34,7 @@ export default function ScreenHeader({
       ) : (
         <View style={{ width: 38 }} />
       )}
-      <Text className="text-xl text-white font-rBold">{title}</Text>
+      <Text className="text-xl text-white font-satoshiBold">{title}</Text>
       <View style={{ minWidth: 38, alignItems: "flex-end" }}>{action}</View>
     </View>
   );

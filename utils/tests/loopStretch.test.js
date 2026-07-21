@@ -25,8 +25,12 @@ function extractStretchLoop() {
     "utf8"
   );
   const script = ts.match(/<script>([\s\S]*?)<\/script>/)[1];
+  // \r?\n throughout: git's autocrlf checks this file out with CRLF endings on
+  // Windows, and an \n-only pattern silently fails to match there.
   const fn = script
-    .match(/function stretchLoop[\s\S]*?\n        \}\n        \/\/ --- end time-stretch/)[0]
+    .match(
+      /function stretchLoop[\s\S]*?\r?\n        \}\r?\n        \/\/ --- end time-stretch/
+    )[0]
     .replace("// --- end time-stretch", "");
   // eslint-disable-next-line no-eval
   return eval(`(${fn})`);
@@ -43,15 +47,30 @@ const N = Math.round(SR * BAR_SECONDS);
 // every rhythmic hit in the loop (kick 1&3, snare 2&4, 8th-note hats)
 const TRUE_HITS = [0, 0.375, 0.75, 1.125, 1.5, 1.875, 2.25, 2.625];
 
+// Seeded PRNG (mulberry32) rather than Math.random: the snare and hats are
+// noise bursts, and unseeded noise made the "hits land on the grid" assertions
+// marginally flaky — they'd fail perhaps one run in ten on otherwise unchanged
+// code. Same seed every run means a failure here is a real regression.
+function makeRng(seed) {
+  return function rng() {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function makeBandLoop() {
   const x = new Float32Array(N);
+  const rng = makeRng(0x57e3b1);
   const addBurst = (t, f, dur, amp, noise) => {
     const s = Math.round(t * SR);
     const len = Math.round(dur * SR);
     for (let i = 0; i < len && s + i < N; i++) {
       const env = Math.exp((-4 * i) / len);
       x[s + i] +=
-        amp * env * (noise ? Math.random() * 2 - 1 : Math.sin((2 * Math.PI * f * i) / SR));
+        amp * env * (noise ? rng() * 2 - 1 : Math.sin((2 * Math.PI * f * i) / SR));
     }
   };
   for (let b = 0; b < 4; b++) {

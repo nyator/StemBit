@@ -39,7 +39,7 @@ const GUIDES: {
 
 const Help = () => {
   return (
-    <SafeAreaView className="flex-1 bg-primary">
+    <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
       <ScreenHeader title="Help & Support" />
 
@@ -50,21 +50,21 @@ const Help = () => {
             className="p-4 mb-3 border rounded-2xl bg-white/5 border-white/10"
           >
             <View className="flex-row items-center mb-2">
-              <View className="items-center justify-center w-8 h-8 mr-3 rounded-lg bg-accent/20">
-                <Ionicons name={guide.icon} size={17} color={COLORS.accent} />
+              <View className="items-center justify-center w-8 h-8 mr-3 rounded-lg bg-brand/20">
+                <Ionicons name={guide.icon} size={17} color={COLORS.brand} />
               </View>
-              <Text className="text-base text-white font-rBold">
+              <Text className="text-base text-white font-satoshiBold">
                 {guide.title}
               </Text>
             </View>
-            <Text className="text-sm leading-5 text-white/60 font-rRegular">
+            <Text className="text-sm leading-5 text-white/60 font-satoshiRegular">
               {guide.body}
             </Text>
           </View>
         ))}
 
         <TouchableOpacity
-          className="flex-row items-center justify-center py-4 mt-2 mb-10 rounded-2xl bg-accent"
+          className="flex-row items-center justify-center py-4 mt-2 mb-10 rounded-2xl bg-brand"
           onPress={() =>
             Linking.openURL(
               `mailto:${SUPPORT_EMAIL}?subject=StemBit Support`
@@ -72,7 +72,7 @@ const Help = () => {
           }
         >
           <Ionicons name="mail-outline" size={18} color="black" />
-          <Text className="ml-2 text-base text-black font-rBold">
+          <Text className="ml-2 text-base text-black font-satoshiBold">
             Email Support
           </Text>
         </TouchableOpacity>

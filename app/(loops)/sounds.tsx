@@ -53,7 +53,7 @@ const LoopBrowserScreen = () => {
       : getLoopsByArtist(filter).length;
 
   return (
-    <SafeAreaView className="flex-1 bg-primary">
+    <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
 
       <ScreenHeader title="Loops" />
@@ -67,11 +67,11 @@ const LoopBrowserScreen = () => {
               accessibilityLabel={`Browse by ${mode.label}`}
               onPress={() => switchMode(mode.key)}
               className={`px-6 py-2 rounded-lg ${
-                browseMode === mode.key ? "bg-accent" : ""
+                browseMode === mode.key ? "bg-brand" : ""
               }`}
             >
               <Text
-                className={`text-sm font-rMedium ${
+                className={`text-sm font-satoshiMedium ${
                   browseMode === mode.key ? "text-black" : "text-white"
                 }`}
               >
@@ -120,11 +120,11 @@ const FilterChip = ({ label, selected, onPress }: FilterChipProps) => (
   <TouchableOpacity
     onPress={onPress}
     className={`px-4 py-2 rounded-full border ${
-      selected ? "bg-accent border-accent" : "bg-white/10 border-white/20"
+      selected ? "bg-brand border-brand" : "bg-white/10 border-white/20"
     }`}
   >
     <Text
-      className={`text-sm font-rMedium ${
+      className={`text-sm font-satoshiMedium ${
         selected ? "text-black" : "text-white"
       }`}
     >

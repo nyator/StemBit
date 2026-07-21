@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from 'react-native'
 import React from 'react'
 import { Stack, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons' // or any icon library you use
+import { COLORS } from '../../constants/theme'
 
 
 const SettingsLayout = () => {
@@ -20,8 +21,8 @@ const SettingsLayout = () => {
             </TouchableOpacity>
           ),
           headerBackTitle: "Back",
-          headerBackTitleStyle: { fontFamily: "font-rBold" },
-          contentStyle: { backgroundColor: "#101116" },
+          headerBackTitleStyle: { fontFamily: "font-satoshiBold" },
+          contentStyle: { backgroundColor: COLORS.canvas },
           headerStyle: { backgroundColor: "#000" },
         }}
       />
@@ -36,8 +37,8 @@ const SettingsLayout = () => {
             </TouchableOpacity>
           ),
           headerBackTitle: "Back",
-          headerBackTitleStyle: { fontFamily: "font-rBold" },
-          contentStyle: { backgroundColor: "#101116" },
+          headerBackTitleStyle: { fontFamily: "font-satoshiBold" },
+          contentStyle: { backgroundColor: COLORS.canvas },
           headerStyle: { backgroundColor: "#000" },
         }}
       />

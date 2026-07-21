@@ -70,18 +70,18 @@ export default function OnboardingScreen() {
   const isLast = page === SLIDES.length - 1;
 
   return (
-    <SafeAreaView className="flex-1 bg-primary">
+    <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
 
       {/* Top bar: brand + skip */}
       <View className="flex-row items-center justify-between px-6 pt-2">
         <View className="flex-row">
-          <Text className="text-2xl text-white font-rBlack">Stem</Text>
-          <Text className="text-2xl text-accent font-rBlack">Bits</Text>
+          <Text className="text-2xl text-white font-satoshiBold">Stem</Text>
+          <Text className="text-2xl text-brand font-satoshiBold">Bits</Text>
         </View>
         {!isLast && (
           <TouchableOpacity onPress={finish} hitSlop={8}>
-            <Text className="text-base text-white/60 font-rMedium">Skip</Text>
+            <Text className="text-base text-white/60 font-satoshiMedium">Skip</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -109,10 +109,10 @@ export default function OnboardingScreen() {
                 style={{ width: "100%", height: "100%" }}
               />
             </View>
-            <Text className="mb-3 text-3xl text-center text-white font-rBold">
+            <Text className="mb-3 text-3xl text-center text-white font-satoshiBold">
               {item.title}
             </Text>
-            <Text className="text-base leading-6 text-center text-white/60 font-rRegular">
+            <Text className="text-base leading-6 text-center text-white/60 font-satoshiRegular">
               {item.subtitle}
             </Text>
           </View>
@@ -132,7 +132,7 @@ export default function OnboardingScreen() {
                     borderRadius: 4,
                     marginRight: 8,
                     backgroundColor:
-                      page === idx ? COLORS.accent : "rgba(255,255,255,0.25)",
+                      page === idx ? COLORS.brand : "rgba(255,255,255,0.25)",
                   }}
                 />
               </TouchableOpacity>
@@ -142,9 +142,9 @@ export default function OnboardingScreen() {
           {isLast ? (
             <TouchableOpacity
               onPress={finish}
-              className="flex-row items-center px-6 py-3 rounded-full bg-accent"
+              className="flex-row items-center px-6 py-3 rounded-full bg-brand"
             >
-              <Text className="mr-2 text-base text-black font-rBold">
+              <Text className="mr-2 text-base text-black font-satoshiBold">
                 Get Started
               </Text>
               <Ionicons name="arrow-forward" size={18} color="black" />
@@ -152,7 +152,7 @@ export default function OnboardingScreen() {
           ) : (
             <TouchableOpacity
               onPress={() => goTo(page + 1)}
-              className="p-4 rounded-full bg-accent"
+              className="p-4 rounded-full bg-brand"
               accessibilityLabel="Next"
             >
               <Ionicons name="chevron-forward" size={22} color="black" />
@@ -161,8 +161,8 @@ export default function OnboardingScreen() {
         </View>
 
         <View className="flex-row justify-center mt-5">
-          <Text className="text-white/40 font-rMedium">by </Text>
-          <Text className="text-accent font-rMedium">nehtek</Text>
+          <Text className="text-white/40 font-satoshiMedium">by </Text>
+          <Text className="text-brand font-satoshiMedium">nehtek</Text>
         </View>
       </View>
     </SafeAreaView>

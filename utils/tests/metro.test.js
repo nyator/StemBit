@@ -3,6 +3,7 @@ import { render, fireEvent, screen, waitFor } from '@testing-library/react-nativ
 import Metro from '../../app/(tabs)/metro';
 import { MetronomeProvider } from '../../context/MetronomeContext';
 import { PlaybackLockProvider } from '../../context/PlaybackLockContext';
+import { PreferencesProvider } from '../../context/PreferencesContext';
 
 jest.mock('@expo/vector-icons/AntDesign', () => 'AntDesign');
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons');
@@ -28,19 +29,26 @@ jest.mock('expo-asset', () => ({
   },
 }));
 
+// Also backs PreferencesProvider, which reads/writes preferences.json.
+// getInfoAsync reports "missing" so the provider falls through to its defaults.
 jest.mock('expo-file-system', () => ({
+  documentDirectory: 'file://mock-documents/',
+  getInfoAsync: jest.fn(() => Promise.resolve({ exists: false })),
   readAsStringAsync: jest.fn(() => Promise.resolve('bW9jay1iYXNlNjQ=')),
+  writeAsStringAsync: jest.fn(() => Promise.resolve()),
   EncodingType: { Base64: 'base64' },
 }));
 
 describe('<Metro />', () => {
   it('should start at 120 BPM and allow increasing the tempo', async () => {
     render(
-      <PlaybackLockProvider>
-        <MetronomeProvider>
-          <Metro />
-        </MetronomeProvider>
-      </PlaybackLockProvider>
+      <PreferencesProvider>
+        <PlaybackLockProvider>
+          <MetronomeProvider>
+            <Metro />
+          </MetronomeProvider>
+        </PlaybackLockProvider>
+      </PreferencesProvider>
     );
     await waitFor(() => {
       expect(require('expo-asset').Asset.fromModule).toHaveBeenCalledTimes(2);

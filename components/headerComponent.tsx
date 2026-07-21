@@ -9,8 +9,8 @@ const HeaderComponent = () => {
         <View className="flex flex-row justify-between items-center px-5 my-5 w-full">
             <View className="flex flex-row justify-between items-center w-2/5">
                 <View className="flex flex-row justify-center items-center">
-                    <Text className="text-3xl text-white font-rBlack">Stem</Text>
-                    <Text className="text-3xl text-accent font-rBlack">Bits</Text>
+                    <Text className="text-3xl text-white font-satoshiBold">Stem</Text>
+                    <Text className="text-3xl text-brand font-satoshiBold">Bits</Text>
                 </View>
             </View>
 

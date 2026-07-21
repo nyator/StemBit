@@ -74,7 +74,7 @@ export default function LoopScreen() {
   });
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 bg-primary">
+    <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full">
         <View className="flex items-center justify-center w-3/5 py-2">
@@ -92,7 +92,7 @@ export default function LoopScreen() {
               />
             </View>
             <View className="w-[2px] h-8 bg-black/40 mr-6"></View>
-            <Text className="text-white font-cSemibold">{selectedTitle ? selectedTitle : "SELECT LOOP"}</Text>
+            <Text className="text-white font-spaceBold">{selectedTitle ? selectedTitle : "SELECT LOOP"}</Text>
           </TouchableOpacity>
         </View>
 
@@ -109,7 +109,7 @@ export default function LoopScreen() {
             </TouchableOpacity>
 
             <TextInput
-              className="w-20 text-4xl text-center text-white font-cBold"
+              className="w-20 text-4xl text-center text-white font-spaceBold"
               value={bpmText}
               onChangeText={handleBpmTextChange}
               onEndEditing={commitBpmText}
@@ -129,11 +129,11 @@ export default function LoopScreen() {
               <AntDesign name="plus" size={30} color="white" />
             </TouchableOpacity>
           </View>
-          <Text className="text-sm text-white font-rMedium">Beats per min</Text>
+          <Text className="text-sm text-white font-satoshiMedium">Beats per min</Text>
         </View>
         {/* Tap to set BPM button */}
         <TouchableOpacity
-          className=" mt-20 p-2 rounded-full bg-accent border-2 border-[#098E6C]"
+          className=" mt-20 p-2 rounded-full bg-brand border-2 border-brand-to"
           onPress={handleTapTempo}
           activeOpacity={0.7}
         >
@@ -151,19 +151,19 @@ export default function LoopScreen() {
           style={{ flex: 1 }}
         >
           {isBlockedByOtherEngine && (
-            <Text className="mb-2 text-xs text-center text-white/60 font-rMedium">
+            <Text className="mb-2 text-xs text-center text-white/60 font-satoshiMedium">
               Stop the Metronome first
             </Text>
           )}
           <TouchableOpacity
-            className="justify-center items-center py-3 w-full rounded-[40rem] bg-black border-2 border-accent/50"
+            className="justify-center items-center py-3 w-full rounded-[40rem] bg-black border-2 border-brand/50"
             onPress={isPlaying ? stopLoop : startLoop}
             disabled={!isPlaying && isBlockedByOtherEngine}
             style={
               !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
             }
           >
-            <Text className="text-white font-cBold">
+            <Text className="text-white font-spaceBold">
               {isPlaying ? <PauseSvg /> : <PlaySvg />}
             </Text>
           </TouchableOpacity>

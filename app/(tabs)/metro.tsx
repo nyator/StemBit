@@ -23,6 +23,7 @@ import { useBpmControl } from "../../hooks/useBpmControl";
 
 import HeaderComponent from "../../components/headerComponent";
 import icons from "../../constants/icons";
+import { COLORS } from "../../constants/theme";
 import EclipseSvg from "../../assets/icons/eclipseSvg";
 import PlaySvg from "../../assets/icons/playSvg";
 import PauseSvg from "../../assets/icons/pauseSvg";
@@ -86,7 +87,7 @@ export default function MetroScreen() {
             elevation: 8,
           }}
         >
-          <Text className="mb-3 text-lg text-white font-rBold">
+          <Text className="mb-3 text-lg text-white font-satoshiBold">
             Choose Time Signature
           </Text>
           <FlatList
@@ -94,14 +95,14 @@ export default function MetroScreen() {
             keyExtractor={(item) => item.label}
             renderItem={({ item }) => (
               <TouchableOpacity
-                className={`flex-row items-center py-4 justify-between px-5 my-[2px] rounded-lg ${item.label === timeSignature.label ? "bg-accent border-white border-[0.2px]" : "bg-white/10 border-white/30 border-[0.2px]"}`}
+                className={`flex-row items-center py-4 justify-between px-5 my-[2px] rounded-lg ${item.label === timeSignature.label ? "bg-brand border-white border-[0.2px]" : "bg-white/10 border-white/30 border-[0.2px]"}`}
                 onPress={() => {
                   setTimeSignature(item);
                   setModalVisible(false);
                 }}
               >
                 <Text
-                  className={`text-base font-rMedium ${item.label === timeSignature.label ? "text-black text-3xl" : "text-white"}`}
+                  className={`text-base font-satoshiMedium ${item.label === timeSignature.label ? "text-black text-3xl" : "text-white"}`}
                 >
                   {item.label}
                 </Text>
@@ -133,7 +134,7 @@ export default function MetroScreen() {
       const isCurrent = i === currentBeat;
       const isSecondaryAccent = i !== 0 && accents.includes(i);
       const activeColor =
-        i === 0 ? "#08C192" : isSecondaryAccent ? "#4ADBB4" : "#E6E6E6";
+        i === 0 ? COLORS.brand : isSecondaryAccent ? COLORS.brandFrom : COLORS.textOnBrand;
       const idleColor = isSecondaryAccent
         ? "rgba(8,193,146,0.3)"
         : "rgba(255,255,255,0.15)";
@@ -174,7 +175,7 @@ export default function MetroScreen() {
   };
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 bg-primary">
+    <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
       <HeaderComponent />
       <View className="items-center justify-center flex-1 w-full">
         <View className="flex flex-col items-center justify-center mb-10">
@@ -190,7 +191,7 @@ export default function MetroScreen() {
               />
             </View>
             <View className="w-[2px] h-8 bg-black/40 mr-3"></View>
-            <Text className="text-lg text-white font-rBold ">
+            <Text className="text-lg text-white font-satoshiBold ">
               {timeSignature.label}
             </Text>
           </TouchableOpacity>
@@ -208,7 +209,7 @@ export default function MetroScreen() {
             </TouchableOpacity>
 
             <TextInput
-              className="w-20 text-4xl text-center text-white font-cBold"
+              className="w-20 text-4xl text-center text-white font-spaceBold"
               value={bpmText}
               onChangeText={handleBpmTextChange}
               onEndEditing={commitBpmText}
@@ -228,7 +229,7 @@ export default function MetroScreen() {
               <AntDesign name="plus" size={30} color="white" />
             </TouchableOpacity>
           </View>
-          <Text className="text-sm text-white font-rMedium">Beats per min</Text>
+          <Text className="text-sm text-white font-satoshiMedium">Beats per min</Text>
         </View>
         {/* Playback feel: normal / double time */}
         <View className="flex-row mt-4 bg-white/10 rounded-xl p-1">
@@ -237,10 +238,10 @@ export default function MetroScreen() {
               key={feel.label}
               accessibilityLabel={feel.label}
               onPress={() => setFeelIndex(index)}
-              className={`px-4 py-2 rounded-lg ${index === feelIndex ? "bg-accent" : ""}`}
+              className={`px-4 py-2 rounded-lg ${index === feelIndex ? "bg-brand" : ""}`}
             >
               <Text
-                className={`text-sm font-rMedium ${index === feelIndex ? "text-black" : "text-white"}`}
+                className={`text-sm font-satoshiMedium ${index === feelIndex ? "text-black" : "text-white"}`}
               >
                 {feel.short}
               </Text>
@@ -251,7 +252,7 @@ export default function MetroScreen() {
         {/* Beat Visuals */}
         {renderBeatVisuals()}
         <TouchableOpacity
-          className=" mt-10 p-2 rounded-full bg-accent border-2 border-[#098E6C]"
+          className=" mt-10 p-2 rounded-full bg-brand border-2 border-brand-to"
           onPress={handleTapTempo}
           activeOpacity={0.7}
         >
@@ -272,7 +273,7 @@ export default function MetroScreen() {
           >
             <View className="absolute left-0 right-0 items-center top-6">
               {isBlockedByOtherEngine && (
-                <Text className="text-xs text-center text-white/60 font-rMedium">
+                <Text className="text-xs text-center text-white/60 font-satoshiMedium">
                   Stop the Loop click track first
                 </Text>
               )}
@@ -285,7 +286,7 @@ export default function MetroScreen() {
                 !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
               }
             >
-              <Text className="mt-2 text-white font-cBold">
+              <Text className="mt-2 text-white font-spaceBold">
                 {isPlaying ? <PauseSvg /> : <PlaySvg />}
               </Text>
             </TouchableOpacity>

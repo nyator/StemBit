@@ -354,7 +354,7 @@ export default function PadScreen() {
   };
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 bg-primary">
+    <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full px-5">
         <View className="flex flex-row items-center justify-center w-full mt-9 border-b border-white/10">
@@ -364,7 +364,7 @@ export default function PadScreen() {
             onPress={() => setMajorMinor("major")}
             activeOpacity={0.7}
           >
-            <Text className={`font-rBold text-base ${!isMinor ? "text-green-400 font-cBold" : "text-gray-500"}`}>
+            <Text className={`font-satoshiBold text-base ${!isMinor ? "text-green-400 font-spaceBold" : "text-gray-500"}`}>
               Major
             </Text>
           </TouchableOpacity>
@@ -378,7 +378,7 @@ export default function PadScreen() {
             onPress={() => setMajorMinor("minor")}
             activeOpacity={0.7}
           >
-            <Text className={`font-rBold text-base ${isMinor ? "text-green-400 font-cBold" : "text-gray-500"}`}>
+            <Text className={`font-satoshiBold text-base ${isMinor ? "text-green-400 font-spaceBold" : "text-gray-500"}`}>
               Minor
             </Text>
           </TouchableOpacity>

@@ -32,18 +32,18 @@ const RowShell = ({
         <Ionicons
           name={icon}
           size={17}
-          color={danger ? COLORS.danger : COLORS.accent}
+          color={danger ? COLORS.danger : COLORS.brand}
         />
       </View>
     )}
     <View className="flex-1">
       <Text
-        className={`text-base font-rMedium ${danger ? "text-error" : "text-white"}`}
+        className={`text-base font-satoshiMedium ${danger ? "text-danger" : "text-white"}`}
       >
         {label}
       </Text>
       {sublabel && (
-        <Text className="mt-[2px] text-xs text-white/50 font-rRegular">
+        <Text className="mt-[2px] text-xs text-white/50 font-satoshiRegular">
           {sublabel}
         </Text>
       )}
@@ -61,7 +61,7 @@ export function SettingLink({ onPress, value, ...base }: LinkRowProps) {
         right={
           <View className="flex-row items-center">
             {value && (
-              <Text className="mr-2 text-sm text-white/50 font-rRegular">
+              <Text className="mr-2 text-sm text-white/50 font-satoshiRegular">
                 {value}
               </Text>
             )}
@@ -86,7 +86,7 @@ export function SettingSwitch({ value, onValueChange, ...base }: SwitchRowProps)
         <Switch
           value={value}
           onValueChange={onValueChange}
-          trackColor={{ false: "#3a3a3f", true: COLORS.accentDark }}
+          trackColor={{ false: "#3a3a3f", true: COLORS.brandTo }}
           thumbColor="#f4f3f4"
         />
       }
@@ -104,7 +104,7 @@ export function SettingSection({
 }) {
   return (
     <View className="mb-7">
-      <Text className="mb-2 text-xs tracking-widest uppercase text-accent font-rBold">
+      <Text className="mb-2 text-xs tracking-widest uppercase text-brand font-satoshiBold">
         {title}
       </Text>
       <View className="px-4 rounded-2xl bg-white/5">{children}</View>

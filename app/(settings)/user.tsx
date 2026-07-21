@@ -86,34 +86,34 @@ const UserScreen = () => {
     .toUpperCase();
 
   return (
-    <SafeAreaView className="flex-1 bg-primary">
+    <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
       <ScreenHeader title="Profile" />
 
       {loading ? (
         <View className="items-center justify-center flex-1">
-          <ActivityIndicator color={COLORS.accent} />
+          <ActivityIndicator color={COLORS.brand} />
         </View>
       ) : (
         <ScrollView className="flex-1 px-5">
           {/* Avatar */}
           <View className="items-center my-6">
             <View
-              className="items-center justify-center rounded-full bg-accent/20 border border-accent/40"
+              className="items-center justify-center rounded-full bg-brand/20 border border-brand/40"
               style={{ width: avatarSize, height: avatarSize }}
             >
               <Text
-                className="text-accent font-cBold"
+                className="text-brand font-spaceBold"
                 style={{ fontSize: avatarSize * 0.4 }}
               >
                 {initial}
               </Text>
             </View>
-            <Text className="mt-4 text-2xl text-white font-rBold">
+            <Text className="mt-4 text-2xl text-white font-satoshiBold">
               {account ? account.name : "Not signed in"}
             </Text>
             {account && (
-              <Text className="mt-1 text-sm text-white/50 font-rRegular">
+              <Text className="mt-1 text-sm text-white/50 font-satoshiRegular">
                 {account.email}
               </Text>
             )}
@@ -147,7 +147,7 @@ const UserScreen = () => {
                 size={40}
                 color="rgba(255,255,255,0.3)"
               />
-              <Text className="mt-3 text-center text-white/50 font-rMedium">
+              <Text className="mt-3 text-center text-white/50 font-satoshiMedium">
                 You're using StemBit without an account. Sign in to sync your
                 profile across devices.
               </Text>

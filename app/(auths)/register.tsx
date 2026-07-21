@@ -66,11 +66,11 @@ const RegisterScreen = () => {
       {/* {error ? <CustomToast type="error" title={error} /> : null} */}
       <View className="flex-1 px-5">
         <View className="flex flex-row justify-center items-center mt-10 mb-5">
-          <Text className="mb-4 text-5xl text-white font-rBlack">Stem</Text>
-          <Text className="mb-4 text-5xl text-accent font-rBlack">Bits</Text>
+          <Text className="mb-4 text-5xl text-white font-satoshiBold">Stem</Text>
+          <Text className="mb-4 text-5xl text-brand font-satoshiBold">Bits</Text>
         </View>
         <View className="flex items-start">
-          <Text className="text-3xl text-white font-rBold">Signup</Text>
+          <Text className="text-3xl text-white font-satoshiBold">Signup</Text>
           <View className="flex flex-col gap-6 items-center w-full">
             <FormField
               title="Email"
@@ -103,19 +103,19 @@ const RegisterScreen = () => {
             />
 
             {showToast && error && (
-              <Text className="text-red-500 font-rMedium py-3 text-center w-full absolute bottom-5">
+              <Text className="text-red-500 font-satoshiMedium py-3 text-center w-full absolute bottom-5">
                 {error}
               </Text>
             )}
 
             <View className="flex flex-row mt-2">
-              <Text className="text-xl text-white font-rMedium">
+              <Text className="text-xl text-white font-satoshiMedium">
                 Already have an account?
               </Text>
               <TouchableOpacity>
                 <Link
                   href="/login"
-                  className="text-xl underline text-accent font-rMedium"
+                  className="text-xl underline text-brand font-satoshiMedium"
                 >
                   {" "}
                   Login
@@ -125,8 +125,8 @@ const RegisterScreen = () => {
           </View>
         </View>
         <View className="flex absolute bottom-0 right-2/4 flex-row">
-          <Text className="text-white/50 font-rMedium">by</Text>
-          <Text className="text-accent font-rMedium"> nehtek</Text>
+          <Text className="text-white/50 font-satoshiMedium">by</Text>
+          <Text className="text-brand font-satoshiMedium"> nehtek</Text>
         </View>
       </View>
     </SafeAreaView>

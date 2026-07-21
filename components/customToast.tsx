@@ -25,11 +25,11 @@ export default function CustomToast({ type, title, desc }: customToastProps) {
         {type === "warning" && (
           <Ionicons name="warning" size={22} color="#F59E0B" />
         )}
-        <Text className="text-[15px] text-black font-rMedium">
+        <Text className="text-[15px] text-black font-satoshiMedium">
           {title ? title : "title"}
         </Text>
-        {/* <View className={` rounded-xl px-2 py-[2px] ${type === "success" && "bg-success"} ${type === "error" && "bg-error"} ${type === "warning" && "bg-warning"}`}> */}
-        {/* <Text className='text-[15px] text-white font-cMedium'>{desc ? desc : "desc"}</Text> */}
+        {/* <View className={` rounded-xl px-2 py-[2px] ${type === "success" && "bg-success"} ${type === "error" && "bg-danger"} ${type === "warning" && "bg-warning"}`}> */}
+        {/* <Text className='text-[15px] text-white font-spaceMedium'>{desc ? desc : "desc"}</Text> */}
         {/* </View> */}
       </View>
     </View>
