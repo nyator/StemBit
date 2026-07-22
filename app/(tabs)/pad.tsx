@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import LaunchPadComponent from "../../components/launchPad";
 import HeaderComponent from "../../components/headerComponent";
 
@@ -122,6 +123,7 @@ const prepareLayer = async (
 };
 
 export default function PadScreen() {
+  const router = useRouter();
   const { prefs } = usePreferences();
   const [keySelected, setKeySelected] = useState("");
   const [majorMinor, setMajorMinor] = useState("major");
@@ -374,7 +376,7 @@ export default function PadScreen() {
       <View className="items-center justify-start flex-1 w-full px-5">
 
         <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-        <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
+        {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
 
         <View>
           <View className="flex flex-row items-center justify-between w-full mt-9">
@@ -408,12 +410,11 @@ export default function PadScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Options screen TBD -- just the entry point for now. */}
             <TouchableOpacity
               className="items-center justify-center w-9 h-9 rounded-full bg-white/5"
-              onPress={() => { }}
+              onPress={() => router.push("/(pads)/sounds")}
               activeOpacity={0.7}
-              accessibilityLabel="Pad options"
+              accessibilityLabel="Select pad"
             >
               <Setting4 size={20} color={COLORS.white} />
             </TouchableOpacity>

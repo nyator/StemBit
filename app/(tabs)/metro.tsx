@@ -160,7 +160,7 @@ export default function MetroScreen() {
   return (
     <SafeAreaView className="items-center justify-start flex-1 overflow-hidden bg-canvas">
       <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
+      {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
 
       <HeaderComponent />
 

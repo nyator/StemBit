@@ -40,6 +40,7 @@ function RootLayout() {
                 <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
                 <Stack.Screen name="(settings)" options={{headerShown: false}}/>
                 <Stack.Screen name="(loops)" options={{headerShown: false}}/>
+                <Stack.Screen name="(pads)" options={{headerShown: false}}/>
             </Stack>
         </PreferencesProvider>
     );
