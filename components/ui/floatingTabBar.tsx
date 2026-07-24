@@ -2,21 +2,19 @@ import { Pressable, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
 import { COLORS, SHADOWS } from "../../constants/theme";
-import { VideoCircle, Clipboard, Grammerly, type IconComponent } from "../icons";
+import { PlayCircleOutline, PlayCircle, Pad, PadFill, MetronomeFill, MetronomeOutline, type IconComponent } from "../icons";
 
-// Figma "floating-nav" (node 101:399): a pill that floats above the screen
-// content rather than a flush full-width bar -- surfaceGlass/borderGlass/
-// RADII.nav/SHADOWS.float exist in the theme specifically for this.
-const TAB_ICONS: Record<string, IconComponent> = {
-  loop: VideoCircle,
-  pad: Clipboard,
-  metro: Grammerly,
+// Each tab shows its outline icon when idle and the filled variant when active.
+const TAB_ICONS: Record<string, { active: IconComponent; inactive: IconComponent }> = {
+  loop: { active: PlayCircle, inactive: PlayCircleOutline },
+  pad: { active: PadFill, inactive: Pad },
+  metro: { active: MetronomeFill, inactive: MetronomeOutline },
 };
 
 const TAB_LABELS: Record<string, string> = {
-  loop: "LOOP",
+  loop: "BITS",
   pad: "PAD",
-  metro: "Metronome",
+  metro: "CLICK",
 };
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
@@ -36,7 +34,8 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
       >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
-          const Icon = TAB_ICONS[route.name] ?? VideoCircle;
+          const icons = TAB_ICONS[route.name] ?? TAB_ICONS.loop;
+          const Icon = isFocused ? icons.active : icons.inactive;
           const label = TAB_LABELS[route.name] ?? route.name;
           const color = isFocused ? COLORS.brand : COLORS.white;
 

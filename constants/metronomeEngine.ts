@@ -10,14 +10,16 @@
 // JS thread jitter; only the RN-side visual beat indicator (posted back via
 // a delayed setTimeout) can lag slightly, which is imperceptible.
 export type MetronomeAssets = {
-  brightBase64: string;
-  lowBase64: string;
+  /**
+   * Map of sound id -> base64-encoded audio, e.g. `{ bright: "...", low: "..." }`.
+   * Every registered click sound (see METRONOME_SOUNDS in MetronomeContext) is
+   * decoded up front; the accent and beat voices then each play whichever id
+   * their picker selected.
+   */
+  sounds: Record<string, string>;
 };
 
-export const buildMetronomeHtml = ({
-  brightBase64,
-  lowBase64,
-}: MetronomeAssets) => `<!DOCTYPE html>
+export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE html>
 <html>
   <head><meta charset="utf-8" /></head>
   <body>
@@ -25,17 +27,26 @@ export const buildMetronomeHtml = ({
       (function () {
         var AudioContextClass = window.AudioContext || window.webkitAudioContext;
         var audioContext = null;
-        var brightBuffer = null;
-        var lowBuffer = null;
+        // Decoded AudioBuffers keyed by sound id.
+        var buffers = {};
 
         var isPlaying = false;
         var tempo = 120;
         var beatsPerMeasure = 4;
         // Beat indices (0-based) that mark the start of a rhythmic group.
-        // Beat 0 is always the primary accent (bright click); any other
-        // listed beat gets a softer bright click so compound/odd meters
-        // (6/8, 7/8, ...) are felt in their groupings, not as a flat pulse.
+        // Beat 0 is always the primary accent; any other listed beat gets a
+        // softer accent click so compound/odd meters (6/8, 7/8, ...) are felt
+        // in their groupings, not as a flat pulse.
         var accents = [0];
+        // Per-voice output gain, 0–1. accentVolume scales the accent clicks
+        // (primary + softer group accents); beatVolume scales the regular
+        // clicks. Driven from the metro screen's Accent/Beats rows.
+        var accentVolume = 1.0;
+        var beatVolume = 1.0;
+        // Which loaded sound each voice plays (set from the per-voice pickers);
+        // default to the first/second loaded sound until told otherwise.
+        var accentSoundId = null;
+        var beatSoundId = null;
         var currentBeatNumber = 0;
         var nextNoteTime = 0.0;
         var lookaheadMs = 25.0;
@@ -44,8 +55,7 @@ export const buildMetronomeHtml = ({
         var scheduledSources = [];
         var scheduledBeatTimeouts = [];
 
-        var brightBase64 = ${JSON.stringify(brightBase64)};
-        var lowBase64 = ${JSON.stringify(lowBase64)};
+        var sounds = ${JSON.stringify(sounds)};
 
         function post(message) {
           if (window.ReactNativeWebView) {
@@ -73,35 +83,38 @@ export const buildMetronomeHtml = ({
 
         function decodeBuffers() {
           var ctx = ensureContext();
-          var pending = 2;
+          var ids = Object.keys(sounds);
+          if (accentSoundId === null) accentSoundId = ids[0];
+          if (beatSoundId === null) beatSoundId = ids.length > 1 ? ids[1] : ids[0];
+          var pending = ids.length;
+          if (pending === 0) {
+            post({ type: "ready" });
+            return;
+          }
           function done() {
             pending -= 1;
-            if (pending === 0) {
-              post({ type: "ready" });
-            }
+            if (pending === 0) post({ type: "ready" });
           }
-          ctx.decodeAudioData(
-            base64ToArrayBuffer(brightBase64),
-            function (buf) {
-              brightBuffer = buf;
-              done();
-            },
-            function () {
-              post({ type: "error", message: "decode bright failed" });
-              done();
-            }
-          );
-          ctx.decodeAudioData(
-            base64ToArrayBuffer(lowBase64),
-            function (buf) {
-              lowBuffer = buf;
-              done();
-            },
-            function () {
-              post({ type: "error", message: "decode low failed" });
-              done();
-            }
-          );
+          ids.forEach(function (id) {
+            ctx.decodeAudioData(
+              base64ToArrayBuffer(sounds[id]),
+              function (buf) {
+                buffers[id] = buf;
+                done();
+              },
+              function () {
+                post({ type: "error", message: "decode " + id + " failed" });
+                done();
+              }
+            );
+          });
+        }
+
+        // The buffer a voice should play, falling back to any loaded sound if
+        // the selected id somehow failed to decode.
+        function bufferForVoice(isAccent) {
+          var id = isAccent ? accentSoundId : beatSoundId;
+          return buffers[id] || buffers[Object.keys(buffers)[0]] || null;
         }
 
         function scheduleNote(beatNumber, time) {
@@ -109,12 +122,21 @@ export const buildMetronomeHtml = ({
           var isPrimaryAccent = beatNumber === 0;
           var isSecondaryAccent =
             !isPrimaryAccent && accents.indexOf(beatNumber) !== -1;
-          // Primary accent: full bright click. Secondary (group) accents:
-          // the same bright click at reduced gain — audibly "lifted" above
-          // the regular low clicks without competing with the downbeat.
-          var buffer =
-            isPrimaryAccent || isSecondaryAccent ? brightBuffer : lowBuffer;
-          var gain = isSecondaryAccent ? 0.6 : 1.0;
+          var isAccentVoice = isPrimaryAccent || isSecondaryAccent;
+          // The accent voice plays accentSoundId; every other beat plays
+          // beatSoundId.
+          var buffer = bufferForVoice(isAccentVoice);
+          // Group accents keep their 0.6 "lift" relative to the downbeat, then
+          // the whole accent voice is scaled by accentVolume; other clicks by
+          // beatVolume.
+          var gain;
+          if (isPrimaryAccent) {
+            gain = accentVolume;
+          } else if (isSecondaryAccent) {
+            gain = 0.6 * accentVolume;
+          } else {
+            gain = beatVolume;
+          }
           if (buffer) {
             var source = ctx.createBufferSource();
             source.buffer = buffer;
@@ -161,11 +183,31 @@ export const buildMetronomeHtml = ({
           }
         }
 
-        function start(nextTempo, nextBeats, nextAccents) {
+        function setVolumes(nextAccentVolume, nextBeatVolume) {
+          if (typeof nextAccentVolume === "number") {
+            accentVolume = Math.max(0, Math.min(1, nextAccentVolume));
+          }
+          if (typeof nextBeatVolume === "number") {
+            beatVolume = Math.max(0, Math.min(1, nextBeatVolume));
+          }
+        }
+
+        function setSounds(nextAccentSound, nextBeatSound) {
+          if (typeof nextAccentSound === "string" && buffers[nextAccentSound]) {
+            accentSoundId = nextAccentSound;
+          }
+          if (typeof nextBeatSound === "string" && buffers[nextBeatSound]) {
+            beatSoundId = nextBeatSound;
+          }
+        }
+
+        function start(nextTempo, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextAccentSound, nextBeatSound) {
           if (isPlaying) return;
           if (nextTempo) tempo = nextTempo;
           if (nextBeats) beatsPerMeasure = nextBeats;
           if (nextAccents) setAccents(nextAccents);
+          setVolumes(nextAccentVolume, nextBeatVolume);
+          setSounds(nextAccentSound, nextBeatSound);
           var ctx = ensureContext();
           currentBeatNumber = 0;
           nextNoteTime = ctx.currentTime + 0.05;
@@ -212,10 +254,16 @@ export const buildMetronomeHtml = ({
           }
           switch (data.type) {
             case "start":
-              start(data.bpm, data.beats, data.accents);
+              start(data.bpm, data.beats, data.accents, data.accentVolume, data.beatVolume, data.accentSound, data.beatSound);
               break;
             case "stop":
               stop();
+              break;
+            case "setVolumes":
+              setVolumes(data.accentVolume, data.beatVolume);
+              break;
+            case "setSounds":
+              setSounds(data.accentSound, data.beatSound);
               break;
             case "setTempo":
               setTempo(data.bpm);

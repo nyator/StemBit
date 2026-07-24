@@ -5,7 +5,7 @@ import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { PAD_PACKS, type PadPack } from "../constants/pads";
 import { COLORS } from "../constants/theme";
-import { Musicnote, Pause, Play } from "./icons";
+import { Musicnote, PlayCircle, PauseCircle } from "./icons";
 
 type SelectPadViewProps = {
   // Which packs to show -- defaults to the full catalog. The picker screen
@@ -115,7 +115,7 @@ const SelectPadView = ({
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {packs.map((item, i) => {
           const isNewArtistGroup =
             groupByArtist && (i === 0 || packs[i - 1].artist !== item.artist);
@@ -149,9 +149,9 @@ const SelectPadView = ({
                   }}
                 >
                   {playingIndex === i ? (
-                    <Pause size={18} color={COLORS.white} />
+                    <PauseCircle size={24} color={COLORS.white} />
                   ) : (
-                    <Play size={18} color={COLORS.white} />
+                    <PlayCircle size={24} color={COLORS.white} />
                   )}
                 </TouchableOpacity>
               </TouchableOpacity>

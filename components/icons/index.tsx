@@ -48,6 +48,16 @@ export function ArrowLeft({ size = 24, color = DEFAULT_COLOR, style }: IconProps
   );
 }
 
+export function ChevronDown({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M19.9201 8.95001L13.4001 15.47C12.6301 16.24 11.3701 16.24 10.6001 15.47L4.08008 8.95001" stroke={color} strokeWidth={1.5} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round" />
+      </G>
+    </Svg>
+  );
+}
+
 export function Bluetooth({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
@@ -96,6 +106,17 @@ export function Pad({ size = 20, color = DEFAULT_COLOR, style }: IconProps) {
   );
 }
 
+export function PadFill({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M13.89 2.8799L9.19999 2.1399C5.28999 1.5299 3.47999 2.8499 2.85999 6.7599L2.11999 11.4499C1.71999 14.0099 2.13999 15.6699 3.58999 16.6799C4.34999 17.2199 5.38999 17.5799 6.73999 17.7899L11.43 18.5299C15.34 19.1399 17.15 17.8199 17.77 13.9099L18.5 9.2199C18.62 8.4499 18.67 7.7599 18.63 7.1499C18.5 4.6499 17.03 3.3699 13.89 2.8799ZM8.23999 9.3499C7.06999 9.3499 6.11999 8.3999 6.11999 7.2399C6.11999 6.0699 7.06999 5.1199 8.23999 5.1199C9.39999 5.1199 10.35 6.0699 10.35 7.2399C10.35 8.3999 9.39999 9.3499 8.23999 9.3499Z" fill={color} />
+        <Path d="M20.4999 13.4701L18.9999 17.9801C17.7499 21.7401 15.7499 22.7401 11.9899 21.4901L7.47989 19.9901C6.06989 19.5201 5.04989 18.9401 4.38989 18.2101C5.01989 18.4601 5.74989 18.6501 6.57989 18.7801L11.2799 19.5201C11.9199 19.6201 12.5199 19.6701 13.0799 19.6701C16.3799 19.6701 18.1499 17.8901 18.7599 14.0601L19.4899 9.37006C19.5899 8.79006 19.6299 8.28006 19.6299 7.81006C21.1499 9.06006 21.3699 10.8401 20.4999 13.4701Z" fill={color} />
+      </G>
+    </Svg>
+  );
+}
+
 export function Loop({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
@@ -139,6 +160,57 @@ export function ShieldSecurity({ size = 20, color = DEFAULT_COLOR, style }: Icon
         <Path d="M8.74167 1.85833L4.58333 3.425C3.625 3.78333 2.84167 4.91667 2.84167 5.93333V12.125C2.84167 13.1083 3.49167 14.4 4.28333 14.9917L7.86667 17.6667C9.04167 18.55 10.975 18.55 12.15 17.6667L15.7333 14.9917C16.525 14.4 17.175 13.1083 17.175 12.125V5.93333C17.175 4.90833 16.3917 3.775 15.4333 3.41667L11.275 1.85833C10.5667 1.6 9.43333 1.6 8.74167 1.85833Z" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
         <Path d="M10 10.4167C10.9205 10.4167 11.6667 9.67047 11.6667 8.75C11.6667 7.82953 10.9205 7.08333 10 7.08333C9.07952 7.08333 8.33333 7.82953 8.33333 8.75C8.33333 9.67047 9.07952 10.4167 10 10.4167Z" stroke={color} strokeWidth={1.5} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round" />
         <Path d="M10 10.4167V12.9167" stroke={color} strokeWidth={1.5} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round" />
+      </G>
+    </Svg>
+  );
+}
+
+
+export function SortPad({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M22 3.75H2C1.59 3.75 1.25 3.41 1.25 3C1.25 2.59 1.59 2.25 2 2.25H22C22.41 2.25 22.75 2.59 22.75 3C22.75 3.41 22.41 3.75 22 3.75Z" fill={color} />
+        <Path d="M11 9.75H2C1.59 9.75 1.25 9.41 1.25 9C1.25 8.59 1.59 8.25 2 8.25H11C11.41 8.25 11.75 8.59 11.75 9C11.75 9.41 11.41 9.75 11 9.75Z" fill={color} />
+        <Path d="M8 15.75H2C1.59 15.75 1.25 15.41 1.25 15C1.25 14.59 1.59 14.25 2 14.25H8C8.41 14.25 8.75 14.59 8.75 15C8.75 15.41 8.41 15.75 8 15.75Z" fill={color} />
+        <Path d="M6 21.75H2C1.59 21.75 1.25 21.41 1.25 21C1.25 20.59 1.59 20.25 2 20.25H6C6.41 20.25 6.75 20.59 6.75 21C6.75 21.41 6.41 21.75 6 21.75Z" fill={color} />
+        <Path d="M11.8402 22.7501C10.2302 22.7501 8.91016 21.4401 8.91016 19.8201C8.91016 18.2101 10.2202 16.8901 11.8402 16.8901C13.4602 16.8901 14.7702 18.2001 14.7702 19.8201C14.7702 21.4401 13.4602 22.7501 11.8402 22.7501ZM11.8402 18.4001C11.0502 18.4001 10.4102 19.0401 10.4102 19.8301C10.4102 20.6201 11.0502 21.2601 11.8402 21.2601C12.6302 21.2601 13.2702 20.6201 13.2702 19.8301C13.2702 19.0401 12.6302 18.4001 11.8402 18.4001Z" fill={color} />
+        <Path d="M14.02 20.5701C13.61 20.5701 13.27 20.2301 13.27 19.8201V11.0501C13.27 9.84007 13.99 8.8901 15.16 8.5801L19.51 7.39009C20.46 7.13009 21.28 7.23007 21.86 7.68007C22.44 8.13007 22.74 8.86007 22.74 9.87007V18.3801C22.74 18.7901 22.4 19.1301 21.99 19.1301C21.58 19.1301 21.24 18.7901 21.24 18.3801V9.87007C21.24 9.37007 21.14 9.02008 20.95 8.88008C20.76 8.73008 20.37 8.72005 19.9 8.85005L15.55 10.0401C15.26 10.1201 14.77 10.3601 14.77 11.0701V19.8401C14.77 20.2401 14.43 20.5701 14.02 20.5701Z" fill={color} />
+        <Path d="M19.8201 21.3C18.2101 21.3 16.8901 19.9901 16.8901 18.3701C16.8901 16.7601 18.2001 15.4401 19.8201 15.4401C21.4401 15.4401 22.7501 16.7501 22.7501 18.3701C22.7501 19.9901 21.4401 21.3 19.8201 21.3ZM19.8201 16.9501C19.0301 16.9501 18.3901 17.5901 18.3901 18.3801C18.3901 19.1701 19.0301 19.8101 19.8201 19.8101C20.6101 19.8101 21.2501 19.1701 21.2501 18.3801C21.2501 17.5901 20.6101 16.9501 19.8201 16.9501Z" fill={color} />
+        <Path d="M14.0202 14.35C13.6902 14.35 13.3902 14.13 13.3002 13.8C13.1902 13.4 13.4302 12.9901 13.8302 12.8801L21.8102 10.7001C22.2102 10.5901 22.6202 10.83 22.7302 11.23C22.8402 11.63 22.6002 12.0401 22.2002 12.1501L14.2202 14.3301C14.1502 14.3401 14.0802 14.35 14.0202 14.35Z" fill={color} />
+      </G>
+    </Svg>
+  );
+}
+
+export function PauseCircle({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path
+        d="M11.97 2C6.44997 2 1.96997 6.48 1.96997 12C1.96997 17.52 6.44997 22 11.97 22C17.49 22 21.97 17.52 21.97 12C21.97 6.48 17.5 2 11.97 2ZM10.72 15.03C10.72 15.51 10.52 15.7 10.01 15.7H8.70997C8.19997 15.7 7.99997 15.51 7.99997 15.03V8.97C7.99997 8.49 8.19997 8.3 8.70997 8.3H9.99997C10.51 8.3 10.71 8.49 10.71 8.97V15.03H10.72ZM16 15.03C16 15.51 15.8 15.7 15.29 15.7H14C13.49 15.7 13.29 15.51 13.29 15.03V8.97C13.29 8.49 13.49 8.3 14 8.3H15.29C15.8 8.3 16 8.49 16 8.97V15.03Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+export function PlayCircle({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path
+        d="M11.97 2C6.44997 2 1.96997 6.48 1.96997 12C1.96997 17.52 6.44997 22 11.97 22C17.49 22 21.97 17.52 21.97 12C21.97 6.48 17.5 2 11.97 2ZM14.97 14.23L12.07 15.9C11.71 16.11 11.31 16.21 10.92 16.21C10.52 16.21 10.13 16.11 9.76997 15.9C9.04997 15.48 8.61997 14.74 8.61997 13.9V10.55C8.61997 9.72 9.04997 8.97 9.76997 8.55C10.49 8.13 11.35 8.13 12.08 8.55L14.98 10.22C15.7 10.64 16.13 11.38 16.13 12.22C16.13 13.06 15.7 13.81 14.97 14.23Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+export function Folder({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M19.4345 4.03448C19.5668 4.2424 19.3401 4.48461 19.0998 4.43C18.6298 4.29 18.1098 4.22 17.5798 4.22H14.2796C14.1223 4.22 13.9743 4.14605 13.8798 4.02037L12.7298 2.49C12.589 2.29044 12.7221 2 12.9664 2H15.7198C17.2808 2 18.6559 2.81073 19.4345 4.03448Z" fill={color} />
+        <Path d="M20.14 6.54C19.71 6.23 19.22 6 18.69 5.87C18.33 5.77 17.96 5.72 17.58 5.72H13.86C13.28 5.72 13.24 5.67 12.93 5.26L11.53 3.4C10.88 2.53 10.37 2 8.74 2H6.42C3.98 2 2 3.98 2 6.42V17.58C2 20.02 3.98 22 6.42 22H17.58C20.02 22 22 20.02 22 17.58V10.14C22 8.65 21.27 7.34 20.14 6.54ZM14.39 16.34H9.6C9.21 16.34 8.91 16.03 8.91 15.64C8.91 15.26 9.21 14.94 9.6 14.94H14.39C14.78 14.94 15.09 15.26 15.09 15.64C15.09 16.03 14.78 16.34 14.39 16.34Z" fill={color} />
       </G>
     </Svg>
   );
@@ -324,13 +396,24 @@ export function Setting4({ size = 24, color = DEFAULT_COLOR, style }: IconProps)
   );
 }
 
-export function VideoCircle({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+export function PlayCircleOutline({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
       <G>
         <Path d="M9.1 12V10.52C9.1 8.61 10.45 7.84 12.1 8.79L13.38 9.53L14.66 10.27C16.31 11.22 16.31 12.78 14.66 13.73L13.38 14.47L12.1 15.21C10.45 16.16 9.1 15.38 9.1 13.48V12Z" stroke={color} strokeWidth={1.5} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round" />
         <Path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
       </G>
+    </Svg>
+  );
+}
+
+export function MusicFilter({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path
+        d="M20.8899 5.18007V16.4801C20.8899 18.4601 19.2799 20.0701 17.2999 20.0701C15.3299 20.0701 13.7099 18.4601 13.7099 16.4801C13.7099 14.5101 15.3299 12.9001 17.2999 12.9001C18.1399 12.9001 18.8899 13.1901 19.4999 13.6701V7.72007L10.2899 10.3401V18.4101C10.2899 20.3901 8.66986 22.0001 6.69986 22.0001C4.71986 22.0001 3.10986 20.3901 3.10986 18.4101C3.10986 16.4401 4.71986 14.8301 6.69986 14.8301C7.52986 14.8301 8.27986 15.1201 8.88986 15.5901V6.75007C8.88986 5.28007 9.77986 4.14007 11.1899 3.76007L16.9699 2.18007C18.1399 1.86007 19.1299 1.97007 19.8299 2.51007C20.5399 3.04007 20.8899 3.94007 20.8899 5.18007Z"
+        fill={color}
+      />
     </Svg>
   );
 }
@@ -347,7 +430,7 @@ export function Clipboard({ size = 24, color = DEFAULT_COLOR, style }: IconProps
   );
 }
 
-export function Grammerly({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+export function MetronomeFill({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
       <G>
@@ -356,6 +439,18 @@ export function Grammerly({ size = 24, color = DEFAULT_COLOR, style }: IconProps
     </Svg>
   );
 }
+
+export function MetronomeOutline({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M19.07 4.95008C23.04 8.92008 22.97 15.4 18.87 19.29C15.08 22.88 8.92996 22.88 5.12996 19.29C1.01996 15.4 0.94995 8.92008 4.92995 4.95008C8.82995 1.04008 15.17 1.04008 19.07 4.95008Z" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M15.8399 16.0701C13.7199 18.0701 10.2799 18.0701 8.16992 16.0701" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      </G>
+    </Svg>
+  );
+}
+
 
 
 export function Eye({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {

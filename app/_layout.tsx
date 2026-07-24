@@ -1,6 +1,8 @@
 import {SplashScreen, Stack} from "expo-router";
 import {useFonts} from "expo-font";
 import {useEffect} from "react";
+import {GestureHandlerRootView} from "react-native-gesture-handler";
+import {BottomSheetModalProvider} from "@gorhom/bottom-sheet";
 import {PreferencesProvider} from "../context/PreferencesContext";
 import {COLORS} from "../constants/theme";
 
@@ -33,16 +35,20 @@ function RootLayout() {
     }
 
     return (
-        <PreferencesProvider>
-            <Stack>
-                <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
-                <Stack.Screen name="(auths)" options={{headerShown: false}}/>
-                <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
-                <Stack.Screen name="(settings)" options={{headerShown: false}}/>
-                <Stack.Screen name="(loops)" options={{headerShown: false}}/>
-                <Stack.Screen name="(pads)" options={{headerShown: false}}/>
-            </Stack>
-        </PreferencesProvider>
+        <GestureHandlerRootView style={{flex: 1}}>
+            <PreferencesProvider>
+                <BottomSheetModalProvider>
+                    <Stack>
+                        <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
+                        <Stack.Screen name="(auths)" options={{headerShown: false}}/>
+                        <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
+                        <Stack.Screen name="(settings)" options={{headerShown: false}}/>
+                        <Stack.Screen name="(loops)" options={{headerShown: false}}/>
+                        <Stack.Screen name="(pads)" options={{headerShown: false}}/>
+                    </Stack>
+                </BottomSheetModalProvider>
+            </PreferencesProvider>
+        </GestureHandlerRootView>
     );
 }
 

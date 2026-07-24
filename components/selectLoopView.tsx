@@ -4,7 +4,7 @@ import React, { useState, useRef } from "react";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { LOOPS, type Loop } from "../constants/loops";
-import { Musicnote, Pause, Play } from "./icons";
+import { Musicnote, PauseCircle, PlayCircle } from "./icons";
 
 type SelectLoopViewProps = {
   // Which loops to show — defaults to the full catalog. The browser screen
@@ -127,32 +127,47 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
             className="flex-row items-center justify-between py-4 border-b border-white/10"
             onPress={() => handleRowPress(item)}
           >
+            <TouchableOpacity
+              onPress={() => handlePlayPause(i)}
+              className="items-center justify-center rounded-full"
+              style={{
+                width: 34,
+                height: 34,
+                backgroundColor: "rgba(0,89,128,0.3)",
+              }}>
+              {playingIndex === i ? (
+                <PauseCircle size={24} color="white" />
+              ) : (
+                <PlayCircle size={24} color="white" />
+              )}
+            </TouchableOpacity>
+
             <View className="w-2/6">
               <Text className="text-white text-md font-satoshiBold">
                 {item.title}
               </Text>
-              <Text className="text-sm text-white font-satoshiRegular">
-                BPM : {item.bpm}
-              </Text>
+              <View className="flex-row items-center justify-start gap-2">
+                <Text className="text-ink-muted text-xs font-satoshiRegular">
+                  {item.artist} Artist
+                </Text>
+                <Text className="text-ink-muted text-xs font-satoshiRegular">
+                  .
+                </Text>
+                <Text className="text-xs text-ink-muted font-satoshiRegular">
+                  {item.category}
+                </Text>
+              </View>
             </View>
+
             <View className="flex items-center justify-between w-2/6">
-              <Text className="text-white text-md font-satoshiMedium">
-                {item.artist}
-              </Text>
               <Text className="text-white text-md font-satoshiRegular">
                 {item.timeSignature}
               </Text>
-              <Text className="text-xs text-brand font-satoshiMedium">
-                {item.category}
+              <Text className="text-sm text-white font-satoshiRegular">
+                {item.bpm} bpm
               </Text>
             </View>
-            <TouchableOpacity onPress={() => handlePlayPause(i)}>
-              {playingIndex === i ? (
-                <Pause size={20} color="white" />
-              ) : (
-                <Play size={20} color="white" />
-              )}
-            </TouchableOpacity>
+
           </TouchableOpacity>
         ))}
       </ScrollView>

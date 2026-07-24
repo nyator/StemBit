@@ -6,7 +6,7 @@ const HeaderComponent = () => {
     const router = useRouter();
 
     return (
-        <View className="flex flex-row justify-between items-center px-5 my-5 w-full">
+        <View className="flex flex-row justify-between items-center px-8 my-5 w-full">
             <View className="flex flex-row justify-between items-center w-2/5">
                 <View className="flex flex-row justify-center items-center">
                     <Text className="text-3xl text-white font-wordmark">Stembits</Text>

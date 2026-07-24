@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as Haptics from "expo-haptics";
 
 import { usePreferences } from "../context/PreferencesContext";
+import { hapticImpact } from "../utils/haptics";
 
 type UseBpmControlOptions = {
   bpm: number;
@@ -80,8 +80,14 @@ export function useBpmControl({
     [stepBy]
   );
 
-  const increase = () => stepBy(1);
-  const decrease = () => stepBy(-1);
+  const increase = () => {
+    hapticImpact(prefs.haptics);
+    stepBy(1);
+  };
+  const decrease = () => {
+    hapticImpact(prefs.haptics);
+    stepBy(-1);
+  };
   const startHoldIncrease = () => startHold(1);
   const startHoldDecrease = () => startHold(-1);
 
@@ -89,9 +95,7 @@ export function useBpmControl({
   const tapTimesRef = useRef<number[]>([]);
 
   const handleTapTempo = () => {
-    if (prefs.haptics) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
+    hapticImpact(prefs.haptics);
 
     const now = Date.now();
     const taps = tapTimesRef.current;

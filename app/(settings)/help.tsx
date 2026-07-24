@@ -8,8 +8,7 @@ import {
   type IconComponent,
   Musicnote,
   Setting4,
-  Sms,
-  VideoCircle,
+  PlayCircleOutline,
 } from "../../components/icons";
 
 const GUIDES: {
@@ -17,27 +16,27 @@ const GUIDES: {
   title: string;
   body: string;
 }[] = [
-  {
-    icon: Musicnote,
-    title: "Bits (Loops)",
-    body: "Browse loops by category or artist, preview them, and load one with the Load dialog. Change the BPM freely — loops warp to your tempo without changing key, and the loop point stays seamless.",
-  },
-  {
-    icon: Clipboard,
-    title: "Pad",
-    body: "Sustained pads in every major and minor key. Tap a key to fade it in; tap again to stop. Switching keys crossfades smoothly so you can move with the song.",
-  },
-  {
-    icon: Setting4,
-    title: "Metronome",
-    body: "Set the tempo with +/- (hold to scrub), type it in, or tap the tempo pad in time. Choose a time signature — compound and odd meters click in their natural groups. Use 0.5× / 1× / 2× to change the feel without changing the BPM.",
-  },
-  {
-    icon: VideoCircle,
-    title: "One sound at a time",
-    body: "The metronome and loop player never fight: starting one asks you to stop the other. A floating pill shows anything playing from another tab — tap it to jump there, or hit its stop button.",
-  },
-];
+    {
+      icon: Musicnote,
+      title: "Bits (Loops)",
+      body: "Browse loops by category or artist, preview them, and load one with the Load dialog. Change the BPM freely — loops warp to your tempo without changing key, and the loop point stays seamless.",
+    },
+    {
+      icon: Clipboard,
+      title: "Pad",
+      body: "Sustained pads in every major and minor key. Tap a key to fade it in; tap again to stop. Switching keys crossfades smoothly so you can move with the song.",
+    },
+    {
+      icon: Setting4,
+      title: "Metronome",
+      body: "Set the tempo with +/- (hold to scrub), type it in, or tap the tempo pad in time. Choose a time signature — compound and odd meters click in their natural groups. Use 0.5× / 1× / 2× to change the feel without changing the BPM.",
+    },
+    {
+      icon: PlayCircleOutline,
+      title: "One sound at a time",
+      body: "The metronome and loop player never fight: starting one asks you to stop the other. A floating pill shows anything playing from another tab — tap it to jump there, or hit its stop button.",
+    },
+  ];
 
 const Help = () => {
   return (
@@ -70,10 +69,9 @@ const Help = () => {
           onPress={() =>
             Linking.openURL(
               `mailto:${SUPPORT_EMAIL}?subject=StemBit Support`
-            ).catch(() => {})
+            ).catch(() => { })
           }
         >
-          <Sms size={18} color="black" />
           <Text className="ml-2 text-base text-black font-satoshiBold">
             Email Support
           </Text>

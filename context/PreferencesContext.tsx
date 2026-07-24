@@ -10,17 +10,29 @@ import * as FileSystem from "expo-file-system";
 
 // App-wide user preferences, persisted on device. Every preference here is
 // real — it changes actual behavior somewhere in the app:
-//   haptics      -> pad presses and tap-tempo feedback
-//   meterAccents -> metronome accent grouping in compound/odd meters
+//   haptics       -> pad presses and tap-tempo feedback
+//   meterAccents  -> metronome accent grouping in compound/odd meters
+//   accentVolume  -> gain of the metronome's accent clicks, 0–1
+//   beatVolume    -> gain of the metronome's regular clicks, 0–1
+//   accentSound   -> id of the click sound the accent voice plays
+//   beatSound     -> id of the click sound the regular-beat voice plays
 export type Preferences = {
   haptics: boolean;
   meterAccents: boolean;
+  accentVolume: number;
+  beatVolume: number;
+  accentSound: string;
+  beatSound: string;
   seenOnboarding: boolean;
 };
 
 const DEFAULTS: Preferences = {
   haptics: true,
   meterAccents: true,
+  accentVolume: 1,
+  beatVolume: 0.8,
+  accentSound: "bright",
+  beatSound: "low",
   seenOnboarding: false,
 };
 

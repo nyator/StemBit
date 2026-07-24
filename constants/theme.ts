@@ -18,17 +18,18 @@ export const COLORS = {
   surfaceSunken: "rgba(21,21,27,0.87)", // metronome dial interior
   surfaceMuted: "rgba(42,42,42,0.7)", // segmented control, unselected
   surfaceGlass: "rgba(15,20,22,0.52)", // floating nav bar
+  surfaceField: "#17181F", // input / text-field fill
 
   // The one hue the design derives its depth from: separators, the dial's
   // shadow, and the ambient corner glow are all this teal-navy at low alpha.
-  glow: "#00415B",
+  glow: "#00415A",
 
   // Borders. Reads as a "dark blue haze" rather than a visible line.
   border: "rgba(0,65,91,0.26)", // row dividers
   borderStrong: "rgba(0,65,91,0.5)", // outlined buttons (TAP TEMPO)
   borderDial: "rgba(3,40,54,0.26)", // metronome dial ring
   borderSegment: "rgba(47,47,47,0.7)", // segmented control, unselected
-  borderGlass: "rgba(255,255,255,0.12)", // floating nav bar
+  borderGlass: "rgba(255,2ed55,255,0.12)", // floating nav bar
   borderBrand: "rgba(103,175,203,0.26)", // primary gradient button
   borderIdle: "#4F4F4F", // unselected radio ring
 

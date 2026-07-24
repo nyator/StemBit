@@ -53,7 +53,7 @@ describe('<Metro />', () => {
     });
 
     expect(screen.getByDisplayValue('120')).toBeTruthy();
-
+    
     const increaseButton = screen.getByLabelText('Increase BPM');
     fireEvent.press(increaseButton);
 

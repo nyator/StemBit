@@ -58,7 +58,7 @@ export default function LaunchPadComponent({
       <Text
         className="text-center font-satoshiBold"
         style={{
-          fontSize: 24,
+          fontSize: 20,
           letterSpacing: -0.3,
           color: isPlaying ? COLORS.white : COLORS.textSoft,
         }}

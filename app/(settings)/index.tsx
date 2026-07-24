@@ -29,6 +29,8 @@ import {
   Flash,
   MessageQuestion,
 } from "../../components/icons";
+import AmbientGlow from "../../components/ui/ambientGlow";
+import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 
 // Read from app.json via expo-constants rather than a hardcoded constant, so
 // these can't drift from what actually ships.
@@ -67,6 +69,8 @@ const SettingsScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-canvas">
+      <AmbientGlow style={GLOW_PLACEMENTS.topLeft} />
+      {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
       <StatusBar barStyle="light-content" />
       <ScreenHeader title="Settings" />
 

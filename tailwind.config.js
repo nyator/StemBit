@@ -29,6 +29,7 @@ module.exports = {
           sunken: "rgba(21,21,27,0.87)", // dial interior
           muted: "rgba(42,42,42,0.7)", // segmented control, unselected
           glass: "rgba(15,20,22,0.52)", // floating nav
+          field: "#17181F", // input / text-field fill
         },
         // The brand is a gradient; `brand` alone is the flat fallback.
         brand: {

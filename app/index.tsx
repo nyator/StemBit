@@ -26,7 +26,7 @@ export default function Page() {
       <AmbientGlow style={{ top: GLOW_TOP, right: GLOW_RIGHT }} />
 
       <View className="items-center justify-center flex-1">
-        <Text className="font-wordmark text-wordmarkLg tracking-wordmark text-ink">
+        <Text className="font-wordmark text-display tracking-wordmark text-ink">
           stembits
         </Text>
       </View>

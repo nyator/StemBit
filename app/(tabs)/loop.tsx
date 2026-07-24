@@ -9,6 +9,8 @@ import {
   LOOP_MAX_BPM,
 } from "../../context/LoopPlaybackContext";
 import { useBpmControl } from "../../hooks/useBpmControl";
+import { usePreferences } from "../../context/PreferencesContext";
+import { hapticImpact } from "../../utils/haptics";
 
 import { PLAYBACK_FEELS, DEFAULT_FEEL_INDEX } from "../../context/MetronomeContext";
 
@@ -18,7 +20,7 @@ import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { GlowRing } from "../../components/ui/dialGlowRing";
 import icons from "../../constants/icons";
 import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
-import { AddCircle, MinusCircle, Information, PlayFilled, Stop } from "../../components/icons";
+import { AddCircle, MinusCircle, Information, PlayFilled, Stop, Folder } from "../../components/icons";
 
 // Loops have no time-signature concept -- the beat visuals just assume a
 // steady 4-beat cycle to pulse against.
@@ -50,6 +52,7 @@ export default function LoopScreen() {
     startLoop,
     stopLoop,
   } = useLoopPlayback();
+  const { prefs } = usePreferences();
 
   // UI-only for now -- LoopPlaybackContext has no playback-rate multiplier to
   // wire this into yet (see getPlaybackRate in LoopPlaybackContext.tsx).
@@ -140,11 +143,7 @@ export default function LoopScreen() {
             style={{ maxWidth: 220 }}
             className="flex-row items-center justify-center gap-[10px] px-[20px] py-[7px] bg-white rounded-sm"
           >
-            <Image
-              source={icons.folder}
-              style={{ width: 24, height: 24 }}
-              tintColor={COLORS.black}
-            />
+            <Folder size={24} color={COLORS.black} />
             <Text
               className="text-black text-title font-spaceBold"
               numberOfLines={1}
@@ -193,14 +192,6 @@ export default function LoopScreen() {
 
         {renderBeatVisuals()}
 
-        {/* Tap tempo */}
-        <TouchableOpacity
-          onPress={handleTapTempo}
-          className="items-center justify-center mt-[18px] px-[12px] py-[6px] border-2 border-hairline-strong rounded-sm"
-        >
-          <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
-        </TouchableOpacity>
-
         {/* Transport: -/play-stop/+ */}
         <View className="flex-row items-center gap-[10px] mt-[10px]">
           <TouchableOpacity
@@ -215,7 +206,11 @@ export default function LoopScreen() {
 
           <TouchableOpacity
             accessibilityLabel={isPlaying ? "Stop loop" : "Start loop"}
-            onPress={isPlaying ? stopLoop : startLoop}
+            onPress={() => {
+              hapticImpact(prefs.haptics, "medium");
+              if (isPlaying) stopLoop();
+              else startLoop();
+            }}
             disabled={!isPlaying && isBlockedByOtherEngine}
             style={
               !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
@@ -243,6 +238,15 @@ export default function LoopScreen() {
             Stop the Metronome first
           </Text>
         )}
+
+        {/* Tap tempo */}
+        <TouchableOpacity
+          onPress={handleTapTempo}
+          className="items-center justify-center mt-[18px] px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
+        >
+          <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
+        </TouchableOpacity>
+
 
         {/* Subdivision */}
         <View className="items-start w-full mt-[18px]">

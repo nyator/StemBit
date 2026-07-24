@@ -19,6 +19,8 @@ import {
   getLoopsByCategory,
   type LoopCategory,
 } from "../../constants/loops";
+import AmbientGlow from "../../components/ui/ambientGlow";
+import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 
 type BrowseMode = "categories" | "artists";
 
@@ -56,7 +58,10 @@ const LoopBrowserScreen = () => {
     <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
 
-      <ScreenHeader title="Loops" />
+      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
+
+      <ScreenHeader title="Bits" />
 
       {/* Browse mode: Categories / Artists */}
       <View className="items-center mb-4">
@@ -66,14 +71,12 @@ const LoopBrowserScreen = () => {
               key={mode.key}
               accessibilityLabel={`Browse by ${mode.label}`}
               onPress={() => switchMode(mode.key)}
-              className={`px-6 py-2 rounded-lg ${
-                browseMode === mode.key ? "bg-brand" : ""
-              }`}
+              className={`px-6 py-2 rounded-lg ${browseMode === mode.key ? "bg-ink border-ink-muted" : ""
+                }`}
             >
               <Text
-                className={`text-sm font-satoshiMedium ${
-                  browseMode === mode.key ? "text-black" : "text-white"
-                }`}
+                className={`text-sm font-satoshiMedium ${browseMode === mode.key ? "text-black" : "text-white"
+                  }`}
               >
                 {mode.label}
               </Text>
@@ -119,14 +122,12 @@ type FilterChipProps = {
 const FilterChip = ({ label, selected, onPress }: FilterChipProps) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`px-4 py-2 rounded-full border ${
-      selected ? "bg-brand border-brand" : "bg-white/10 border-white/20"
-    }`}
+    className={`px-4 py-2 rounded-full border ${selected ? "bg-ink border-ink-muted" : "bg-white/10 border-white/20"
+      }`}
   >
     <Text
-      className={`text-sm font-satoshiMedium ${
-        selected ? "text-black" : "text-white"
-      }`}
+      className={`text-sm font-satoshiMedium ${selected ? "text-black" : "text-white"
+        }`}
     >
       {label}
     </Text>

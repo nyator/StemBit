@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StatusBar, TouchableOpacity } from "react-native";
-import * as Haptics from "expo-haptics";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -12,8 +11,9 @@ import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import audio from "../../constants/audio";
 import { usePreferences } from "../../context/PreferencesContext";
+import { hapticImpact } from "../../utils/haptics";
 import { COLORS } from "../../constants/theme";
-import { Setting4 } from "../../components/icons";
+import { Setting4, SortPad } from "../../components/icons";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 
@@ -47,11 +47,11 @@ const KEYS = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"];
 // Sharp keys show their enharmonic flat name too, matching the Figma pad grid
 // (e.g. "C#/Db"). Natural keys are unambiguous, so they're left as-is.
 const KEY_DISPLAY_LABELS: Record<string, string> = {
-  "A#": "A#/Bb",
-  "C#": "C#/Db",
-  "D#": "D#/Eb",
-  "F#": "F#/Gb",
-  "G#": "G#/Ab",
+  "A#": "Bb",
+  "C#": "C#",
+  "D#": "Eb",
+  "F#": "F#",
+  "G#": "G#",
 };
 
 const CROSSFADE_MS = 1200;
@@ -315,9 +315,7 @@ export default function PadScreen() {
   }, [clearAllFades, clearFade, padPlayer]);
 
   const handlePadPress = async (idx: number) => {
-    if (prefs.haptics) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    hapticImpact(prefs.haptics);
 
     const isSelected = keySelected === `${idx}`;
 
@@ -371,16 +369,14 @@ export default function PadScreen() {
 
   return (
     <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
+      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+      {/* <AmbientGlow style={GLOW_PLACEMENTS.topRight} /> */}
 
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full px-5">
-
-        <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-        {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
-
         <View>
-          <View className="flex flex-row items-center justify-between w-full mt-9">
-            <View className="flex-row p-1 rounded-xl bg-white/10">
+          <View className="flex flex-row items-center justify-center gap-6 mt-2">
+            <View className="flex-row p-1 rounded-xl bg-white/5">
               <TouchableOpacity
                 accessibilityLabel="Major"
                 onPress={() => setMajorMinor("major")}
@@ -411,12 +407,12 @@ export default function PadScreen() {
             </View>
 
             <TouchableOpacity
-              className="items-center justify-center w-9 h-9 rounded-full bg-white/5"
+              className="items-center justify-center w-9 h-9 bg-white/5 border-white/20 rounded-full"
               onPress={() => router.push("/(pads)/sounds")}
               activeOpacity={0.7}
               accessibilityLabel="Select pad"
             >
-              <Setting4 size={20} color={COLORS.white} />
+              <SortPad size={20} color={COLORS.white} />
             </TouchableOpacity>
           </View>
         </View>

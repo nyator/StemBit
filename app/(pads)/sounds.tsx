@@ -41,7 +41,7 @@ export default function PadSoundsScreen() {
             }}
           >
             <Text
-              className="text-xs font-satoshiBold"
+              className="text-md font-satoshiBold"
               style={{ color: browseMode === "all" ? "#000000" : "#808A9E" }}
             >
               All
@@ -56,7 +56,7 @@ export default function PadSoundsScreen() {
             }}
           >
             <Text
-              className="text-xs font-satoshiBold"
+              className="text-md font-satoshiBold"
               style={{ color: browseMode === "byArtist" ? "#000000" : "#808A9E" }}
             >
               By Artist

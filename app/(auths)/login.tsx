@@ -1,146 +1,91 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { StatusBar } from "react-native";
-import { loginUser } from "../../lib/appwrite";
-import CustomToast from "../../components/customToast";
+import { View, Text } from "react-native";
+import { router } from "expo-router";
 
-import FormField from "../../components/formField";
-import CustomButton from "../../components/customButton";
-import { Link, router } from "expo-router";
+import Screen from "../../components/ui/screen";
+import { BrandButton } from "../../components/ui/brandButton";
+import { BrandInput } from "../../components/ui/brandInput";
+
+// This screen captures only the email address ("Continue with email"); the
+// password / verification step it hands off to is still to be wired up. The
+// Figma node this is built from is named `continue-with-email` (124:842).
+
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+// DEV BYPASS: skips authentication and jumps straight into the app. Set to
+// false once the email hand-off / password step is in place.
+const DEV_SKIP_AUTH = true;
 
 const LoginScreen = () => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-  });
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [showToast, setShowToast] = useState(false);
 
-  const isValidEmail = (email: string) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const showError = (message: string) => {
-    setError(message);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
-  };
-
-  // DEV BYPASS: skips authentication and jumps straight into the app.
-  // Set to false to use the real Appwrite login below (lib/appwrite.ts now
-  // uses the correct createEmailPasswordSession API).
-  const DEV_SKIP_AUTH = true;
-
-  const submit = async () => {
+  const submit = () => {
     if (DEV_SKIP_AUTH) {
       router.replace("/(tabs)/loop");
       return;
     }
 
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
     setError("");
-    if (!form.email || !form.password) {
-      showError("Both email and password are required.");
-      return;
-    }
-    if (!isValidEmail(form.email)) {
-      showError("Please enter a valid email address.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await loginUser({ email: form.email, password: form.password });
-      router.replace("/(tabs)/loop");
-    } catch (error: any) {
-      const errMsg = (error?.message || "").toLowerCase();
-      let message = "Login failed. Please try again.";
-      if (
-        errMsg.includes("invalid credentials") ||
-        errMsg.includes("incorrect")
-      ) {
-        message = "Invalid email or password.";
-      } else if (errMsg.includes("email")) {
-        message = "Invalid email address.";
-      } else if (errMsg.includes("password")) {
-        message = "Invalid password.";
-      }
-      showError(message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // TODO: hand `email` off to the password / verification step.
+    router.push("/(tabs)/loop");
   };
 
   return (
-    <SafeAreaView className="flex-1">
-      <StatusBar barStyle="light-content" />
-      <View className="flex-1 px-5">
-        <View className="flex flex-row justify-center items-center mt-10 mb-5">
-          <Text className="mb-4 text-5xl text-white font-satoshiBold">Stem</Text>
-          <Text className="mb-4 text-5xl text-brand font-satoshiBold">Bits</Text>
+    <Screen glows={["topRight", "bottomLeft"]} className="px-instrument">
+      <View className="flex-1">
+        {/* Brand header */}
+        <View className="items-center pt-28 pb-2">
+          <Text className="text-white font-wordmark text-wordmarkLg tracking-wordmark">
+            stembits
+          </Text>
         </View>
-        <View className="flex items-start">
-          <Text className="text-2xl text-white font-satoshiBold">Login</Text>
-          <View className="flex relative flex-col gap-6 items-center w-full">
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e) => setForm({ ...form, email: e })}
-              otherStyles="mt-5"
-              placeholder="Enter Email"
-              keyboardType="email-address"
-            />
-            <FormField
-              title="Password"
-              value={form.password}
-              handleChangeText={(e) => setForm({ ...form, password: e })}
-              placeholder="Enter your password"
-            />
 
-            <TouchableOpacity className="flex items-end w-full">
-              <Link
-                href="/forgot-password"
-                className="text-xl text-white font-satoshiRegular"
-              >
-                Forgot Password
-              </Link>
-            </TouchableOpacity>
+        {/* Form area */}
+        <View className="justify-center flex-1 w-full gap-5">
+          <BrandInput
+            label="Email Address"
+            placeholder="Enter your email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError("");
+            }}
+            onSubmitEditing={submit}
+            returnKeyType="next"
+            error={error}
+          />
 
-            <CustomButton
-              title="Login"
-              containerStyles="w-full"
-              handlePress={submit}
-              isLoading={isSubmitting}
-            />
+          <BrandButton label="Continue" onPress={submit} />
 
-            {showToast && error && (
-              <Text className="absolute bottom-5 py-3 w-full text-center text-red-500 font-satoshiMedium">
-                {error}
-              </Text>
-            )}
-
-            <View className="flex flex-row mt-2">
-              <Text className="text-xl text-white font-satoshiMedium">
-                Don't have an account?
-              </Text>
-              <TouchableOpacity>
-                <Link
-                  href="/register"
-                  className="text-xl underline text-brand font-satoshiMedium"
-                >
-                  {" "}
-                  Signup
-                </Link>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        <View className="flex absolute bottom-0 right-2/4 flex-row">
-          <Text className="text-white/50 font-satoshiMedium">by </Text>
-          <Text className="text-brand font-satoshiMedium">nehtek</Text>
+          <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5">
+            By continuing, I agree to the{" "}
+            <Text
+              className="text-white underline"
+              onPress={() => router.push("/termsofservice")}
+            >
+              Terms of Service
+            </Text>
+            {" and "}
+            <Text
+              className="text-white underline"
+              onPress={() => router.push("/privacypolicy")}
+            >
+              Privacy Policy
+            </Text>
+          </Text>
         </View>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 };
 

@@ -5,7 +5,13 @@
       "Bash(node -p \"require\\('./app.json'\\).expo.newArchEnabled\")",
       "Bash(node -e ' *)",
       "Bash(node -p \"require\\('./node_modules/expo-constants/package.json'\\).version\")",
-      "Bash(node -e \"const a=require\\('./app.json'\\).expo; console.log\\('version:', a.version, '| ios.buildNumber:', a.ios?.buildNumber ?? 'unset', '| android.versionCode:', a.android?.versionCode ?? 'unset'\\)\")"
+      "Bash(node -e \"const a=require\\('./app.json'\\).expo; console.log\\('version:', a.version, '| ios.buildNumber:', a.ios?.buildNumber ?? 'unset', '| android.versionCode:', a.android?.versionCode ?? 'unset'\\)\")",
+      "Read(//c/Users/hnyator/AppData/Local/Temp/claude/c--Users-hnyator-Desktop-StemBit/b0c4a929-ab89-4821-96c7-e3b342d7b21d/scratchpad/**)",
+      "Bash(npm pack *)",
+      "Bash(tar -xzf __TRACKED_VAR__/expo-linear-gradient-15.0.8.tgz -C node_modules/expo-linear-gradient --strip-components=1)",
+      "Bash(node -e \"console.log\\('resolved:', require.resolve\\('@gorhom/bottom-sheet'\\)\\)\")",
+      "Bash(node -e \"try{const m=require\\('./node_modules/expo/bundledNativeModules.json'\\);console.log\\('@react-native-picker/picker =>', m['@react-native-picker/picker']||'\\(not listed\\)'\\)}catch\\(e\\){console.log\\('no bundledNativeModules.json'\\)}\")",
+      "Bash(node -e \"const a=require\\('./app.json'\\);console.log\\('plugins:', JSON.stringify\\(\\(a.expo&&a.expo.plugins\\)||[]\\)\\)\")"
     ]
   }
 }
