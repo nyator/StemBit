@@ -1,25 +1,27 @@
-import { View, Text, TouchableOpacity, Image } from "react-native";
+import type { ReactNode } from "react";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 
 import { useMetronome } from "../context/MetronomeContext";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
-import icons from "../constants/icons";
+import { usePadPlayback } from "../context/PadPlaybackContext";
+import { PlayCircle, Metromone, PadFill, Stop, MetronomeFill } from "./icons";
 import { COLORS } from "../constants/theme";
-import { Stop } from "./icons";
 
 type PillProps = {
   onPress: () => void;
   onStop: () => void;
   accentColor: string;
   label: string;
+  icon: ReactNode;
 };
 
-function EnginePill({ onPress, onStop, accentColor, label }: PillProps) {
+function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.85}
-      className="flex-row items-center px-4 py-3 border rounded-full shadow-lg bg-canvas border-white/20"
+      className="flex-row items-center px-4 py-3 shadow-lg rounded-nav bg-surface-glass border border-hairline-glass"
       style={{ elevation: 8 }}
     >
       <View
@@ -31,11 +33,7 @@ function EnginePill({ onPress, onStop, accentColor, label }: PillProps) {
           backgroundColor: accentColor,
         }}
       />
-      <Image
-        source={icons.metronome}
-        className="w-5 h-5 mr-2"
-        tintColor="#ffffff"
-      />
+      <View className="mr-2">{icon}</View>
       <Text className="mr-3 text-white font-satoshiBold">{label}</Text>
       <TouchableOpacity
         accessibilityLabel="Stop"
@@ -49,20 +47,24 @@ function EnginePill({ onPress, onStop, accentColor, label }: PillProps) {
   );
 }
 
-// Small persistent indicators shown on other tabs while a metronome/click
-// engine keeps ticking in the background, so it's never silently running
-// with no way to see or stop it. Stacked in one positioned container so the
-// Metronome and Bits/Loop pills don't overlap if both happen to be playing.
+// Small persistent indicators shown on other screens while a playback engine
+// keeps running in the background, so an engine is never silently playing with
+// no way to see or stop it. Mounted at the app root (app/_layout.tsx), so the
+// pills follow the user everywhere -- other tabs and non-tab screens like
+// Settings alike. Stacked in one positioned container so the Metronome, Loop
+// and Pad pills don't overlap if more than one happens to be playing.
 export default function FloatingEngineControls() {
   const router = useRouter();
   const pathname = usePathname();
   const metronome = useMetronome();
   const loop = useLoopPlayback();
+  const pad = usePadPlayback();
 
   const showMetronome = metronome.isPlaying && pathname !== "/metro";
   const showLoop = loop.isPlaying && pathname !== "/loop";
+  const showPad = pad.isPlaying && pathname !== "/pad";
 
-  if (!showMetronome && !showLoop) {
+  if (!showMetronome && !showLoop && !showPad) {
     return null;
   }
 
@@ -73,7 +75,7 @@ export default function FloatingEngineControls() {
         position: "absolute",
         left: 0,
         right: 0,
-        bottom: "15%",
+        bottom: "13%",
         alignItems: "center",
         gap: 10,
       }}
@@ -84,6 +86,16 @@ export default function FloatingEngineControls() {
           onStop={loop.stopLoop}
           accentColor={COLORS.brand}
           label={`${loop.bpm} BPM`}
+          icon={<PlayCircle size={18}/>}
+        />
+      )}
+      {showPad && (
+        <EnginePill
+          onPress={() => router.push("/(tabs)/pad")}
+          onStop={pad.stopPad}
+          accentColor={pad.mode === "minor" ? COLORS.danger : COLORS.brand}
+          label={pad.activeLabel ?? "Pad"}
+          icon={<PadFill size={18} />}
         />
       )}
       {showMetronome && (
@@ -92,6 +104,7 @@ export default function FloatingEngineControls() {
           onStop={metronome.stopMetronome}
           accentColor={metronome.currentBeat === 0 ? COLORS.brand : COLORS.textOnBrand}
           label={`${metronome.bpm} BPM`}
+          icon={<MetronomeFill size={18} />}
         />
       )}
     </View>

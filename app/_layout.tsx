@@ -4,6 +4,11 @@ import {useEffect} from "react";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {BottomSheetModalProvider} from "@gorhom/bottom-sheet";
 import {PreferencesProvider} from "../context/PreferencesContext";
+import {PlaybackLockProvider} from "../context/PlaybackLockContext";
+import {MetronomeProvider} from "../context/MetronomeContext";
+import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
+import {PadPlaybackProvider} from "../context/PadPlaybackContext";
+import FloatingEngineControls from "../components/floatingEngineControls";
 import {COLORS} from "../constants/theme";
 
 function RootLayout() {
@@ -38,14 +43,34 @@ function RootLayout() {
         <GestureHandlerRootView style={{flex: 1}}>
             <PreferencesProvider>
                 <BottomSheetModalProvider>
-                    <Stack>
-                        <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
-                        <Stack.Screen name="(auths)" options={{headerShown: false}}/>
-                        <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
-                        <Stack.Screen name="(settings)" options={{headerShown: false}}/>
-                        <Stack.Screen name="(loops)" options={{headerShown: false}}/>
-                        <Stack.Screen name="(pads)" options={{headerShown: false}}/>
-                    </Stack>
+                    {/*
+                      The metronome and loop engines live here, above the Stack,
+                      rather than inside (tabs). Their audio runs in hidden
+                      WebViews; if they were mounted inside a navigator screen,
+                      pushing a (settings)/(loops)/(pads) route would freeze or
+                      detach that screen and suspend the WebView's audio clock,
+                      stopping playback. Mounted above every navigator, they keep
+                      ticking no matter where the user navigates. FloatingEngine-
+                      Controls rides alongside so the running engine can always be
+                      seen and stopped, even on non-tab screens.
+                    */}
+                    <PlaybackLockProvider>
+                        <MetronomeProvider>
+                            <LoopPlaybackProvider>
+                                <PadPlaybackProvider>
+                                    <Stack>
+                                        <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
+                                        <Stack.Screen name="(auths)" options={{headerShown: false}}/>
+                                        <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
+                                        <Stack.Screen name="(settings)" options={{headerShown: false}}/>
+                                        <Stack.Screen name="(loops)" options={{headerShown: false}}/>
+                                        <Stack.Screen name="(pads)" options={{headerShown: false}}/>
+                                    </Stack>
+                                    <FloatingEngineControls />
+                                </PadPlaybackProvider>
+                            </LoopPlaybackProvider>
+                        </MetronomeProvider>
+                    </PlaybackLockProvider>
                 </BottomSheetModalProvider>
             </PreferencesProvider>
         </GestureHandlerRootView>

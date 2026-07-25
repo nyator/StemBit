@@ -16,6 +16,11 @@ import * as FileSystem from "expo-file-system";
 //   beatVolume    -> gain of the metronome's regular clicks, 0–1
 //   accentSound   -> id of the click sound the accent voice plays
 //   beatSound     -> id of the click sound the regular-beat voice plays
+//   metronomeVolume -> master gain for the metronome, scales accent+beat, 0–1
+//   padVolume     -> master gain for the pad instrument, 0–1
+//   loopVolume    -> master gain for the loop's backing track, 0–1
+//   loopClick     -> play a metronome click alongside a loop (off by default)
+//   loopClickPan  -> stereo placement of that loop click
 export type Preferences = {
   haptics: boolean;
   meterAccents: boolean;
@@ -23,6 +28,11 @@ export type Preferences = {
   beatVolume: number;
   accentSound: string;
   beatSound: string;
+  metronomeVolume: number;
+  padVolume: number;
+  loopVolume: number;
+  loopClick: boolean;
+  loopClickPan: "left" | "center" | "right";
   seenOnboarding: boolean;
 };
 
@@ -31,8 +41,19 @@ const DEFAULTS: Preferences = {
   meterAccents: true,
   accentVolume: 1,
   beatVolume: 0.8,
-  accentSound: "bright",
-  beatSound: "low",
+  // Ids from METRONOME_SOUNDS (context/MetronomeContext.tsx). Default to the
+  // Ableton kit's accent/beat voices.
+  accentSound: "ableton_accent",
+  beatSound: "ableton_beat",
+  // Per-engine master levels (Settings -> Audio Output / Volume). Defaults are
+  // the slider positions the Figma draws (98/140, 119/140, 70/140).
+  metronomeVolume: 0.7,
+  padVolume: 0.85,
+  loopVolume: 0.5,
+  // The loop click is opt-in: loops play with no click until the user turns it
+  // on (Settings -> Audio Output / Volume). Center = no stereo panning.
+  loopClick: false,
+  loopClickPan: "center",
   seenOnboarding: false,
 };
 

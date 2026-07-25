@@ -11,7 +11,9 @@
       "Bash(tar -xzf __TRACKED_VAR__/expo-linear-gradient-15.0.8.tgz -C node_modules/expo-linear-gradient --strip-components=1)",
       "Bash(node -e \"console.log\\('resolved:', require.resolve\\('@gorhom/bottom-sheet'\\)\\)\")",
       "Bash(node -e \"try{const m=require\\('./node_modules/expo/bundledNativeModules.json'\\);console.log\\('@react-native-picker/picker =>', m['@react-native-picker/picker']||'\\(not listed\\)'\\)}catch\\(e\\){console.log\\('no bundledNativeModules.json'\\)}\")",
-      "Bash(node -e \"const a=require\\('./app.json'\\);console.log\\('plugins:', JSON.stringify\\(\\(a.expo&&a.expo.plugins\\)||[]\\)\\)\")"
+      "Bash(node -e \"const a=require\\('./app.json'\\);console.log\\('plugins:', JSON.stringify\\(\\(a.expo&&a.expo.plugins\\)||[]\\)\\)\")",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json; Write-Output \"EXIT: $LASTEXITCODE\")"
     ]
   }
 }

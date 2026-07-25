@@ -3,13 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import { COLORS, SUPPORT_EMAIL } from "../../constants/theme";
-import {
-  Clipboard,
-  Musicnote,
-  Setting4,
-  Sms,
-  VideoCircle,
-} from "../../components/icons";
+
 
 const GUIDES: {
   title: string;

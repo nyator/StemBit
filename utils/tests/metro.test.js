@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import Metro from '../../app/(tabs)/metro';
-import { MetronomeProvider } from '../../context/MetronomeContext';
+import { MetronomeProvider, METRONOME_SOUNDS } from '../../context/MetronomeContext';
 import { PlaybackLockProvider } from '../../context/PlaybackLockContext';
 import { PreferencesProvider } from '../../context/PreferencesContext';
 
@@ -40,16 +41,25 @@ jest.mock('expo-file-system', () => ({
 describe('<Metro />', () => {
   it('should start at 120 BPM and allow increasing the tempo', async () => {
     render(
-      <PreferencesProvider>
-        <PlaybackLockProvider>
-          <MetronomeProvider>
-            <Metro />
-          </MetronomeProvider>
-        </PlaybackLockProvider>
-      </PreferencesProvider>
+      // The metro screen's sound/volume sheet is a BottomSheetModal, which
+      // throws ("BottomSheetModalInternalContext cannot be null") without this
+      // provider (app/_layout.tsx supplies it at the app root).
+      <BottomSheetModalProvider>
+        <PreferencesProvider>
+          <PlaybackLockProvider>
+            <MetronomeProvider>
+              <Metro />
+            </MetronomeProvider>
+          </PlaybackLockProvider>
+        </PreferencesProvider>
+      </BottomSheetModalProvider>
     );
     await waitFor(() => {
-      expect(require('expo-asset').Asset.fromModule).toHaveBeenCalledTimes(2);
+      // The engine decodes every registered click up front, one Asset.fromModule
+      // per sound (see MetronomeProvider's loadEngine).
+      expect(require('expo-asset').Asset.fromModule).toHaveBeenCalledTimes(
+        METRONOME_SOUNDS.length
+      );
     });
 
     expect(screen.getByDisplayValue('120')).toBeTruthy();

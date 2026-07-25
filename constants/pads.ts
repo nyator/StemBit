@@ -6,8 +6,8 @@ export type PadPack = {
   artist: string;
   genre: string;
   // All packs point at the one recorded pad instrument for now -- there's
-  // only a single chromatic sample set (see PAD_SOURCES in app/(tabs)/pad.tsx)
-  // until distinct packs are actually recorded.
+  // only a single chromatic sample set (see PAD_SOURCES in
+  // context/PadPlaybackContext.tsx) until distinct packs are actually recorded.
   source: number;
 };
 

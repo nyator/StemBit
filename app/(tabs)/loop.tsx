@@ -38,11 +38,12 @@ export default function LoopScreen() {
   const loadedAt =
     typeof params.loadedAt === "string" ? params.loadedAt : undefined;
 
-  // Plays the selected backing loop track, warped to the current BPM. No
-  // click here — just the loop audio. Shared/mounted above the tab
-  // navigator (see context/LoopPlaybackContext.tsx) so it's visible/
-  // stoppable from the floating control and stays mutually exclusive with
-  // the Metronome tab.
+  // Plays the selected backing loop track, warped to the current BPM,
+  // optionally with a metronome click layered in time with it (opt-in via
+  // Settings -> Audio Output / Volume; see the click subsystem in
+  // constants/loopEngine.ts). Shared/mounted above the tab navigator (see
+  // context/LoopPlaybackContext.tsx) so it's visible/stoppable from the
+  // floating control and stays mutually exclusive with the Metronome tab.
   const {
     bpm,
     setBpm,

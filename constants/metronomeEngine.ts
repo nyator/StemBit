@@ -31,7 +31,16 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         var buffers = {};
 
         var isPlaying = false;
+        // Base tempo in BPM, without the playback-feel multiplier applied.
         var tempo = 120;
+        // Playback-feel (subdivision) multiplier that's currently sounding:
+        // 0.5 = half time, 1 = normal, 2 = double time. The effective click
+        // rate is tempo * speedMultiplier.
+        var speedMultiplier = 1;
+        // A feel multiplier the user picked mid-playback, queued to take effect
+        // on the next downbeat so the pulse doesn't lurch mid-bar. null = none
+        // pending. See scheduler().
+        var pendingMultiplier = null;
         var beatsPerMeasure = 4;
         // Beat indices (0-based) that mark the start of a rhythmic group.
         // Beat 0 is always the primary accent; any other listed beat gets a
@@ -43,6 +52,10 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         // clicks. Driven from the metro screen's Accent/Beats rows.
         var accentVolume = 1.0;
         var beatVolume = 1.0;
+        // Master gain for the whole metronome (Settings -> Metronome Volume).
+        // Multiplied with each voice's gain, so the accent/beat sliders keep
+        // setting the relative mix and this sets the overall level.
+        var masterVolume = 1.0;
         // Which loaded sound each voice plays (set from the per-voice pickers);
         // default to the first/second loaded sound until told otherwise.
         var accentSoundId = null;
@@ -141,7 +154,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
             var source = ctx.createBufferSource();
             source.buffer = buffer;
             var gainNode = ctx.createGain();
-            gainNode.gain.value = gain;
+            gainNode.gain.value = gain * masterVolume;
             source.connect(gainNode);
             gainNode.connect(ctx.destination);
             source.start(time);
@@ -161,7 +174,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         }
 
         function advanceNote() {
-          var secondsPerBeat = 60.0 / tempo;
+          var secondsPerBeat = 60.0 / (tempo * speedMultiplier);
           nextNoteTime += secondsPerBeat;
           currentBeatNumber = (currentBeatNumber + 1) % beatsPerMeasure;
         }
@@ -169,6 +182,12 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         function scheduler() {
           if (!isPlaying) return;
           while (nextNoteTime < audioContext.currentTime + scheduleAheadTime) {
+            // Apply a queued feel change right as the downbeat is scheduled, so
+            // the new rate governs the bar that's about to start (never mid-bar).
+            if (currentBeatNumber === 0 && pendingMultiplier !== null) {
+              speedMultiplier = pendingMultiplier;
+              pendingMultiplier = null;
+            }
             scheduleNote(currentBeatNumber, nextNoteTime);
             advanceNote();
           }
@@ -183,12 +202,15 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
           }
         }
 
-        function setVolumes(nextAccentVolume, nextBeatVolume) {
+        function setVolumes(nextAccentVolume, nextBeatVolume, nextMasterVolume) {
           if (typeof nextAccentVolume === "number") {
             accentVolume = Math.max(0, Math.min(1, nextAccentVolume));
           }
           if (typeof nextBeatVolume === "number") {
             beatVolume = Math.max(0, Math.min(1, nextBeatVolume));
+          }
+          if (typeof nextMasterVolume === "number") {
+            masterVolume = Math.max(0, Math.min(1, nextMasterVolume));
           }
         }
 
@@ -201,12 +223,14 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
           }
         }
 
-        function start(nextTempo, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextAccentSound, nextBeatSound) {
+        function start(nextTempo, nextMultiplier, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextMasterVolume, nextAccentSound, nextBeatSound) {
           if (isPlaying) return;
           if (nextTempo) tempo = nextTempo;
+          if (typeof nextMultiplier === "number") speedMultiplier = nextMultiplier;
+          pendingMultiplier = null;
           if (nextBeats) beatsPerMeasure = nextBeats;
           if (nextAccents) setAccents(nextAccents);
-          setVolumes(nextAccentVolume, nextBeatVolume);
+          setVolumes(nextAccentVolume, nextBeatVolume, nextMasterVolume);
           setSounds(nextAccentSound, nextBeatSound);
           var ctx = ensureContext();
           currentBeatNumber = 0;
@@ -239,6 +263,19 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
           tempo = nextTempo;
         }
 
+        // Change the playback-feel multiplier. Mid-playback the change is
+        // queued for the next downbeat (see scheduler); when stopped it applies
+        // at once so the next start uses it.
+        function setFeel(nextMultiplier) {
+          if (typeof nextMultiplier !== "number") return;
+          if (isPlaying) {
+            pendingMultiplier = nextMultiplier;
+          } else {
+            speedMultiplier = nextMultiplier;
+            pendingMultiplier = null;
+          }
+        }
+
         function setBeats(nextBeats, nextAccents) {
           beatsPerMeasure = nextBeats;
           setAccents(nextAccents);
@@ -254,13 +291,16 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
           }
           switch (data.type) {
             case "start":
-              start(data.bpm, data.beats, data.accents, data.accentVolume, data.beatVolume, data.accentSound, data.beatSound);
+              start(data.bpm, data.multiplier, data.beats, data.accents, data.accentVolume, data.beatVolume, data.masterVolume, data.accentSound, data.beatSound);
               break;
             case "stop":
               stop();
               break;
+            case "setFeel":
+              setFeel(data.multiplier);
+              break;
             case "setVolumes":
-              setVolumes(data.accentVolume, data.beatVolume);
+              setVolumes(data.accentVolume, data.beatVolume, data.masterVolume);
               break;
             case "setSounds":
               setSounds(data.accentSound, data.beatSound);

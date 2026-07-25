@@ -74,13 +74,64 @@ export const PLAYBACK_FEELS = [
 
 export const DEFAULT_FEEL_INDEX = 1; // Normal
 
-// Metronome click sounds, one entry per selectable sample. Extend by dropping a
-// new file into assets/audio/clicks, registering it in constants/audio.js, and
-// adding an entry here: the engine decodes every id up front and each voice's
+// Metronome click sounds, one entry per selectable sample.
+//
+// Sounds are categorized by `group`: each DAW kit (Ableton, Logic, ...) supplies
+// a `beat` voice (its normal click) and an `accent` voice (its accented/downbeat
+// click). `role` marks which one so each voice's picker can lean toward the
+// matching variant, though any voice may play any sound. `label` is what the
+// picker renders.
+//
+// Extend by dropping WAVs into assets/audio/clicks, registering them in
+// constants/audio.js, and adding entries here: the engine decodes every id up
+// front (see MetronomeAssets in constants/metronomeEngine.ts) and each voice's
 // picker lists these labels.
-export const METRONOME_SOUNDS: { id: string; label: string; asset: number }[] = [
-  { id: "bright", label: "Bright", asset: audio.metronome_bright },
-  { id: "low", label: "Low", asset: audio.metronome_low },
+export type MetronomeSoundRole = "accent" | "beat";
+export type MetronomeSound = {
+  id: string;
+  group: string;
+  role: MetronomeSoundRole;
+  label: string;
+  asset: number;
+};
+
+// Kits render in this order; each expands into an accent + beat entry below.
+const METRONOME_KITS: { id: string; group: string }[] = [
+  { id: "ableton", group: "Ableton" },
+  { id: "cubase", group: "Cubase" },
+  { id: "fl", group: "FL Studio" },
+  { id: "logic", group: "Logic" },
+  { id: "maschine", group: "Maschine" },
+  { id: "mpc", group: "MPC" },
+  { id: "protools", group: "Pro Tools" },
+  { id: "marimba", group: "Pro Tools Marimba" },
+  { id: "reason", group: "Reason" },
+  { id: "sonar", group: "Sonar" },
+];
+
+const clicks = audio.clicks as Record<string, number>;
+
+export const METRONOME_SOUNDS: MetronomeSound[] = [
+  ...METRONOME_KITS.flatMap(({ id, group }): MetronomeSound[] => [
+    {
+      id: `${id}_accent`,
+      group,
+      role: "accent",
+      label: `${group} · Accent`,
+      asset: clicks[`${id}_accent`],
+    },
+    {
+      id: `${id}_beat`,
+      group,
+      role: "beat",
+      label: `${group} · Beat`,
+      asset: clicks[`${id}_beat`],
+    },
+  ]),
+  // Original synthetic clicks, kept so saved preferences referencing them stay
+  // valid.
+  { id: "bright", group: "Basic", role: "accent", label: "Basic · Bright", asset: audio.metronome_bright },
+  { id: "low", group: "Basic", role: "beat", label: "Basic · Low", asset: audio.metronome_low },
 ];
 
 type MetronomeContextValue = {
@@ -144,6 +195,9 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   const beatVolume = prefs.beatVolume;
   const setAccentVolume = (value: number) => setPref("accentVolume", value);
   const setBeatVolume = (value: number) => setPref("beatVolume", value);
+  // Master metronome level (Settings -> Metronome Volume); the engine scales
+  // both voices by it.
+  const masterVolume = prefs.metronomeVolume;
   // Per-voice sound choices also persist; the effect below pushes live changes.
   const accentSound = prefs.accentSound;
   const beatSound = prefs.beatSound;
@@ -152,9 +206,10 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   // Preference: group accents in compound/odd meters (settings -> Playback).
   // Off = only the downbeat is accented, in any meter.
   const effectiveAccents = prefs.meterAccents ? timeSignature.accents : [0];
+  // Playback-feel (subdivision) multiplier. The engine multiplies the raw BPM
+  // by this; BPM changes take effect immediately, feel changes on the next
+  // downbeat (see the effects below).
   const speedMultiplier = PLAYBACK_FEELS[feelIndex].multiplier;
-  const getEffectiveBpm = (nextBpm = bpm, nextMultiplier = speedMultiplier) =>
-    nextBpm * nextMultiplier;
 
   const webViewRef = useRef<WebView>(null);
   const [engineHtml, setEngineHtml] = useState<string | null>(null);
@@ -245,23 +300,35 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     setCurrentBeat(0);
     postToEngine({
       type: "start",
-      bpm: getEffectiveBpm(),
+      bpm,
+      multiplier: speedMultiplier,
       beats: timeSignature.beats,
       accents: effectiveAccents,
       accentVolume,
       beatVolume,
+      masterVolume,
       accentSound,
       beatSound,
     });
   };
 
-  // Handle BPM or playback feel changes while playing
+  // BPM changes take effect immediately mid-playback.
   useEffect(() => {
     if (isPlaying) {
-      postToEngine({ type: "setTempo", bpm: getEffectiveBpm() });
+      postToEngine({ type: "setTempo", bpm });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm, speedMultiplier]);
+  }, [bpm]);
+
+  // Playback-feel (subdivision) changes are queued in the engine and applied on
+  // the next downbeat, so switching half/normal/double time never lurches the
+  // pulse mid-bar.
+  useEffect(() => {
+    if (isPlaying) {
+      postToEngine({ type: "setFeel", multiplier: speedMultiplier });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speedMultiplier]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -278,10 +345,10 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   // Live volume changes reach the engine mid-playback (no restart needed).
   useEffect(() => {
     if (isPlaying) {
-      postToEngine({ type: "setVolumes", accentVolume, beatVolume });
+      postToEngine({ type: "setVolumes", accentVolume, beatVolume, masterVolume });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accentVolume, beatVolume]);
+  }, [accentVolume, beatVolume, masterVolume]);
 
   // Live sound changes likewise switch the voices mid-playback.
   useEffect(() => {

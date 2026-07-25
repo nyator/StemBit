@@ -47,6 +47,29 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         var selectToken = 0;
         var rateTimer = null;
 
+        // Master output gain for the loop's BACKING TRACK (Settings -> Loop
+        // Volume). Created lazily and kept between plays. The click does NOT
+        // route through this — it follows the metronome volume instead.
+        var loopVolume = 1.0;
+        var loopMaster = null;
+
+        // --- Loop click state ---------------------------------------------
+        // An optional metronome click layered over the loop (see the "Loop
+        // click" section below). clickBuffers holds decoded click samples
+        // keyed by sound id; the rest is live config pushed from the app plus
+        // the lookahead scheduler's cursor.
+        var clickBuffers = {};
+        var clickEnabled = false;
+        var clickPan = 0; // -1 left .. 0 center .. +1 right
+        var clickAccentId = null;
+        var clickBeatId = null;
+        var clickAccentVol = 1.0;
+        var clickBeatVol = 0.8;
+        var clickTimer = null;
+        var clickNextTime = 0;
+        var clickBeatIndex = 0;
+        var clickSources = [];
+
         // Catalog caches. Loops are preloaded (and decoded) up front so
         // selecting one is just a pointer swap — no decode wait at play
         // time. decodedByKey: key -> { buffer, loopStart, loopEnd }.
@@ -70,6 +93,10 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // Rate changes are debounced this long so dragging the BPM control
         // doesn't re-render on every step.
         var RATE_DEBOUNCE_MS = 120;
+        // Loop click scheduler cadence (same lookahead approach the metronome
+        // engine uses): wake every ~25ms, schedule clicks up to 100ms ahead.
+        var CLICK_LOOKAHEAD_MS = 25;
+        var CLICK_SCHEDULE_AHEAD = 0.1;
 
         function post(message) {
           if (window.ReactNativeWebView) {
@@ -93,6 +120,31 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             audioContext.resume();
           }
           return audioContext;
+        }
+
+        // Lazily-created master gain the backing loop routes through, so its
+        // level can be set independently of the click.
+        function getLoopMaster() {
+          var ctx = ensureContext();
+          if (!loopMaster) {
+            loopMaster = ctx.createGain();
+            loopMaster.gain.value = loopVolume;
+            loopMaster.connect(ctx.destination);
+          }
+          return loopMaster;
+        }
+
+        function setLoopVolume(v) {
+          if (typeof v !== "number") return;
+          loopVolume = Math.max(0, Math.min(1, v));
+          if (loopMaster) {
+            // Short ramp so a mid-playback change doesn't click.
+            loopMaster.gain.setTargetAtTime(
+              loopVolume,
+              audioContext.currentTime,
+              0.02
+            );
+          }
         }
 
         function isAudible(channels, frameIndex) {
@@ -438,6 +490,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
                 buffer: decoded,
                 loopStart: points.start,
                 loopEnd: points.end,
+                nativeBpm: nativeBpm,
               };
               flush(decodedByKey[key]);
             },
@@ -467,11 +520,22 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         }
 
         function applyActive(key, entry) {
+          // How many whole beats the loop region spans, at its native tempo.
+          // computeLoopPoints already snapped the length to whole beats, so
+          // this is an integer; it's the click's beat count per loop pass.
+          var loopBeats = 0;
+          if (entry.nativeBpm > 0) {
+            loopBeats = Math.round(
+              ((entry.loopEnd - entry.loopStart) * entry.nativeBpm) / 60
+            );
+          }
           active = {
             key: key,
             buffer: entry.buffer,
             loopStart: entry.loopStart,
             loopEnd: entry.loopEnd,
+            nativeBpm: entry.nativeBpm,
+            loopBeats: loopBeats,
           };
           stretched = null; // renders belong to the previous loop
           post({
@@ -550,7 +614,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           source.loopStart = ls;
           source.loopEnd = le;
           source.connect(gain);
-          gain.connect(ctx.destination);
+          gain.connect(getLoopMaster());
 
           var startAt = atTime || ctx.currentTime + 0.03;
           if (fadeSeconds > 0) {
@@ -598,6 +662,99 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           }
         }
 
+        // --- Loop click (metronome layered over the loop) -----------------
+        // The click shares this engine's AudioContext, so it's on the exact
+        // same hardware clock as the loop and cannot drift from it. Rather
+        // than free-running, its grid is derived from the loop's own phase
+        // (seedClickGrid), so it re-locks precisely on every rate change.
+        // Beat 0 of each loop pass is the accented downbeat.
+
+        // Real seconds between clicks at the current warp (= 60 / userBpm).
+        function clickBeatSeconds() {
+          if (!active || !active.nativeBpm) return 0;
+          return 60 / (active.nativeBpm * currentRate);
+        }
+
+        // Aim the click cursor at the loop's next beat boundary as of atTime,
+        // so clicks line up with wherever the loop currently is.
+        function seedClickGrid(atTime) {
+          if (!playing || !active || active.loopBeats < 1) return;
+          var beatSec = clickBeatSeconds();
+          if (beatSec <= 0) return;
+          var phase = phaseAt(playing, atTime); // 0..1 through the loop
+          var beatFloat = phase * active.loopBeats; // beats elapsed into loop
+          var nextBeat = Math.ceil(beatFloat - 1e-6);
+          clickBeatIndex = ((nextBeat % active.loopBeats) + active.loopBeats) %
+            active.loopBeats;
+          clickNextTime = atTime + (nextBeat - beatFloat) * beatSec;
+        }
+
+        function scheduleClick(beatIndex, time) {
+          var ctx = audioContext;
+          var isAccent = beatIndex === 0; // the loop's downbeat
+          var buffer = clickBuffers[isAccent ? clickAccentId : clickBeatId];
+          if (!buffer) return;
+          var source = ctx.createBufferSource();
+          source.buffer = buffer;
+          var gain = ctx.createGain();
+          gain.gain.value = isAccent ? clickAccentVol : clickBeatVol;
+          source.connect(gain);
+          // StereoPannerNode places the click L/R; degrade gracefully to a
+          // centred click if an older WebView lacks it.
+          if (ctx.createStereoPanner) {
+            var panner = ctx.createStereoPanner();
+            panner.pan.value = clickPan;
+            gain.connect(panner);
+            panner.connect(ctx.destination);
+          } else {
+            gain.connect(ctx.destination);
+          }
+          source.start(time);
+          clickSources.push(source);
+          source.onended = function () {
+            var idx = clickSources.indexOf(source);
+            if (idx !== -1) clickSources.splice(idx, 1);
+          };
+        }
+
+        function clickScheduler() {
+          if (!clickEnabled || !playing || !active || active.loopBeats < 1) {
+            return;
+          }
+          var beatSec = clickBeatSeconds();
+          if (beatSec <= 0) return;
+          while (clickNextTime < audioContext.currentTime + CLICK_SCHEDULE_AHEAD) {
+            scheduleClick(clickBeatIndex, clickNextTime);
+            clickBeatIndex = (clickBeatIndex + 1) % active.loopBeats;
+            clickNextTime += beatSec;
+          }
+          clickTimer = setTimeout(clickScheduler, CLICK_LOOKAHEAD_MS);
+        }
+
+        function stopClick() {
+          if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+          }
+          for (var i = 0; i < clickSources.length; i++) {
+            try {
+              clickSources[i].stop();
+            } catch (e) {
+              // already stopped, or scheduled in the future (cancels it)
+            }
+          }
+          clickSources = [];
+        }
+
+        // (Re)start the click from the loop's position at atTime. Cancels any
+        // pending clicks first so a rate change can't double up the grid.
+        function startClick(atTime) {
+          stopClick();
+          if (!clickEnabled || !playing || !active) return;
+          seedClickGrid(atTime == null ? audioContext.currentTime : atTime);
+          clickScheduler();
+        }
+
         // Swap sources at the same musical position with a short crossfade.
         // Order matters: render the stretched buffer FIRST (it blocks the JS
         // thread for tens of ms), and only then pick the swap time and
@@ -617,6 +774,8 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           var next = startSource(phase, SWAP_FADE_SECONDS, swapTime);
           if (!next) return;
           stopSource(old, SWAP_FADE_SECONDS, swapTime);
+          // Re-lock the click to the loop at its new warp.
+          startClick(swapTime);
         }
 
         function play(rate) {
@@ -628,6 +787,9 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           if (playing) stopSource(playing, 0);
           playing = null;
           startSource(0, 0);
+          // The loop's downbeat is playing.startedAt (phase 0); start the
+          // click there so beat 0 lands exactly on it.
+          startClick(playing ? playing.startedAt : null);
         }
 
         function stop() {
@@ -635,6 +797,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             clearTimeout(rateTimer);
             rateTimer = null;
           }
+          stopClick();
           if (playing) {
             stopSource(playing, 0.008); // tiny fade: no click on stop
             playing = null;
@@ -654,6 +817,48 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
               getStretchedBuffer(currentRate);
             }
           }, RATE_DEBOUNCE_MS);
+        }
+
+        // Decode and cache a click sample (the loop click follows whichever
+        // Metronome sounds are selected, sent over by id).
+        function loadClick(id, base64) {
+          if (!id || clickBuffers[id]) return;
+          var ctx = ensureContext();
+          ctx.decodeAudioData(
+            base64ToArrayBuffer(base64),
+            function (buf) {
+              clickBuffers[id] = buf;
+            },
+            function () {
+              post({ type: "error", message: "click decode failed: " + id });
+            }
+          );
+        }
+
+        // Live click config from the app: enabled flag, pan, which sound ids
+        // the accent/beat voices use, and their volumes. Toggling enabled
+        // mid-playback starts/stops the click on the fly.
+        function setClick(cfg) {
+          if (typeof cfg.pan === "number") {
+            clickPan = Math.max(-1, Math.min(1, cfg.pan));
+          }
+          if (typeof cfg.accentId === "string") clickAccentId = cfg.accentId;
+          if (typeof cfg.beatId === "string") clickBeatId = cfg.beatId;
+          if (typeof cfg.accentVolume === "number") {
+            clickAccentVol = Math.max(0, Math.min(1, cfg.accentVolume));
+          }
+          if (typeof cfg.beatVolume === "number") {
+            clickBeatVol = Math.max(0, Math.min(1, cfg.beatVolume));
+          }
+          var wasEnabled = clickEnabled;
+          if (typeof cfg.enabled === "boolean") clickEnabled = cfg.enabled;
+          if (playing) {
+            if (clickEnabled && !wasEnabled) {
+              startClick(null); // join in from the loop's current position
+            } else if (!clickEnabled && wasEnabled) {
+              stopClick();
+            }
+          }
         }
 
         function handleMessage(event) {
@@ -678,6 +883,15 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
               break;
             case "setRate":
               setRate(data.rate);
+              break;
+            case "setLoopVolume":
+              setLoopVolume(data.volume);
+              break;
+            case "loadClick":
+              loadClick(data.id, data.base64);
+              break;
+            case "setClick":
+              setClick(data);
               break;
             default:
               break;

@@ -19,6 +19,8 @@ type SliderProps = {
   /** Current position, 0–1. */
   value: number;
   onChange: (value: number) => void;
+  /** Fires once when the drag ends -- use this to persist, not onChange. */
+  onComplete?: (value: number) => void;
   width?: number;
   /** Announced by screen readers, e.g. "Metronome volume". */
   accessibilityLabel?: string;
@@ -27,6 +29,7 @@ type SliderProps = {
 export default function Slider({
   value,
   onChange,
+  onComplete,
   width = TRACK_WIDTH,
   accessibilityLabel,
 }: SliderProps) {
@@ -35,6 +38,7 @@ export default function Slider({
       <NativeSlider
         value={value}
         onValueChange={onChange}
+        onSlidingComplete={onComplete}
         minimumValue={0}
         maximumValue={1}
         minimumTrackTintColor={CONTROL.active}

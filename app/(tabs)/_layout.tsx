@@ -1,25 +1,12 @@
 import { Tabs } from "expo-router";
 import { View } from "react-native";
-import { PlaybackLockProvider } from "../../context/PlaybackLockContext";
-import { MetronomeProvider } from "../../context/MetronomeContext";
-import { LoopPlaybackProvider } from "../../context/LoopPlaybackContext";
-import FloatingEngineControls from "../../components/floatingEngineControls";
 import FloatingTabBar from "../../components/ui/floatingTabBar";
 import { COLORS } from "../../constants/theme";
 
+// The playback engines (PlaybackLock/Metronome/Loop) and FloatingEngineControls
+// are mounted at the app root (app/_layout.tsx), above every navigator, so their
+// audio survives navigating to non-tab screens. This layout is just the tabs.
 export default function TabLayout() {
-  return (
-    <PlaybackLockProvider>
-      <MetronomeProvider>
-        <LoopPlaybackProvider>
-          <TabsWithFloatingControl />
-        </LoopPlaybackProvider>
-      </MetronomeProvider>
-    </PlaybackLockProvider>
-  );
-}
-
-function TabsWithFloatingControl() {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.canvas }}>
       <Tabs
@@ -49,7 +36,6 @@ function TabsWithFloatingControl() {
         <Tabs.Screen name="pad" options={{ title: "pad", headerShown: false }} />
         <Tabs.Screen name="metro" options={{ title: "Metro", headerShown: false }} />
       </Tabs>
-      <FloatingEngineControls />
     </View>
   );
 }

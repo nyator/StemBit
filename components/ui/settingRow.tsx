@@ -40,6 +40,8 @@ type RadioRowProps = BaseProps & {
 type SliderRowProps = BaseProps & {
   value: number;
   onValueChange: (value: number) => void;
+  /** Fires once when the drag ends -- persist here, not on every tick. */
+  onComplete?: (value: number) => void;
 };
 
 const RowShell = ({
@@ -134,7 +136,12 @@ export function SettingSwitch({ value, onValueChange, ...base }: SwitchRowProps)
 }
 
 // Continuous-value row -- a volume level rather than an on/off.
-export function SettingSlider({ value, onValueChange, ...base }: SliderRowProps) {
+export function SettingSlider({
+  value,
+  onValueChange,
+  onComplete,
+  ...base
+}: SliderRowProps) {
   return (
     <RowShell
       {...base}
@@ -142,6 +149,7 @@ export function SettingSlider({ value, onValueChange, ...base }: SliderRowProps)
         <Slider
           value={value}
           onChange={onValueChange}
+          onComplete={onComplete}
           accessibilityLabel={base.label}
         />
       }

@@ -14,9 +14,24 @@ import { LOOPS, findLoopByKey } from "../constants/loops";
 import { buildLoopEngineHtml } from "../constants/loopEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
+import { usePreferences } from "./PreferencesContext";
+import { METRONOME_SOUNDS } from "./MetronomeContext";
 
 export const LOOP_MIN_BPM = 20;
 export const LOOP_MAX_BPM = 240;
+
+// Loop-click pan preference -> StereoPanner value (-1 left .. 0 .. 1 right).
+const CLICK_PAN_VALUE: Record<string, number> = {
+  left: -1,
+  center: 0,
+  right: 1,
+};
+
+// Asset id -> bundled asset module, from the shared metronome sound registry.
+// The loop click "follows the metronome's sound", so it plays whichever
+// accent/beat samples the Metronome is set to.
+const soundAsset = (id: string) =>
+  METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
 
 type LoopPlaybackContextValue = {
   bpm: number;
@@ -48,6 +63,7 @@ const LoopPlaybackContext = createContext<LoopPlaybackContextValue | null>(
 // asking the user to try again.
 export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const { activeEngine, requestStart, release } = usePlaybackLock();
+  const { prefs } = usePreferences();
   const isBlockedByOtherEngine =
     activeEngine !== null && activeEngine !== "loop";
 
@@ -74,6 +90,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const messageQueueRef = useRef<Record<string, unknown>[]>([]);
   // Loop keys whose preload has been handed to the engine (or is in flight).
   const preloadStartedRef = useRef<Set<string>>(new Set());
+  // Click sound ids already handed to the engine to decode.
+  const clickLoadedRef = useRef<Set<string>>(new Set());
 
   const postToEngine = (message: Record<string, unknown>) => {
     if (engineReadyRef.current) {
@@ -105,6 +123,39 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         preloadStartedRef.current.delete(key);
         console.error("Failed to preload loop", key, error);
       });
+  };
+
+  // Hand a click sample (by metronome sound id) to the engine to decode, once.
+  const loadClickSound = (id: string | undefined) => {
+    if (!id || clickLoadedRef.current.has(id)) return;
+    const asset = soundAsset(id);
+    if (asset == null) return;
+    clickLoadedRef.current.add(id);
+    loadAssetBase64(asset)
+      .then((base64) => {
+        postToEngine({ type: "loadClick", id, base64 });
+      })
+      .catch((error) => {
+        clickLoadedRef.current.delete(id);
+        console.error("Failed to load loop click sound", id, error);
+      });
+  };
+
+  // Push the current loop-click config (from preferences) to the engine. The
+  // click follows the metronome's selected sounds + per-voice volumes, and its
+  // overall level tracks the metronome master (Settings -> Metronome Volume) —
+  // NOT the Loop Volume, which governs the backing track. Plus its own enable +
+  // pan preferences.
+  const postClickConfig = () => {
+    postToEngine({
+      type: "setClick",
+      enabled: prefs.loopClick,
+      pan: CLICK_PAN_VALUE[prefs.loopClickPan] ?? 0,
+      accentId: prefs.accentSound,
+      beatId: prefs.beatSound,
+      accentVolume: prefs.accentVolume * prefs.metronomeVolume,
+      beatVolume: prefs.beatVolume * prefs.metronomeVolume,
+    });
   };
 
   // Warm the whole catalog at startup so play is always instant.
@@ -175,6 +226,13 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
             nativeBpm: nativeBpmRef.current,
           });
         }
+        // The WebView's decoded click buffers + master gain are wiped on
+        // reload too: re-send the click samples, config, and loop volume.
+        clickLoadedRef.current.clear();
+        loadClickSound(prefs.accentSound);
+        loadClickSound(prefs.beatSound);
+        postClickConfig();
+        postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
       } else if (data.type === "loaded") {
         if (data.key !== currentKeyRef.current) return; // stale select
         loopReadyRef.current = true;
@@ -268,6 +326,31 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm, loopReady]);
+
+  // Keep the engine's click samples + config in sync with preferences. Runs on
+  // mount (queued until the engine is ready) and whenever any click-relevant
+  // preference changes; the engine reacts live if a loop is already playing.
+  useEffect(() => {
+    loadClickSound(prefs.accentSound);
+    loadClickSound(prefs.beatSound);
+    postClickConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    prefs.loopClick,
+    prefs.loopClickPan,
+    prefs.accentSound,
+    prefs.beatSound,
+    prefs.accentVolume,
+    prefs.beatVolume,
+    prefs.metronomeVolume,
+  ]);
+
+  // Backing-track level (Settings -> Loop Volume). The engine ramps to it, so
+  // it applies live if a loop is already playing.
+  useEffect(() => {
+    postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs.loopVolume]);
 
   const startLoop = () => {
     if (isPlaying) return;

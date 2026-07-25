@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, StatusBar, Text, TouchableOpacity, Alert, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -36,13 +36,21 @@ const AudioVolume = () => {
     const { prefs, setPref } = usePreferences();
     const [outputDevice, setOutputDevice] = useState<OutputDevice>("phone");
 
-    // One level per engine, 0–1. Defaults are the positions Figma draws:
-    // metronome 98/140, pad 119/140, loop 70/140.
+    // Local mirrors of the persisted per-engine volumes. The slider drives
+    // these live for a smooth thumb; we persist to preferences (which pushes to
+    // the engine) only on release, avoiding a file write on every drag tick.
     const [volumes, setVolumes] = useState({
-        metronome: 0.7,
-        pad: 0.85,
-        loop: 0.5,
+        metronome: prefs.metronomeVolume,
+        pad: prefs.padVolume,
+        loop: prefs.loopVolume,
     });
+    useEffect(() => {
+        setVolumes({
+            metronome: prefs.metronomeVolume,
+            pad: prefs.padVolume,
+            loop: prefs.loopVolume,
+        });
+    }, [prefs.metronomeVolume, prefs.padVolume, prefs.loopVolume]);
 
     const setVolume = (engine: keyof typeof volumes) => (value: number) =>
         setVolumes((prev) => ({ ...prev, [engine]: value }));
@@ -82,6 +90,7 @@ const AudioVolume = () => {
                         label="Metronome Volume"
                         value={volumes.metronome}
                         onValueChange={setVolume("metronome")}
+                        onComplete={(v) => setPref("metronomeVolume", v)}
                         border={true}
                     />
                     <SettingSlider
@@ -89,6 +98,7 @@ const AudioVolume = () => {
                         label="Pad Volume"
                         value={volumes.pad}
                         onValueChange={setVolume("pad")}
+                        onComplete={(v) => setPref("padVolume", v)}
                         border={true}
                     />
                     <SettingSlider
@@ -96,6 +106,35 @@ const AudioVolume = () => {
                         label="Loop Volume"
                         value={volumes.loop}
                         onValueChange={setVolume("loop")}
+                        onComplete={(v) => setPref("loopVolume", v)}
+                    />
+                </SettingSection>
+
+                <SettingSection title="Loop Click">
+                    <SettingSwitch
+                        icon={Loop}
+                        label="Loop Click"
+                        sublabel="Play a metronome click along with loops"
+                        value={prefs.loopClick}
+                        onValueChange={(value) => setPref("loopClick", value)}
+                        border={true}
+                    />
+                    <SettingRadio
+                        label="Pan Left"
+                        selected={prefs.loopClickPan === "left"}
+                        onSelect={() => setPref("loopClickPan", "left")}
+                        border={true}
+                    />
+                    <SettingRadio
+                        label="Pan Center"
+                        selected={prefs.loopClickPan === "center"}
+                        onSelect={() => setPref("loopClickPan", "center")}
+                        border={true}
+                    />
+                    <SettingRadio
+                        label="Pan Right"
+                        selected={prefs.loopClickPan === "right"}
+                        onSelect={() => setPref("loopClickPan", "right")}
                     />
                 </SettingSection>
 
