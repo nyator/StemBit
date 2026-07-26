@@ -2,7 +2,7 @@ import audio from "./audio";
 
 // Categories are a fixed, curated list — add new ones here and they appear
 // automatically as filter chips in the loop browser.
-export const LOOP_CATEGORIES = ["Worship", "Praise", "Funk"] as const;
+export const LOOP_CATEGORIES = ["Worship", "Praise", "Funk", "Afro", "Drill", "Highlife"] as const;
 export type LoopCategory = (typeof LOOP_CATEGORIES)[number];
 
 export type Loop = {
@@ -28,10 +28,73 @@ export const LOOPS: Loop[] = [
     timeSignature: "4 / 4",
     source: audio.sampleLoop,
   },
+  {
+    key: "pst_nath",
+    title: "Pst Nath",
+    artist: "Stembit",
+    category: "Highlife",
+    bpm: 87,
+    timeSignature: "4 / 4",
+    source: audio.pstNath,
+  },
+  {
+    key: "worship_war",
+    title: "Worship War",
+    artist: "Stembit",
+    category: "Worship",
+    bpm: 98,
+    timeSignature: "4 / 4",
+    source: audio.worshipWar,
+  },
+  {
+    key: "afro_pop",
+    title: "Afro Pop",
+    artist: "Stembit",
+    category: "Afro",
+    bpm: 96,
+    timeSignature: "4 / 4",
+    source: audio.afroPop,
+  },
+  {
+    key: "drillogy",
+    title: "Drillogy",
+    artist: "Stembit",
+    category: "Drill",
+    bpm: 132,
+    timeSignature: "4 / 4",
+    source: audio.drillogy,
+  },
+  {
+    key: "worship_155",
+    title: "Worship",
+    artist: "Stembit",
+    category: "Worship",
+    bpm: 155,
+    timeSignature: "3 / 4",
+    source: audio.worship155,
+  },
+  {
+    key: "afro_dance",
+    title: "Afro Dance",
+    artist: "Stembit",
+    category: "Afro",
+    bpm: 97,
+    timeSignature: "4 / 4",
+    source: audio.afroDance,
+  },
 ];
 
 export const findLoopByKey = (key: string | undefined) =>
   LOOPS.find((loop) => loop.key === key);
+
+// Beats per bar = the time signature's numerator ("4 / 4" -> 4, "3 / 4" -> 3).
+// Drives where the loop click's accent falls: on every bar downbeat, so the
+// accent pattern is independent of how many bars long the loop is. Falls back
+// to 4 for a malformed signature.
+export const getBeatsPerBar = (loop: Loop) => {
+  const numerator = parseInt(loop.timeSignature.split("/")[0].trim(), 10);
+  return Number.isFinite(numerator) && numerator > 0 ? numerator : 4;
+};
 
 export const getLoopsByCategory = (category: LoopCategory) =>
   LOOPS.filter((loop) => loop.category === category);

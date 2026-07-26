@@ -20,11 +20,17 @@ import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { GlowRing } from "../../components/ui/dialGlowRing";
 import icons from "../../constants/icons";
 import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
-import { AddCircle, MinusCircle, Information, PlayFilled, Stop, Folder } from "../../components/icons";
-
-// Loops have no time-signature concept -- the beat visuals just assume a
-// steady 4-beat cycle to pulse against.
-const LOOP_BEATS = 4;
+import {
+  AddCircle,
+  MinusCircle,
+  Information,
+  PlayFilled,
+  Stop,
+  Folder,
+  MetronomeFill,
+  MetronomeOutline,
+  Reset,
+} from "../../components/icons";
 
 export default function LoopScreen() {
   const router = useRouter();
@@ -41,10 +47,21 @@ export default function LoopScreen() {
     isPlaying,
     isBlockedByOtherEngine,
     selectedTitle,
+    nativeBpm,
+    beatsPerBar,
+    resetBpm,
     startLoop,
     stopLoop,
   } = useLoopPlayback();
-  const { prefs } = usePreferences();
+
+  // The beat dots pulse a single bar of the loop's time signature (e.g. 3
+  // dots for a 3/4 loop), downbeat accented -- one bar, not the whole loop.
+  const loopBeats = beatsPerBar;
+
+  // Reset is available once a loop is selected and its tempo has been nudged
+  // off the recorded value.
+  const canResetBpm = nativeBpm !== null && bpm !== nativeBpm;
+  const { prefs, setPref } = usePreferences();
 
   // UI-only for now -- LoopPlaybackContext has no playback-rate multiplier to
   // wire this into yet (see getPlaybackRate in LoopPlaybackContext.tsx).
@@ -61,10 +78,10 @@ export default function LoopScreen() {
       return;
     }
     const timer = setInterval(() => {
-      setCurrentBeat((beat) => (beat + 1) % LOOP_BEATS);
+      setCurrentBeat((beat) => (beat + 1) % loopBeats);
     }, (60 * 1000) / bpm);
     return () => clearInterval(timer);
-  }, [isPlaying, bpm]);
+  }, [isPlaying, bpm, loopBeats]);
 
   const {
     bpmText,
@@ -88,7 +105,7 @@ export default function LoopScreen() {
   // Metronome's beat visuals, minus accent grouping (no time signature here).
   const renderBeatVisuals = () => {
     const beats = [];
-    for (let i = 0; i < LOOP_BEATS; i++) {
+    for (let i = 0; i < loopBeats; i++) {
       const isCurrent = i === currentBeat;
       const activeColor = i === 0 ? COLORS.brand : COLORS.text;
       beats.push(
@@ -131,6 +148,7 @@ export default function LoopScreen() {
             className="flex-row items-center justify-center gap-[10px] px-[20px] py-[7px] bg-white rounded-sm"
           >
             <Folder size={24} color={COLORS.black} />
+            <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
             <Text
               className="text-black text-title font-spaceBold"
               numberOfLines={1}
@@ -226,13 +244,42 @@ export default function LoopScreen() {
           </Text>
         )}
 
-        {/* Tap tempo */}
-        <TouchableOpacity
-          onPress={handleTapTempo}
-          className="items-center justify-center mt-[18px] px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
-        >
-          <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
-        </TouchableOpacity>
+        {/* Reset tempo | Tap tempo (center) | loop click */}
+        <View className="flex-row items-center justify-center gap-[10px] mt-[18px]">
+          <TouchableOpacity
+            accessibilityLabel="Reset loop tempo"
+            onPress={() => {
+              hapticImpact(prefs.haptics, "light");
+              resetBpm();
+            }}
+            disabled={!canResetBpm}
+            style={!canResetBpm ? { opacity: 0.4 } : undefined}
+            className="items-center justify-center px-[12px] py-[10px] rounded-sm border-2 border-hairline-strong"
+          >
+            <Reset size={20} color={COLORS.white} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleTapTempo}
+            className="items-center justify-center px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
+          >
+            <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel={prefs.loopClick ? "Disable loop click" : "Enable loop click"}
+            onPress={() => setPref("loopClick", !prefs.loopClick)}
+            className={`items-center justify-center px-[12px] py-[10px] rounded-sm border-2 ${
+              prefs.loopClick ? "bg-white border-white" : "border-hairline-strong"
+            }`}
+          >
+            {prefs.loopClick ? (
+              <MetronomeFill size={20} color={COLORS.black} />
+            ) : (
+              <MetronomeOutline size={20} color={COLORS.white} />
+            )}
+          </TouchableOpacity>
+        </View>
 
 
         {/* Subdivision */}

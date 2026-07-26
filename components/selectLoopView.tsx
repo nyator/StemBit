@@ -29,6 +29,10 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
     setPlayingIndex(null);
     playbackSubscriptionRef.current?.remove();
     playbackSubscriptionRef.current = null;
+    // Halt playback before releasing — remove() alone doesn't reliably stop
+    // audio that's already sounding, so the old preview would bleed into the
+    // new one (same reason loadLoop pauses before handing off).
+    sound.pause();
     sound.remove();
   };
 

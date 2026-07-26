@@ -50,6 +50,12 @@ import sonar_accent from "../assets/audio/clicks/sonar_accent.wav";
 
 //Loop
 import sampleLoop from "../assets/audio/loops/sample_bpm80.mp3";
+import pstNath from "../assets/audio/loops/pst_nath.wav";
+import worshipWar from "../assets/audio/loops/worship_war.wav";
+import afroPop from "../assets/audio/loops/afro_pop.wav";
+import drillogy from "../assets/audio/loops/drillogy.wav";
+import worship155 from "../assets/audio/loops/worship_155.wav";
+import afroDance from "../assets/audio/loops/afro_dance.wav";
 
 export default {
   beep,
@@ -83,5 +89,11 @@ export default {
   },
 
   //Loops
-  sampleLoop
+  sampleLoop,
+  pstNath,
+  worshipWar,
+  afroPop,
+  drillogy,
+  worship155,
+  afroDance,
 };

@@ -10,7 +10,7 @@ import { Alert, AppState } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { setAudioModeAsync } from "expo-audio";
 
-import { LOOPS, findLoopByKey } from "../constants/loops";
+import { LOOPS, findLoopByKey, getBeatsPerBar } from "../constants/loops";
 import { buildLoopEngineHtml } from "../constants/loopEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
@@ -42,6 +42,13 @@ type LoopPlaybackContextValue = {
   // Lives here (not in route params) so it survives regardless of which
   // screen instance is currently focused -- same pattern as Pad/Metro.
   selectedTitle: string | null;
+  // The tempo the selected loop was recorded at, or null when none is
+  // selected. Reset returns the BPM control to this.
+  nativeBpm: number | null;
+  // Beats per bar of the selected loop (time-signature numerator, defaults
+  // to 4). Drives the beat-dot count on the loop screen.
+  beatsPerBar: number;
+  resetBpm: () => void;
   setSelectedLoopKey: (key: string | undefined) => void;
   startLoop: () => void;
   stopLoop: () => void;
@@ -78,6 +85,14 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // The tempo the loaded loop was recorded at; BPM changes are warped onto
   // it via playback rate (bpm / nativeBpm = 1x at the loop's own tempo).
   const nativeBpmRef = useRef<number | null>(null);
+  // Mirror of nativeBpmRef in state, so the UI can show/enable a reset
+  // control against the loop's original tempo.
+  const [nativeBpm, setNativeBpm] = useState<number | null>(null);
+  // Beats per bar of the selected loop (time-signature numerator), so the
+  // engine accents every bar downbeat rather than only the loop's first beat.
+  // Mirrored in state so the beat visuals can react to it.
+  const beatsPerBarRef = useRef<number>(4);
+  const [beatsPerBar, setBeatsPerBar] = useState(4);
   const currentKeyRef = useRef<string | null>(null);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [loopReady, setLoopReady] = useState(false);
@@ -229,6 +244,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
             type: "select",
             key: currentKeyRef.current,
             nativeBpm: nativeBpmRef.current,
+            beatsPerBar: beatsPerBarRef.current,
           });
         }
         // The WebView's decoded click buffers + master gain are wiped on
@@ -265,6 +281,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
                   type: "select",
                   key: loop.key,
                   nativeBpm: loop.bpm,
+                  beatsPerBar: getBeatsPerBar(loop),
                   base64,
                 });
               })
@@ -298,6 +315,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     if (!key) {
       currentKeyRef.current = null;
       nativeBpmRef.current = null;
+      setNativeBpm(null);
       setSelectedTitle(null);
       return;
     }
@@ -306,12 +324,16 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     if (!selectedLoop) {
       currentKeyRef.current = null;
       nativeBpmRef.current = null;
+      setNativeBpm(null);
       setSelectedTitle(null);
       return;
     }
 
     currentKeyRef.current = selectedLoop.key;
     nativeBpmRef.current = selectedLoop.bpm;
+    beatsPerBarRef.current = getBeatsPerBar(selectedLoop);
+    setBeatsPerBar(beatsPerBarRef.current);
+    setNativeBpm(selectedLoop.bpm);
     setBpm(selectedLoop.bpm);
     setSelectedTitle(selectedLoop.title);
 
@@ -323,6 +345,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
       type: "select",
       key: selectedLoop.key,
       nativeBpm: selectedLoop.bpm,
+      beatsPerBar: beatsPerBarRef.current,
     });
   };
 
@@ -359,6 +382,13 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.loopVolume]);
+
+  // Return the tempo control to the selected loop's recorded BPM (1x rate).
+  // No-op when nothing is selected.
+  const resetBpm = () => {
+    if (nativeBpmRef.current === null) return;
+    setBpm(nativeBpmRef.current);
+  };
 
   const startLoop = () => {
     if (isPlaying) return;
@@ -400,6 +430,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         isPlaying,
         isBlockedByOtherEngine,
         selectedTitle,
+        nativeBpm,
+        beatsPerBar,
+        resetBpm,
         setSelectedLoopKey,
         startLoop,
         stopLoop,

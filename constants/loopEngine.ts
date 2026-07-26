@@ -519,7 +519,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           );
         }
 
-        function applyActive(key, entry) {
+        function applyActive(key, entry, beatsPerBar) {
           // How many whole beats the loop region spans, at its native tempo.
           // computeLoopPoints already snapped the length to whole beats, so
           // this is an integer; it's the click's beat count per loop pass.
@@ -529,6 +529,10 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
               ((entry.loopEnd - entry.loopStart) * entry.nativeBpm) / 60
             );
           }
+          // Beats per bar from the loop's time signature. The click accents
+          // every bar downbeat (beatIndex % beatsPerBar === 0), so a long
+          // multi-bar loop still accents each bar, not just its first beat.
+          var bpb = beatsPerBar > 0 ? beatsPerBar : (loopBeats || 1);
           active = {
             key: key,
             buffer: entry.buffer,
@@ -536,6 +540,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             loopEnd: entry.loopEnd,
             nativeBpm: entry.nativeBpm,
             loopBeats: loopBeats,
+            beatsPerBar: bpb,
           };
           stretched = null; // renders belong to the previous loop
           post({
@@ -549,7 +554,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 
         // Make a loop the active one. Instant when preloaded; falls back to
         // decoding inline (from provided base64) when it isn't.
-        function select(key, nativeBpm, base64) {
+        function select(key, nativeBpm, base64, beatsPerBar) {
           selectToken += 1;
           var token = selectToken;
           stop();
@@ -558,7 +563,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 
           var cached = decodedByKey[key];
           if (cached) {
-            applyActive(key, cached);
+            applyActive(key, cached, beatsPerBar);
             return;
           }
 
@@ -571,7 +576,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             nativeBpm,
             function (entry) {
               if (token !== selectToken) return; // superseded
-              applyActive(key, entry);
+              applyActive(key, entry, beatsPerBar);
             },
             function (code, message) {
               if (token !== selectToken) return;
@@ -667,7 +672,8 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // same hardware clock as the loop and cannot drift from it. Rather
         // than free-running, its grid is derived from the loop's own phase
         // (seedClickGrid), so it re-locks precisely on every rate change.
-        // Beat 0 of each loop pass is the accented downbeat.
+        // The accent falls on each bar's downbeat (every beatsPerBar beats),
+        // so a long multi-bar loop accents every bar, not just its first beat.
 
         // Real seconds between clicks at the current warp (= 60 / userBpm).
         function clickBeatSeconds() {
@@ -691,7 +697,10 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 
         function scheduleClick(beatIndex, time) {
           var ctx = audioContext;
-          var isAccent = beatIndex === 0; // the loop's downbeat
+          // Accent on every bar downbeat, so a multi-bar loop keeps a click
+          // per bar rather than one accent stretched across the whole loop.
+          var bpb = active && active.beatsPerBar > 0 ? active.beatsPerBar : 1;
+          var isAccent = beatIndex % bpb === 0;
           var buffer = clickBuffers[isAccent ? clickAccentId : clickBeatId];
           if (!buffer) return;
           var source = ctx.createBufferSource();
@@ -873,7 +882,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
               preload(data.key, data.base64, data.nativeBpm);
               break;
             case "select":
-              select(data.key, data.nativeBpm, data.base64);
+              select(data.key, data.nativeBpm, data.base64, data.beatsPerBar);
               break;
             case "play":
               play(data.rate);

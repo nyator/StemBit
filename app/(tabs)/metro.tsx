@@ -42,6 +42,7 @@ import {
   PlayFilled,
   Stop,
   ChevronDown,
+  Musicnote,
 } from "../../components/icons";
 
 // Human label for a sound id, from the METRONOME_SOUNDS registry.
@@ -361,9 +362,10 @@ export default function MetroScreen() {
           <TouchableOpacity
             onPress={openSheet}
             style={{ width: SIZES.segmentWidth }}
-            className="flex items-center justify-center py-[7px] bg-white rounded-sm"
+            className="flex-row items-center justify-center gap-[8px] py-[7px] bg-white rounded-sm"
           >
-            {/* <MusicFilter size={24} color={COLORS.black} /> */}
+            <Musicnote size={20} color={COLORS.black} />
+            <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
             <Text className="text-black text-title font-spaceBold">
               {timeSignature.label}
             </Text>
