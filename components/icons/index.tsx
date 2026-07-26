@@ -58,17 +58,6 @@ export function ChevronDown({ size = 24, color = DEFAULT_COLOR, style }: IconPro
   );
 }
 
-export function Reset({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
-      <G>
-        <Path d="M2.75 5.5V10.5H7.75" stroke={color} strokeWidth={1.5} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round" />
-        <Path d="M4.84 15A8.5 8.5 0 1 0 6.85 6.16L2.75 10.5" stroke={color} strokeWidth={1.5} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round" />
-      </G>
-    </Svg>
-  );
-}
-
 export function Bluetooth({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
@@ -564,6 +553,17 @@ export function Musicnote({ size = 24, color = DEFAULT_COLOR, style }: IconProps
   );
 }
 
+export function Reset({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M9.11008 5.0799C9.98008 4.8199 10.9401 4.6499 12.0001 4.6499C16.7901 4.6499 20.6701 8.5299 20.6701 13.3199C20.6701 18.1099 16.7901 21.9899 12.0001 21.9899C7.21008 21.9899 3.33008 18.1099 3.33008 13.3199C3.33008 11.5399 3.87008 9.8799 4.79008 8.4999" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M7.87012 5.32L10.7601 2" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M7.87012 5.31982L11.2401 7.77982" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      </G>
+    </Svg>
+  );
+}
 
 export function Edit2({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (

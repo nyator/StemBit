@@ -31,6 +31,10 @@ import { usePreferences } from "../../context/PreferencesContext";
 import { hapticImpact } from "../../utils/haptics";
 
 import HeaderComponent from "../../components/headerComponent";
+import {
+  BpmInputAccessory,
+  BPM_ACCESSORY_ID,
+} from "../../components/ui/bpmInputAccessory";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { GlowRing } from "../../components/ui/dialGlowRing";
@@ -402,6 +406,7 @@ export default function MetroScreen() {
               maxLength={3}
               selectTextOnFocus
               underlineColorAndroid="transparent"
+              inputAccessoryViewID={BPM_ACCESSORY_ID}
             />
             <Text className="uppercase text-label text-ink-muted font-satoshiBold">
               BPM
@@ -502,6 +507,7 @@ export default function MetroScreen() {
 
       {renderTimeSignatureModal()}
       {renderSoundPickerModal()}
+      <BpmInputAccessory />
       <StatusBar barStyle="light-content" />
     </SafeAreaView>
   );

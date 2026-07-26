@@ -15,6 +15,10 @@ import { hapticImpact } from "../../utils/haptics";
 import { PLAYBACK_FEELS, DEFAULT_FEEL_INDEX } from "../../context/MetronomeContext";
 
 import HeaderComponent from "../../components/headerComponent";
+import {
+  BpmInputAccessory,
+  BPM_ACCESSORY_ID,
+} from "../../components/ui/bpmInputAccessory";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { GlowRing } from "../../components/ui/dialGlowRing";
@@ -188,6 +192,7 @@ export default function LoopScreen() {
               maxLength={3}
               selectTextOnFocus
               underlineColorAndroid="transparent"
+              inputAccessoryViewID={BPM_ACCESSORY_ID}
             />
             <Text className="uppercase text-label text-ink-muted font-satoshiBold">
               BPM
@@ -313,6 +318,8 @@ export default function LoopScreen() {
           </View>
         </View>
       </View>
+
+      <BpmInputAccessory />
 
       <StatusBar barStyle="light-content" />
     </SafeAreaView>
