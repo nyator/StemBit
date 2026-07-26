@@ -374,7 +374,7 @@ export function PlayFilled({ size = 80, style }: Pick<IconProps, "size" | "style
           <GradientStop stopColor={COLORS.brandFrom} />
           <GradientStop offset={1} stopColor={COLORS.brandTo} />
         </LinearGradient>
-      </Defs>
+        </Defs>
       <Path d="M58.3 32L18.6667 55.9C16.3333 57.3 13.3333 55.6333 13.3333 52.9V26.2333C13.3333 14.6 25.9 7.33333 36 13.1333L51.3 21.9333L58.2667 25.9333C60.5667 27.3 60.6 30.6333 58.3 32Z" fill="url(#playTop)" />
       <Path d="M60.3 51.5333L46.8 59.3333L33.3333 67.1C28.5 69.8666 23.0333 69.3 19.0667 66.5C17.1333 65.1666 17.3667 62.2 19.4 61L61.7667 35.6C63.7667 34.4 66.4 35.5333 66.7667 37.8333C67.6 43 65.4667 48.5666 60.3 51.5333Z" fill="url(#playBottom)" />
     </Svg>

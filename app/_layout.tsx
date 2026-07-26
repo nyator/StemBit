@@ -61,7 +61,7 @@ function RootLayout() {
                                     <Stack>
                                         <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
                                         <Stack.Screen name="(auths)" options={{headerShown: false}}/>
-                                        <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
+                                        <Stack.Screen name="(tabs)" options={{headerShown: false, gestureEnabled: false}}/>
                                         <Stack.Screen name="(settings)" options={{headerShown: false}}/>
                                         <Stack.Screen name="(loops)" options={{headerShown: false}}/>
                                         <Stack.Screen name="(pads)" options={{headerShown: false}}/>

@@ -4,6 +4,7 @@ import React, { useState, useRef } from "react";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { LOOPS, type Loop } from "../constants/loops";
+import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import { Musicnote, PauseCircle, PlayCircle } from "./icons";
 
 type SelectLoopViewProps = {
@@ -18,6 +19,7 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
   const playbackSubscriptionRef =
     useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
   const router = useRouter();
+  const { setSelectedLoopKey } = useLoopPlayback();
 
   const unloadCurrentSound = async () => {
     if (!soundRef.current) return;
@@ -80,18 +82,12 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
     }
     setPlayingIndex(null);
 
-    router.replace({
-      pathname: "/(tabs)/loop",
-      params: {
-        bpm: String(loop.bpm),
-        title: loop.title,
-        artist: loop.artist,
-        loopKey: loop.key,
-        // Forces the loop screen to (re)load even when picking the same
-        // loop it already has selected.
-        loadedAt: String(Date.now()),
-      },
-    });
+    // Selection lives in LoopPlaybackContext (mirrors Pad's pattern), so the
+    // Loop tab picks it up regardless of which screen instance is focused.
+    // Just pop back to the already-mounted (tabs) navigator underneath,
+    // instead of pushing into it from this sibling stack group.
+    setSelectedLoopKey(loop.key);
+    router.back();
   };
 
   // Native confirm dialog (iOS/Android system alert) instead of an in-app one.

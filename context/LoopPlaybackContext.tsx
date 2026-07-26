@@ -38,6 +38,10 @@ type LoopPlaybackContextValue = {
   setBpm: React.Dispatch<React.SetStateAction<number>>;
   isPlaying: boolean;
   isBlockedByOtherEngine: boolean;
+  // Title of the currently selected loop, or null when none is selected.
+  // Lives here (not in route params) so it survives regardless of which
+  // screen instance is currently focused -- same pattern as Pad/Metro.
+  selectedTitle: string | null;
   setSelectedLoopKey: (key: string | undefined) => void;
   startLoop: () => void;
   stopLoop: () => void;
@@ -75,6 +79,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // it via playback rate (bpm / nativeBpm = 1x at the loop's own tempo).
   const nativeBpmRef = useRef<number | null>(null);
   const currentKeyRef = useRef<string | null>(null);
+  const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [loopReady, setLoopReady] = useState(false);
   const loopReadyRef = useRef(false);
   // Play was pressed while the loop was still decoding: start as soon as
@@ -293,6 +298,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     if (!key) {
       currentKeyRef.current = null;
       nativeBpmRef.current = null;
+      setSelectedTitle(null);
       return;
     }
 
@@ -300,12 +306,14 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     if (!selectedLoop) {
       currentKeyRef.current = null;
       nativeBpmRef.current = null;
+      setSelectedTitle(null);
       return;
     }
 
     currentKeyRef.current = selectedLoop.key;
     nativeBpmRef.current = selectedLoop.bpm;
     setBpm(selectedLoop.bpm);
+    setSelectedTitle(selectedLoop.title);
 
     // Normally instant: the engine already holds the decoded buffer from
     // the startup preload. preloadLoop is a no-op if it's in flight, and a
@@ -391,6 +399,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         setBpm,
         isPlaying,
         isBlockedByOtherEngine,
+        selectedTitle,
         setSelectedLoopKey,
         startLoop,
         stopLoop,

@@ -47,12 +47,15 @@ function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
   );
 }
 
-// Small persistent indicators shown on other screens while a playback engine
-// keeps running in the background, so an engine is never silently playing with
-// no way to see or stop it. Mounted at the app root (app/_layout.tsx), so the
-// pills follow the user everywhere -- other tabs and non-tab screens like
-// Settings alike. Stacked in one positioned container so the Metronome, Loop
-// and Pad pills don't overlap if more than one happens to be playing.
+// Small persistent indicators shown on the *other* tabs while a playback
+// engine keeps running in the background, so an engine is never silently
+// playing with no way to see or stop it. Mounted at the app root
+// (app/_layout.tsx), but only rendered while on one of the three tab screens
+// -- hidden on Settings, the loop/pad pickers, and auth screens. Stacked in
+// one positioned container so the Metronome, Loop and Pad pills don't overlap
+// if more than one happens to be playing.
+const TAB_PATHS = ["/loop", "/pad", "/metro"];
+
 export default function FloatingEngineControls() {
   const router = useRouter();
   const pathname = usePathname();
@@ -60,9 +63,11 @@ export default function FloatingEngineControls() {
   const loop = useLoopPlayback();
   const pad = usePadPlayback();
 
-  const showMetronome = metronome.isPlaying && pathname !== "/metro";
-  const showLoop = loop.isPlaying && pathname !== "/loop";
-  const showPad = pad.isPlaying && pathname !== "/pad";
+  const isOnTabScreen = TAB_PATHS.includes(pathname);
+
+  const showMetronome = isOnTabScreen && metronome.isPlaying && pathname !== "/metro";
+  const showLoop = isOnTabScreen && loop.isPlaying && pathname !== "/loop";
+  const showPad = isOnTabScreen && pad.isPlaying && pathname !== "/pad";
 
   if (!showMetronome && !showLoop && !showPad) {
     return null;

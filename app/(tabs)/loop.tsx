@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, StatusBar, Image, TouchableOpacity, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
 
 import {
   useLoopPlayback,
@@ -28,15 +28,6 @@ const LOOP_BEATS = 4;
 
 export default function LoopScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const selectedTitle =
-    typeof params.title === "string" ? params.title : undefined;
-  const selectedLoopKey =
-    typeof params.loopKey === "string" ? params.loopKey : undefined;
-  // Changes on every explicit "Load" in the picker, even for the same loop,
-  // so re-selecting the currently loaded loop still reloads it.
-  const loadedAt =
-    typeof params.loadedAt === "string" ? params.loadedAt : undefined;
 
   // Plays the selected backing loop track, warped to the current BPM,
   // optionally with a metronome click layered in time with it (opt-in via
@@ -49,7 +40,7 @@ export default function LoopScreen() {
     setBpm,
     isPlaying,
     isBlockedByOtherEngine,
-    setSelectedLoopKey,
+    selectedTitle,
     startLoop,
     stopLoop,
   } = useLoopPlayback();
@@ -58,11 +49,6 @@ export default function LoopScreen() {
   // UI-only for now -- LoopPlaybackContext has no playback-rate multiplier to
   // wire this into yet (see getPlaybackRate in LoopPlaybackContext.tsx).
   const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX);
-
-  useEffect(() => {
-    setSelectedLoopKey(selectedLoopKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLoopKey, loadedAt]);
 
   // The loop engine (a WebView Web Audio graph) doesn't report its playhead
   // back to React, so there's no real beat position to visualize like the

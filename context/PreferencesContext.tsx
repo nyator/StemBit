@@ -47,9 +47,9 @@ const DEFAULTS: Preferences = {
   beatSound: "ableton_beat",
   // Per-engine master levels (Settings -> Audio Output / Volume). Defaults are
   // the slider positions the Figma draws (98/140, 119/140, 70/140).
-  metronomeVolume: 0.7,
-  padVolume: 0.85,
-  loopVolume: 0.5,
+  metronomeVolume: 0.99,
+  padVolume: 0.7,
+  loopVolume: 0.7,
   // The loop click is opt-in: loops play with no click until the user turns it
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,
