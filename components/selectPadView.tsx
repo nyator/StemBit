@@ -4,6 +4,7 @@ import React, { useRef, useState } from "react";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { PAD_PACKS, type PadPack } from "../constants/pads";
+import { usePreferences } from "../context/PreferencesContext";
 import { COLORS } from "../constants/theme";
 import { Musicnote, PlayCircle, PauseCircle } from "./icons";
 
@@ -19,6 +20,7 @@ const SelectPadView = ({
   packs = PAD_PACKS,
   groupByArtist = false,
 }: SelectPadViewProps) => {
+  const { setPref } = usePreferences();
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const playbackSubscriptionRef =
@@ -78,15 +80,17 @@ const SelectPadView = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packs]);
 
-  // TODO: pad.tsx always plays the one recorded chromatic sample set
-  // (PAD_SOURCES) regardless of which pack is "loaded" here -- there's no
-  // per-pack audio yet, so this just returns to the Pad screen.
-  const loadPack = () => {
+  // Records the choice so the Pad screen can name what's loaded. TODO: it is
+  // still only a name -- pad.tsx plays the one recorded chromatic sample set
+  // (PAD_SOURCES) whichever pack is selected, since there's no per-pack audio
+  // yet. Swapping samples here is what makes the selection audible.
+  const loadPack = (pack: PadPack) => {
     if (soundRef.current) {
       soundRef.current.pause();
       soundRef.current.seekTo(0).catch(console.error);
     }
     setPlayingIndex(null);
+    setPref("padPack", pack.key);
     router.back();
   };
 
@@ -96,7 +100,7 @@ const SelectPadView = ({
       `Load "${pack.title}"?`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Load", onPress: loadPack },
+        { text: "Load", onPress: () => loadPack(pack) },
       ],
       { cancelable: true }
     );

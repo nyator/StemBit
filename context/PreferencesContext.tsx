@@ -21,6 +21,9 @@ import * as FileSystem from "expo-file-system";
 //   loopVolume    -> master gain for the loop's backing track, 0–1
 //   loopClick     -> play a metronome click alongside a loop (off by default)
 //   loopClickPan  -> stereo placement of that loop click
+//   padPack       -> key of the chosen pad pack (constants/pads.ts). Names the
+//                    pad on screen; it does not swap samples yet, since every
+//                    pack still points at the one recorded sample set.
 export type Preferences = {
   haptics: boolean;
   meterAccents: boolean;
@@ -33,6 +36,7 @@ export type Preferences = {
   loopVolume: number;
   loopClick: boolean;
   loopClickPan: "left" | "center" | "right";
+  padPack: string;
   seenOnboarding: boolean;
 };
 
@@ -54,6 +58,10 @@ const DEFAULTS: Preferences = {
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,
   loopClickPan: "center",
+  // First entry of PAD_PACKS. Not imported from constants/pads.ts on purpose:
+  // preferences are plain persisted values, and pulling the catalog in here
+  // would make this module depend on the audio assets it indexes.
+  padPack: "drone-pad",
   seenOnboarding: false,
 };
 

@@ -12,6 +12,7 @@ import {
   KEYS,
   KEY_DISPLAY_LABELS,
 } from "../../context/PadPlaybackContext";
+import { findPadPackByKey } from "../../constants/pads";
 import { hapticImpact } from "../../utils/haptics";
 import { COLORS } from "../../constants/theme";
 import { SortPad } from "../../components/icons";
@@ -28,6 +29,10 @@ export default function PadScreen() {
   const { activeKeyIndex, mode, setMode, togglePad } = usePadPlayback();
 
   const isMinor = mode === "minor";
+  // Falls back to null if a persisted key no longer matches the catalog (a
+  // pack renamed or dropped between releases), so the control reads
+  // "Select Pad" rather than going blank.
+  const selectedPad = findPadPackByKey(prefs.padPack);
 
   const handlePadPress = (idx: number) => {
     hapticImpact(prefs.haptics);
@@ -41,47 +46,57 @@ export default function PadScreen() {
 
       <HeaderComponent />
       <View className="items-center justify-start flex-1 w-full px-5">
-        <View>
-          <View className="flex flex-row items-center justify-center gap-6 mt-2">
-            <View className="flex-row p-1 rounded-xl bg-white/5">
-              <TouchableOpacity
-                accessibilityLabel="Major"
-                onPress={() => setMode("major")}
-                className="px-4 py-2 rounded-lg"
-                style={{ backgroundColor: !isMinor ? COLORS.brand : "transparent" }}
+        <View className="flex-row items-center justify-center w-full gap-3 mt-2">
+          <View className="flex-row p-1 rounded-xl bg-white/5">
+            <TouchableOpacity
+              accessibilityLabel="Major"
+              onPress={() => setMode("major")}
+              className="px-4 py-2 rounded-lg"
+              style={{ backgroundColor: !isMinor ? COLORS.brand : "transparent" }}
+            >
+              <Text
+                className="text-md font-satoshiMedium"
+                style={{ color: !isMinor ? COLORS.white : COLORS.white }}
               >
-                <Text
-                  className="text-md font-satoshiMedium"
-                  style={{ color: !isMinor ? COLORS.white : COLORS.white }}
-                >
-                  Maj
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                accessibilityLabel="Minor"
-                onPress={() => setMode("minor")}
-                className="px-4 py-2 rounded-lg"
-                style={{ backgroundColor: isMinor ? COLORS.danger : "transparent" }}
-              >
-                <Text
-                  className="text-md font-satoshiMedium"
-                  style={{ color: isMinor ? COLORS.white : COLORS.white }}
-                >
-                  Min
-                </Text>
-              </TouchableOpacity>
-            </View>
+                Maj
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
-              className="items-center justify-center border-white/20 rounded-full w-9 h-9 bg-white/5"
-              onPress={() => router.push("/(pads)/sounds")}
-              activeOpacity={0.7}
-              accessibilityLabel="Select pad"
+              accessibilityLabel="Minor"
+              onPress={() => setMode("minor")}
+              className="px-4 py-2 rounded-lg"
+              style={{ backgroundColor: isMinor ? COLORS.danger : "transparent" }}
             >
-              <SortPad size={20} color={COLORS.white} />
+              <Text
+                className="text-md font-satoshiMedium"
+                style={{ color: isMinor ? COLORS.white : COLORS.white }}
+              >
+                Min
+              </Text>
             </TouchableOpacity>
           </View>
+
+          {/* What's loaded, and the control that changes it — one target, so
+              the name isn't a label sitting next to a button that means the
+              same thing. Shrinks (and the title ellipsises) rather than
+              pushing the Maj/Min toggle off-centre on a narrow screen. */}
+          <TouchableOpacity
+            className="flex-row items-center gap-2 px-3 py-2 rounded-full bg-white/5 shrink"
+            onPress={() => router.push("/(pads)/sounds")}
+            activeOpacity={0.7}
+            accessibilityLabel={
+              selectedPad ? `Select pad, currently ${selectedPad.title}` : "Select pad"
+            }
+          >
+            <SortPad size={20} color={COLORS.white} />
+            <Text
+              className="text-white shrink text-md font-satoshiMedium"
+              numberOfLines={1}
+            >
+              {selectedPad?.title ?? "Select Pad"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View className="flex flex-row flex-wrap items-center justify-center w-full mt-5">
