@@ -9,6 +9,7 @@ import {MetronomeProvider} from "../context/MetronomeContext";
 import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
 import FloatingEngineControls from "../components/floatingEngineControls";
+import KeepAwakeWhilePlaying from "../components/keepAwakeWhilePlaying";
 import {COLORS} from "../constants/theme";
 
 function RootLayout() {
@@ -67,6 +68,7 @@ function RootLayout() {
                                         <Stack.Screen name="(pads)" options={{headerShown: false}}/>
                                     </Stack>
                                     <FloatingEngineControls />
+                                    <KeepAwakeWhilePlaying />
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
                         </MetronomeProvider>

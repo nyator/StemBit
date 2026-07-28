@@ -97,6 +97,10 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // engine uses): wake every ~25ms, schedule clicks up to 100ms ahead.
         var CLICK_LOOKAHEAD_MS = 25;
         var CLICK_SCHEDULE_AHEAD = 0.1;
+        // |pan| at or above this counts as "hard left/right" and gets routed
+        // to that channel outright rather than through the panner. See
+        // connectClickOutput.
+        var HARD_PAN_THRESHOLD = 0.999;
 
         function post(message) {
           if (window.ReactNativeWebView) {
@@ -115,6 +119,19 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         function ensureContext() {
           if (!audioContext) {
             audioContext = new AudioContextClass();
+            // Ask for stereo explicitly rather than trusting the default:
+            // some WebView builds hand back a destination narrower than the
+            // hardware supports, and anything landing on a mono destination
+            // gets down-mixed -- which would fold the panned click (below)
+            // back into both ears.
+            try {
+              if (audioContext.destination.maxChannelCount >= 2) {
+                audioContext.destination.channelCount = 2;
+                audioContext.destination.channelCountMode = "explicit";
+              }
+            } catch (e) {
+              // Read-only in this implementation; the default stands.
+            }
           }
           if (audioContext.state === "suspended") {
             audioContext.resume();
@@ -695,6 +712,49 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           clickNextTime = atTime + (nextBeat - beatFloat) * beatSec;
         }
 
+        // Route a click's gain node to the destination at the current pan.
+        //
+        // The three positions the app exposes are hard left / center / hard
+        // right, and at the hard positions "panned" should mean *silent* on
+        // the other side. Rather than trust a StereoPannerNode's equal-power
+        // curve to reach exactly zero at the endpoints, feed one input of a
+        // ChannelMergerNode and leave the other unconnected: an unconnected
+        // merger input is digital silence, not a very small number.
+        //
+        // Level-matched to the panner it replaces: the spec's curve at
+        // |pan| = 1 is gain 1.0 into the live channel and 0.0 into the other,
+        // which is exactly what the merger does, so switching between
+        // positions doesn't change how loud the click is. (Merger inputs are
+        // mono; every click sample in assets/audio/clicks is mono, so nothing
+        // is down-mixed on the way through.)
+        //
+        // Intermediate pan values still go through the panner -- nothing
+        // sends them today, but a continuous pan control would keep working.
+        //
+        // Note for anyone chasing a "pan bleeds" report: this is as isolated
+        // as the graph can be, and it ends at the destination. Spatial-audio
+        // modes on headphones (CMF/Nothing, AirPods, Galaxy Buds) re-render
+        // hard-panned sources binaurally, which puts them back in both ears
+        // downstream of everything here. Rule that out first.
+        function connectClickOutput(node, ctx) {
+          if (Math.abs(clickPan) >= HARD_PAN_THRESHOLD && ctx.createChannelMerger) {
+            var merger = ctx.createChannelMerger(2);
+            node.connect(merger, 0, clickPan < 0 ? 0 : 1);
+            merger.connect(ctx.destination);
+            return;
+          }
+          // Degrade gracefully to a centred click if an older WebView lacks
+          // StereoPannerNode.
+          if (ctx.createStereoPanner) {
+            var panner = ctx.createStereoPanner();
+            panner.pan.value = clickPan;
+            node.connect(panner);
+            panner.connect(ctx.destination);
+            return;
+          }
+          node.connect(ctx.destination);
+        }
+
         function scheduleClick(beatIndex, time) {
           var ctx = audioContext;
           // Accent on every bar downbeat, so a multi-bar loop keeps a click
@@ -708,16 +768,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           var gain = ctx.createGain();
           gain.gain.value = isAccent ? clickAccentVol : clickBeatVol;
           source.connect(gain);
-          // StereoPannerNode places the click L/R; degrade gracefully to a
-          // centred click if an older WebView lacks it.
-          if (ctx.createStereoPanner) {
-            var panner = ctx.createStereoPanner();
-            panner.pan.value = clickPan;
-            gain.connect(panner);
-            panner.connect(ctx.destination);
-          } else {
-            gain.connect(ctx.destination);
-          }
+          connectClickOutput(gain, ctx);
           source.start(time);
           clickSources.push(source);
           source.onended = function () {
@@ -789,7 +840,9 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 
         function play(rate) {
           if (!active) {
-            post({ type: "error", message: "no loop loaded" });
+            // Coded so the app can tell this apart from a decode failure and
+            // put the transport back rather than leaving it showing "playing".
+            post({ type: "error", code: "no-loop", message: "no loop loaded" });
             return;
           }
           if (rate) currentRate = rate;
@@ -901,6 +954,12 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
               break;
             case "setClick":
               setClick(data);
+              break;
+            // Liveness check. The app pings after returning to the foreground:
+            // if this page's process was reclaimed while backgrounded there is
+            // nobody left to answer, and the app rebuilds the engine.
+            case "ping":
+              post({ type: "pong" });
               break;
             default:
               break;

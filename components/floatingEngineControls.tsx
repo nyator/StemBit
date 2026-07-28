@@ -51,9 +51,9 @@ function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
 // engine keeps running in the background, so an engine is never silently
 // playing with no way to see or stop it. Mounted at the app root
 // (app/_layout.tsx), but only rendered while on one of the three tab screens
-// -- hidden on Settings, the loop/pad pickers, and auth screens. Stacked in
-// one positioned container so the Metronome, Loop and Pad pills don't overlap
-// if more than one happens to be playing.
+// -- hidden on Settings, the loop/pad pickers, and auth screens. Laid out in
+// a single positioned row so the Metronome, Loop and Pad pills sit side by
+// side (wrapping if they don't fit) when more than one happens to be playing.
 const TAB_PATHS = ["/loop", "/pad", "/metro"];
 
 export default function FloatingEngineControls() {
@@ -81,7 +81,11 @@ export default function FloatingEngineControls() {
         left: 0,
         right: 0,
         bottom: "13%",
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "center",
         alignItems: "center",
+        paddingHorizontal: 16,
         gap: 10,
       }}
     >

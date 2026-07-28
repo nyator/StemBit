@@ -37,7 +37,8 @@ import {
 } from "../../components/ui/bpmInputAccessory";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
-import { GlowRing } from "../../components/ui/dialGlowRing";
+import { DialGlowRings } from "../../components/ui/dialGlowRing";
+import BeatGlow, { BEAT_GLOW_SIZE } from "../../components/ui/beatGlow";
 import { COLORS, CONTROL, SHADOWS, SIZES } from "../../constants/theme";
 import {
   AddCircle,
@@ -324,22 +325,46 @@ export default function MetroScreen() {
     for (let i = 0; i < timeSignature.beats; i++) {
       const isCurrent = i === currentBeat;
       const isSecondaryAccent = i !== 0 && accents.includes(i);
+      const isAccent = i === 0 || isSecondaryAccent;
       const activeColor =
         i === 0 ? COLORS.brand : isSecondaryAccent ? COLORS.brandFrom : COLORS.text;
       const idleColor = isSecondaryAccent
         ? "rgba(0,139,194,0.3)"
         : "rgba(255,255,255,0.15)";
+      const size = isCurrent ? 12 : 8;
+      // The halo marks the accent that is sounding, so it pulses along with
+      // the click rather than sitting on the accent dots permanently. Gated on
+      // isPlaying too: currentBeat resets to 0 on stop, and without this the
+      // downbeat would glow at a stopped metronome.
+      const showGlow = isPlaying && isCurrent && isAccent;
       beats.push(
         <View
           key={i}
           style={{
-            width: isCurrent ? 12 : 8,
-            height: isCurrent ? 12 : 8,
-            borderRadius: 6,
             marginHorizontal: 3,
-            backgroundColor: isCurrent ? activeColor : idleColor,
+            alignItems: "center",
+            justifyContent: "center",
           }}
-        />
+        >
+          {showGlow && (
+            <BeatGlow
+              color={activeColor}
+              // Centres the painted box on the dot without it joining layout.
+              style={{
+                left: (size - BEAT_GLOW_SIZE) / 2,
+                top: (size - BEAT_GLOW_SIZE) / 2,
+              }}
+            />
+          )}
+          <View
+            style={{
+              width: size,
+              height: size,
+              borderRadius: 6,
+              backgroundColor: isCurrent ? activeColor : idleColor,
+            }}
+          />
+        </View>
       );
     }
     return (
@@ -381,8 +406,11 @@ export default function MetroScreen() {
           className="items-center justify-center w-full mb-[18px]"
           style={{ height: 249 }}
         >
-          <GlowRing size={288} radius={119.5} strokeWidth={1} blur={12} opacity={0.15} />
-          <GlowRing size={244} radius={109} strokeWidth={2} blur={6} opacity={0.3} />
+          <DialGlowRings
+            beat={currentBeat}
+            isAccent={accents.includes(currentBeat)}
+            isPlaying={isPlaying}
+          />
           <View
             className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
             style={{
@@ -430,7 +458,10 @@ export default function MetroScreen() {
 
           <TouchableOpacity
             accessibilityLabel={isPlaying ? "Stop metronome" : "Start metronome"}
-            onPress={() => {
+            // onPressIn, not onPress: onPress fires when the finger LIFTS, so
+            // the click (and its haptic) waited on the release rather than the
+            // tap. Transport should answer the moment you touch it.
+            onPressIn={() => {
               hapticImpact(prefs.haptics, "medium");
               if (isPlaying) stopMetronome();
               else startMetronome();
@@ -460,18 +491,29 @@ export default function MetroScreen() {
 
         {/* Tap tempo */}
         <TouchableOpacity
-          onPress={handleTapTempo}
+          // Tap tempo has to be onPressIn. The beat is where the finger lands,
+          // not where it lifts — timing off the release both felt late and
+          // measured the wrong thing, since how long a tap is held varies far
+          // more than when it starts.
+          onPressIn={handleTapTempo}
           className="items-center justify-center mt-[18px] px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
         >
           <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
         </TouchableOpacity>
 
 
-        {isBlockedByOtherEngine && (
-          <Text className="mt-2 text-xs text-center text-white/60 font-satoshiMedium">
-            Stop the Loop click track first
-          </Text>
-        )}
+        {/* Fixed-height slot so the notice appearing doesn't shift the
+            controls below it. */}
+        <View className="justify-center w-full mt-2 h-4">
+          {isBlockedByOtherEngine && (
+            <Text
+              numberOfLines={1}
+              className="text-xs text-center text-white/60 font-satoshiMedium"
+            >
+              Stop the Loop click track first
+            </Text>
+          )}
+        </View>
 
         {/* Subdivision */}
         <View className="items-start w-full mt-[18px]">

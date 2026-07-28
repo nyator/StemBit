@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, Switch } from "react-native";
 import Radio from "./radio";
 import Slider from "./slider";
 import { ArrowRight } from "../icons";
-import { COLORS, CONTROL, SIZES } from "../../constants/theme";
+import { COLORS, CONTROL, RADII, SIZES } from "../../constants/theme";
 
 // Icons arrive as components from components/icons (Iconsax, lifted from the
 // Figma) rather than as glyph-name strings: callers get compile-time checking,
@@ -34,6 +34,18 @@ type SwitchRowProps = BaseProps & {
 type RadioRowProps = BaseProps & {
   selected: boolean;
   onSelect: () => void;
+};
+
+// A segmented group is the same "one of N" choice a radio makes, but the
+// options are short enough to sit side by side, so they get one control
+// instead of N rows. Generic over the value union so the caller's own type
+// (e.g. Preferences["loopClickPan"]) survives into `onChange`.
+type SegmentOption<T extends string> = { value: T; label: string };
+
+type SegmentedRowProps<T extends string> = BaseProps & {
+  value: T;
+  options: readonly SegmentOption<T>[];
+  onChange: (value: T) => void;
 };
 
 // Same shape as a switch row but the value is continuous, 0–1.
@@ -169,6 +181,56 @@ export function SettingRadio({ selected, onSelect, ...base }: RadioRowProps) {
     >
       <RowShell {...base} right={<Radio selected={selected} />} />
     </TouchableOpacity>
+  );
+}
+
+// Segmented settings row -- the label sits on its own line and the options
+// span the row's full width beneath it, split evenly. Wide enough for three
+// word labels (Left / Center / Right), which won't fit right-aligned next to
+// the label the way a switch or slider does.
+export function SettingSegmented<T extends string>({
+  value,
+  options,
+  onChange,
+  border = false,
+  ...base
+}: SegmentedRowProps<T>) {
+  return (
+    <View className={`${border ? "border-b" : ""} border-white/10`}>
+      <RowShell {...base} right={null} />
+      <View
+        accessibilityRole="radiogroup"
+        className="flex-row p-1 mb-4 -mt-2 bg-white/5"
+        style={{ borderRadius: RADII.md }}
+      >
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <TouchableOpacity
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              activeOpacity={0.8}
+              accessibilityRole="radio"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected }}
+              className="items-center justify-center flex-1 py-[10px]"
+              style={{
+                borderRadius: RADII.sm,
+                backgroundColor: selected ? CONTROL.active : "transparent",
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                className="text-sm font-satoshiMedium"
+                style={{ color: selected ? COLORS.white : COLORS.textMuted }}
+              >
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 

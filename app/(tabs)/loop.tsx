@@ -21,7 +21,8 @@ import {
 } from "../../components/ui/bpmInputAccessory";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
-import { GlowRing } from "../../components/ui/dialGlowRing";
+import { DialGlowRings } from "../../components/ui/dialGlowRing";
+import BeatGlow, { BEAT_GLOW_SIZE } from "../../components/ui/beatGlow";
 import icons from "../../constants/icons";
 import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
 import {
@@ -112,17 +113,39 @@ export default function LoopScreen() {
     for (let i = 0; i < loopBeats; i++) {
       const isCurrent = i === currentBeat;
       const activeColor = i === 0 ? COLORS.brand : COLORS.text;
+      const size = isCurrent ? 12 : 8;
+      // The engine accents every bar downbeat, so that's the beat that gets
+      // the halo. Gated on isPlaying: currentBeat sits at 0 while stopped, and
+      // without this the downbeat would glow at rest.
+      const showGlow = isPlaying && isCurrent && i === 0;
       beats.push(
         <View
           key={i}
           style={{
-            width: isCurrent ? 12 : 8,
-            height: isCurrent ? 12 : 8,
-            borderRadius: 6,
             marginHorizontal: 3,
-            backgroundColor: isCurrent ? activeColor : "rgba(255,255,255,0.15)",
+            alignItems: "center",
+            justifyContent: "center",
           }}
-        />
+        >
+          {showGlow && (
+            <BeatGlow
+              color={activeColor}
+              // Centres the painted box on the dot without it joining layout.
+              style={{
+                left: (size - BEAT_GLOW_SIZE) / 2,
+                top: (size - BEAT_GLOW_SIZE) / 2,
+              }}
+            />
+          )}
+          <View
+            style={{
+              width: size,
+              height: size,
+              borderRadius: 6,
+              backgroundColor: isCurrent ? activeColor : "rgba(255,255,255,0.15)",
+            }}
+          />
+        </View>
       );
     }
     return (
@@ -167,8 +190,12 @@ export default function LoopScreen() {
           className="items-center justify-center w-full mb-[18px]"
           style={{ height: 249 }}
         >
-          <GlowRing size={288} radius={119.5} strokeWidth={1} blur={12} opacity={0.15} />
-          <GlowRing size={244} radius={109} strokeWidth={2} blur={6} opacity={0.3} />
+          {/* The engine accents every bar downbeat, so that's what flares. */}
+          <DialGlowRings
+            beat={currentBeat}
+            isAccent={currentBeat === 0}
+            isPlaying={isPlaying}
+          />
           <View
             className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
             style={{
@@ -216,7 +243,10 @@ export default function LoopScreen() {
 
           <TouchableOpacity
             accessibilityLabel={isPlaying ? "Stop loop" : "Start loop"}
-            onPress={() => {
+            // onPressIn, not onPress: onPress fires when the finger LIFTS, so
+            // the loop (and its haptic) waited on the release rather than the
+            // tap. Transport should answer the moment you touch it.
+            onPressIn={() => {
               hapticImpact(prefs.haptics, "medium");
               if (isPlaying) stopLoop();
               else startLoop();
@@ -243,11 +273,18 @@ export default function LoopScreen() {
             <AddCircle size={SIZES.transportSecondary} color={COLORS.white} />
           </TouchableOpacity>
         </View>
-        {isBlockedByOtherEngine && (
-          <Text className="mt-2 text-xs text-center text-white/60 font-satoshiMedium">
-            Stop the Metronome first
-          </Text>
-        )}
+        {/* Fixed-height slot so the notice appearing doesn't shift the
+            controls below it. */}
+        <View className="justify-center w-full mt-2 h-4">
+          {isBlockedByOtherEngine && (
+            <Text
+              numberOfLines={1}
+              className="text-xs text-center text-white/60 font-satoshiMedium"
+            >
+              Stop the Metronome first
+            </Text>
+          )}
+        </View>
 
         {/* Reset tempo | Tap tempo (center) | loop click */}
         <View className="flex-row items-center justify-center gap-[10px] mt-[18px]">
@@ -265,7 +302,11 @@ export default function LoopScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={handleTapTempo}
+            // Tap tempo has to be onPressIn. The beat is where the finger
+            // lands, not where it lifts — timing off the release both felt
+            // late and measured the wrong thing, since how long a tap is held
+            // varies far more than when it starts.
+            onPressIn={handleTapTempo}
             className="items-center justify-center px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
           >
             <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>

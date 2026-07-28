@@ -18,6 +18,17 @@ import { usePreferences } from "./PreferencesContext";
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
 
+// How long the engine gets to answer a liveness ping before it's declared
+// dead. Generous: the WebView may still be waking up after a spell in the
+// background, and a needless restart drops the play button for a moment.
+// Kept local rather than shared with the loop engine's copy — the two hosts
+// are independent and could reasonably be tuned apart.
+const ENGINE_PONG_TIMEOUT_MS = 2000;
+
+// How long the beat survives after the app reports it went to the background
+// before it's actually stopped. See the AppState handler for why this exists.
+const BACKGROUND_STOP_GRACE_MS = 5000;
+
 // The time-signature picker groups meters into three families (Figma node
 // 93:534). `category` drives that grouping in the modal.
 export type TimeSignatureCategory = "standard" | "compound" | "odd";
@@ -214,6 +225,15 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   const webViewRef = useRef<WebView>(null);
   const [engineHtml, setEngineHtml] = useState<string | null>(null);
   const [engineReady, setEngineReady] = useState(false);
+  // Bumping this remounts the WebView, which is how a dead engine is
+  // recovered (see restartEngine).
+  const [engineGeneration, setEngineGeneration] = useState(0);
+  // Pending liveness check, if one is in flight.
+  const pongTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Countdown to stopping playback after the app went to the background.
+  const backgroundStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   const postToEngine = (message: Record<string, unknown>) => {
     webViewRef.current?.postMessage(JSON.stringify(message));
@@ -254,24 +274,117 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     release("metro");
   };
 
+  // Throw the engine away and build a new one.
+  //
+  // The WebView's process can be reclaimed by the OS while the app sits in
+  // the background (Android kills the renderer, iOS terminates the content
+  // process). The view object survives, so nothing looks wrong, but its page
+  // is gone and every postMessage lands nowhere — the transport goes dead
+  // with no way back.
+  //
+  // Recovery is a remount rather than webViewRef.reload(): after
+  // onRenderProcessGone, Android's WebView instance is unusable and must be
+  // replaced, not reloaded. Nothing needs restoring afterwards the way the
+  // loop engine's decoded buffers do — the samples are baked into the page
+  // HTML, and every playback setting is re-sent with the next "start".
+  const restartEngine = () => {
+    if (pongTimerRef.current) {
+      clearTimeout(pongTimerRef.current);
+      pongTimerRef.current = null;
+    }
+    // Blocks startMetronome until the replacement reports "ready".
+    setEngineReady(false);
+    isPlayingRef.current = false;
+    setIsPlaying(false);
+    setCurrentBeat(0);
+    release("metro");
+    setEngineGeneration((generation) => generation + 1);
+  };
+
+  // Ask the engine to answer for itself. onRenderProcessGone /
+  // onContentProcessDidTerminate cover most deaths, but they don't fire on
+  // every OS and build, and a silently dead engine leaves the user with a
+  // play button that does nothing.
+  const checkEngineAlive = () => {
+    if (!engineReady) return; // still booting; "ready" will settle it
+    if (pongTimerRef.current) return; // a check is already outstanding
+    pongTimerRef.current = setTimeout(() => {
+      pongTimerRef.current = null;
+      console.warn("Metronome engine stopped responding — restarting it");
+      restartEngine();
+    }, ENGINE_PONG_TIMEOUT_MS);
+    postToEngine({ type: "ping" });
+  };
+
   // The metronome only makes sense in the foreground: pause it if the app
   // is backgrounded or the screen locks, since the WebView's audio clock
-  // suspends there anyway.
+  // suspends there anyway. Coming back is also the moment the engine is most
+  // likely to have been reclaimed while we weren't looking, so that's where
+  // the liveness check goes.
+  //
+  // Only a real "background" counts, and even then not straight away.
+  // "inactive" is a transient overlay — Control Centre, the notification
+  // shade, an incoming-call banner, the app switcher — where the app is still
+  // on screen and its audio keeps running.
+  //
+  // Android doesn't report "inactive" at all: RN maps the activity's onPause
+  // straight to "background", so pulling down the notification shade looks
+  // identical to genuinely leaving the app. Hence the grace period rather
+  // than a state test alone — a glance at a notification is over in a second
+  // or two, actually leaving the app isn't. Whichever state the platform
+  // reports, the beat survives the short excursion and stops on the long one.
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active" && isPlayingRef.current) {
-        stopMetronome();
+    const cancelPendingStop = () => {
+      if (backgroundStopTimerRef.current) {
+        clearTimeout(backgroundStopTimerRef.current);
+        backgroundStopTimerRef.current = null;
       }
+    };
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        if (!isPlayingRef.current || backgroundStopTimerRef.current) return;
+        backgroundStopTimerRef.current = setTimeout(() => {
+          backgroundStopTimerRef.current = null;
+          // The JS thread can be frozen while backgrounded, so this may fire
+          // late — possibly just as the user comes back. Never stop
+          // something that is playing in the foreground.
+          if (AppState.currentState === "active") return;
+          if (isPlayingRef.current) stopMetronome();
+        }, BACKGROUND_STOP_GRACE_MS);
+        return;
+      }
+      // Back on screen, so whatever took us away was brief.
+      cancelPendingStop();
+      if (state === "active") checkEngineAlive();
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      cancelPendingStop();
+      // Null it too, not just clear it: this effect re-subscribes whenever
+      // engineReady flips, and a non-null handle pointing at a cancelled
+      // timer would make checkEngineAlive think a check is still outstanding
+      // and never run another one.
+      if (pongTimerRef.current) {
+        clearTimeout(pongTimerRef.current);
+        pongTimerRef.current = null;
+      }
+    };
+    // checkEngineAlive reads engineReady, so the listener has to be rebuilt
+    // when it changes or it would capture the initial `false` forever.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [engineReady]);
 
   const handleWebViewMessage = (event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === "ready") {
         setEngineReady(true);
+      } else if (data.type === "pong") {
+        if (pongTimerRef.current) {
+          clearTimeout(pongTimerRef.current);
+          pongTimerRef.current = null;
+        }
       } else if (data.type === "beat" && isPlayingRef.current) {
         setCurrentBeat(data.beat);
       } else if (data.type === "error") {
@@ -394,9 +507,23 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       {children}
       {engineHtml && (
         <WebView
+          // Remounting on a new generation is what actually rebuilds a dead
+          // engine — see restartEngine.
+          key={engineGeneration}
           ref={webViewRef}
           source={{ html: engineHtml }}
           onMessage={handleWebViewMessage}
+          // The OS reclaimed this WebView's process, almost always while the
+          // app was backgrounded. Both callbacks mean the same thing: the
+          // page is gone and this view can't be used again.
+          onRenderProcessGone={() => {
+            console.warn("Metronome engine renderer was killed — restarting it");
+            restartEngine();
+          }}
+          onContentProcessDidTerminate={() => {
+            console.warn("Metronome engine content process ended — restarting it");
+            restartEngine();
+          }}
           originWhitelist={["*"]}
           mediaPlaybackRequiresUserAction={false}
           allowsInlineMediaPlayback

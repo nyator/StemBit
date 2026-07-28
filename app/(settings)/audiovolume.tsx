@@ -9,8 +9,10 @@ import {
     SettingSwitch,
     SettingSection,
     SettingRadio,
+    SettingSegmented,
     SettingSlider
 } from "../../components/ui/settingRow";
+import type { Preferences } from "../../context/PreferencesContext";
 import { usePreferences } from "../../context/PreferencesContext";
 import { logoutUser } from "../../lib/appwrite";
 import { APP_VERSION, SUPPORT_EMAIL } from "../../constants/theme";
@@ -30,6 +32,14 @@ import {
 // boolean, so it needs its own state rather than borrowing a preference flag.
 // Local for now -- nothing routes audio to a specific device yet.
 type OutputDevice = "phone" | "bluetooth" | "usb";
+
+// Three-way stereo placement for the loop click. Typed off the preference so
+// adding a position here without widening Preferences won't compile.
+const PAN_OPTIONS: readonly { value: Preferences["loopClickPan"]; label: string }[] = [
+    { value: "left", label: "Left" },
+    { value: "center", label: "Center" },
+    { value: "right", label: "Right" },
+];
 
 const AudioVolume = () => {
     const router = useRouter();
@@ -119,22 +129,12 @@ const AudioVolume = () => {
                         onValueChange={(value) => setPref("loopClick", value)}
                         border={true}
                     />
-                    <SettingRadio
-                        label="Pan Left"
-                        selected={prefs.loopClickPan === "left"}
-                        onSelect={() => setPref("loopClickPan", "left")}
-                        border={true}
-                    />
-                    <SettingRadio
-                        label="Pan Center"
-                        selected={prefs.loopClickPan === "center"}
-                        onSelect={() => setPref("loopClickPan", "center")}
-                        border={true}
-                    />
-                    <SettingRadio
-                        label="Pan Right"
-                        selected={prefs.loopClickPan === "right"}
-                        onSelect={() => setPref("loopClickPan", "right")}
+                    <SettingSegmented
+                        label="Pan"
+                        sublabel="Stereo placement of the click"
+                        value={prefs.loopClickPan}
+                        options={PAN_OPTIONS}
+                        onChange={(pan) => setPref("loopClickPan", pan)}
                     />
                 </SettingSection>
 

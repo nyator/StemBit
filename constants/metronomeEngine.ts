@@ -311,6 +311,12 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
             case "setBeats":
               setBeats(data.beats, data.accents);
               break;
+            // Liveness check. The app pings after returning to the foreground:
+            // if this page's process was reclaimed while backgrounded there is
+            // nobody left to answer, and the app rebuilds the engine.
+            case "ping":
+              post({ type: "pong" });
+              break;
             default:
               break;
           }

@@ -13,7 +13,12 @@
       "Bash(node -e \"try{const m=require\\('./node_modules/expo/bundledNativeModules.json'\\);console.log\\('@react-native-picker/picker =>', m['@react-native-picker/picker']||'\\(not listed\\)'\\)}catch\\(e\\){console.log\\('no bundledNativeModules.json'\\)}\")",
       "Bash(node -e \"const a=require\\('./app.json'\\);console.log\\('plugins:', JSON.stringify\\(\\(a.expo&&a.expo.plugins\\)||[]\\)\\)\")",
       "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)",
-      "PowerShell(npx tsc --noEmit -p tsconfig.json; Write-Output \"EXIT: $LASTEXITCODE\")"
+      "PowerShell(npx tsc --noEmit -p tsconfig.json; Write-Output \"EXIT: $LASTEXITCODE\")",
+      "Bash(cd \"c:/Users/hnyator/Desktop/StemBit\" && ls \"C:/Users/hnyator/.claude/projects/c--Users-hnyator-Desktop-StemBit/memory/\" 2>&1)",
+      "Read(//c/Users/hnyator/.claude/projects/c--Users-hnyator-Desktop-StemBit/**)",
+      "Bash(node -e \"console.log\\('react-native-webview:', require\\('./node_modules/react-native-webview/package.json'\\).version\\)\")",
+      "Bash(node -e \"console.log\\('dep entry:', require\\('./package.json'\\).dependencies['expo-keep-awake']\\)\")",
+      "Bash(git diff *)"
     ]
   }
 }

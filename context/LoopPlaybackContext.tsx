@@ -20,6 +20,15 @@ import { METRONOME_SOUNDS } from "./MetronomeContext";
 export const LOOP_MIN_BPM = 20;
 export const LOOP_MAX_BPM = 240;
 
+// How long the engine gets to answer a liveness ping before it's declared
+// dead. Generous: the WebView may still be waking up after a spell in the
+// background, and a needless restart costs a re-decode.
+const ENGINE_PONG_TIMEOUT_MS = 2000;
+
+// How long playback survives after the app reports it went to the background
+// before it's actually stopped. See the AppState handler for why this exists.
+const BACKGROUND_STOP_GRACE_MS = 5000;
+
 // Loop-click pan preference -> StereoPanner value (-1 left .. 0 .. 1 right).
 const CLICK_PAN_VALUE: Record<string, number> = {
   left: -1,
@@ -103,6 +112,15 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
 
   const webViewRef = useRef<WebView>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
+  // Bumping this remounts the WebView, which is how a dead engine is
+  // recovered (see restartEngine).
+  const [engineGeneration, setEngineGeneration] = useState(0);
+  // Pending liveness check, if one is in flight.
+  const pongTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Countdown to stopping playback after the app went to the background.
+  const backgroundStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   // Messages posted before the WebView page has attached its listeners are
   // silently dropped, so everything is queued until its "ready" handshake.
@@ -178,6 +196,77 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Re-send the active loop to the engine with its audio attached. Used both
+  // when the engine comes up empty and when it reports it has no bytes for
+  // the current key — in either case the startup preloads are async file
+  // reads, so a bare "select" would arrive first and fail.
+  const reselectCurrentLoop = () => {
+    const key = currentKeyRef.current;
+    const loop = key ? findLoopByKey(key) : null;
+    if (!loop) return;
+    loadAssetBase64(loop.source)
+      .then((base64) => {
+        if (currentKeyRef.current !== loop.key) return; // selection moved on
+        postToEngine({
+          type: "select",
+          key: loop.key,
+          nativeBpm: loop.bpm,
+          beatsPerBar: getBeatsPerBar(loop),
+          base64,
+        });
+      })
+      .catch((error) => {
+        console.error("Loop reload failed", error);
+      });
+  };
+
+  // Throw the engine away and build a new one.
+  //
+  // The WebView's process can be reclaimed by the OS while the app sits in
+  // the background (Android kills the renderer, iOS terminates the content
+  // process). The view object survives, so nothing looks wrong, but its page
+  // is gone: every postMessage lands nowhere. That reads as "the loop just
+  // stopped working", and re-selecting a loop doesn't help because that is a
+  // postMessage too.
+  //
+  // Recovery is a remount rather than webViewRef.reload(): after
+  // onRenderProcessGone, Android's WebView instance is unusable and must be
+  // replaced, not reloaded. Clearing engineReadyRef first matters — it puts
+  // postToEngine back into queueing mode, so anything sent while the
+  // replacement boots is delivered on its "ready" instead of dropped.
+  const restartEngine = () => {
+    if (pongTimerRef.current) {
+      clearTimeout(pongTimerRef.current);
+      pongTimerRef.current = null;
+    }
+    engineReadyRef.current = false;
+    messageQueueRef.current = [];
+    preloadStartedRef.current.clear();
+    clickLoadedRef.current.clear();
+    loopReadyRef.current = false;
+    setLoopReady(false);
+    pendingPlayRef.current = false;
+    isPlayingRef.current = false;
+    setIsPlaying(false);
+    release("loop");
+    setEngineGeneration((generation) => generation + 1);
+  };
+
+  // Ask the engine to answer for itself. onRenderProcessGone /
+  // onContentProcessDidTerminate cover most deaths, but they don't fire on
+  // every OS and build, and a silently dead engine is exactly the failure
+  // that leaves the user with a play button that does nothing.
+  const checkEngineAlive = () => {
+    if (!engineReadyRef.current) return; // still booting; "ready" will settle it
+    if (pongTimerRef.current) return; // a check is already outstanding
+    pongTimerRef.current = setTimeout(() => {
+      pongTimerRef.current = null;
+      console.warn("Loop engine stopped responding — restarting it");
+      restartEngine();
+    }, ENGINE_PONG_TIMEOUT_MS);
+    webViewRef.current?.postMessage(JSON.stringify({ type: "ping" }));
+  };
+
   // Warm the whole catalog at startup so play is always instant.
   useEffect(() => {
     LOOPS.forEach((loop) => preloadLoop(loop.key));
@@ -205,14 +294,55 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Loop audio only makes sense in the foreground: the WebView's audio
-  // clock suspends in the background anyway.
+  // clock suspends in the background anyway. Coming back is also the moment
+  // the engine is most likely to have been reclaimed while we weren't
+  // looking, so that's where the liveness check goes.
+  //
+  // Only a real "background" counts, and even then not straight away.
+  // "inactive" is a transient overlay — Control Centre, the notification
+  // shade, an incoming-call banner, the app switcher — where the app is still
+  // on screen and its audio keeps running.
+  //
+  // Android doesn't report "inactive" at all: RN maps the activity's onPause
+  // straight to "background", so pulling down the notification shade looks
+  // identical to genuinely leaving the app. Hence the grace period rather
+  // than a state test alone — a glance at a notification is over in a second
+  // or two, actually leaving the app isn't. Whichever state the platform
+  // reports, playback survives the short excursion and stops on the long one.
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active" && isPlayingRef.current) {
-        stopLoop();
+    const cancelPendingStop = () => {
+      if (backgroundStopTimerRef.current) {
+        clearTimeout(backgroundStopTimerRef.current);
+        backgroundStopTimerRef.current = null;
       }
+    };
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        if (!isPlayingRef.current || backgroundStopTimerRef.current) return;
+        backgroundStopTimerRef.current = setTimeout(() => {
+          backgroundStopTimerRef.current = null;
+          // The JS thread can be frozen while backgrounded, so this may fire
+          // late — possibly just as the user comes back. Never stop
+          // something that is playing in the foreground.
+          if (AppState.currentState === "active") return;
+          if (isPlayingRef.current) stopLoop();
+        }, BACKGROUND_STOP_GRACE_MS);
+        return;
+      }
+      // Back on screen, so whatever took us away was brief.
+      cancelPendingStop();
+      if (state === "active") checkEngineAlive();
     });
-    return () => subscription.remove();
+
+    return () => {
+      subscription.remove();
+      cancelPendingStop();
+      if (pongTimerRef.current) {
+        clearTimeout(pongTimerRef.current);
+        pongTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -239,14 +369,12 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         );
         preloadStartedRef.current.clear();
         LOOPS.forEach((loop) => preloadLoop(loop.key));
-        if (currentKeyRef.current && nativeBpmRef.current) {
-          postToEngine({
-            type: "select",
-            key: currentKeyRef.current,
-            nativeBpm: nativeBpmRef.current,
-            beatsPerBar: beatsPerBarRef.current,
-          });
-        }
+        // A fresh engine holds nothing, so the loop is not playable again
+        // until the re-select below reports back. Saying so keeps the
+        // transport from offering Play against an empty engine.
+        loopReadyRef.current = false;
+        setLoopReady(false);
+        reselectCurrentLoop();
         // The WebView's decoded click buffers + master gain are wiped on
         // reload too: re-send the click samples, config, and loop volume.
         clickLoadedRef.current.clear();
@@ -262,6 +390,11 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           pendingPlayRef.current = false;
           beginPlayback();
         }
+      } else if (data.type === "pong") {
+        if (pongTimerRef.current) {
+          clearTimeout(pongTimerRef.current);
+          pongTimerRef.current = null;
+        }
       } else if (data.type === "error") {
         // Self-heal: the engine has no bytes for the current loop (e.g. a
         // preload was lost) — re-read the asset and select again with the
@@ -272,24 +405,23 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           data.key &&
           data.key === currentKeyRef.current
         ) {
-          const loop = findLoopByKey(data.key);
-          if (loop) {
-            loadAssetBase64(loop.source)
-              .then((base64) => {
-                if (currentKeyRef.current !== loop.key) return;
-                postToEngine({
-                  type: "select",
-                  key: loop.key,
-                  nativeBpm: loop.bpm,
-                  beatsPerBar: getBeatsPerBar(loop),
-                  base64,
-                });
-              })
-              .catch((error) => {
-                console.error("Loop reload failed", error);
-              });
-            return;
-          }
+          reselectCurrentLoop();
+          return;
+        }
+
+        // Play landed on an engine with nothing loaded — it restarted under
+        // us, or a select failed. Without this the transport sits there
+        // showing "playing" in silence, and pressing it again just repeats
+        // the same dead round trip.
+        if (data.code === "no-loop") {
+          pendingPlayRef.current = false;
+          isPlayingRef.current = false;
+          setIsPlaying(false);
+          release("loop");
+          loopReadyRef.current = false;
+          setLoopReady(false);
+          reselectCurrentLoop();
+          return;
         }
 
         console.error("Loop engine error:", data.message);
@@ -440,9 +572,23 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     >
       {children}
       <WebView
+        // Remounting on a new generation is what actually rebuilds a dead
+        // engine — see restartEngine.
+        key={engineGeneration}
         ref={webViewRef}
         source={{ html: engineHtml }}
         onMessage={handleWebViewMessage}
+        // The OS reclaimed this WebView's process, almost always while the
+        // app was backgrounded. Both callbacks mean the same thing: the page
+        // is gone and this view can't be used again.
+        onRenderProcessGone={() => {
+          console.warn("Loop engine renderer was killed — restarting it");
+          restartEngine();
+        }}
+        onContentProcessDidTerminate={() => {
+          console.warn("Loop engine content process ended — restarting it");
+          restartEngine();
+        }}
         originWhitelist={["*"]}
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
