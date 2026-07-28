@@ -17,6 +17,12 @@ import PAD_A from "../assets/audio/pads/generated/pad_A.m4a";
 import PAD_As from "../assets/audio/pads/generated/pad_As.m4a";
 import PAD_B from "../assets/audio/pads/generated/pad_B.m4a";
 
+//Nature — the ambience bed that layers over the pads. The first 60s of a
+//one-hour field recording, re-encoded to match the pad clips (see
+//scripts/generate_nature.sh). It doesn't butt-splice cleanly on its own; the
+//pad engine crossfades it against itself instead, so the seam is never heard.
+import nature_forest from "../assets/audio/nature/forest_awakening.m4a";
+
 //Metronome — original synthetic clicks (kept for backwards compatibility with
 //saved preferences that reference the "bright"/"low" ids).
 import metronome_bright from "../assets/audio/clicks/metronome_bright.wav";
@@ -68,6 +74,9 @@ export default {
     E: PAD_E, F: PAD_F, "F#": PAD_Fs, G: PAD_G,
     "G#": PAD_Gs, A: PAD_A, "A#": PAD_As, B: PAD_B,
   },
+
+  // Nature — ambience layered over the pads, on its own mixer channel
+  nature_forest,
 
 
   //metronome — synthetic clicks

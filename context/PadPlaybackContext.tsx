@@ -11,7 +11,17 @@ import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 
 import audio from "../constants/audio";
-import { usePreferences } from "./PreferencesContext";
+import {
+  usePreferences,
+  type MixSettings,
+  type PadLayer,
+} from "./PreferencesContext";
+import {
+  NATURE_CHANNEL,
+  findPadPackByKey,
+  padBusScale,
+  type PadPack,
+} from "../constants/pads";
 
 // Pad instrument engine. This used to live inside the pad screen, but a held
 // pad drone needs to keep sounding while the user navigates elsewhere (the same
@@ -33,17 +43,14 @@ const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 // (scripts/generate_pads.sh). We select the right clip per key instead of
 // pitch-shifting at runtime — AVPlayer's varispeed pitch shift is unreliable on
 // physical iOS devices (it plays back in C on device while working in the
-// Simulator).
-const PAD_SOURCES: Record<string, number> = audio.pads;
-
+// Simulator). Each pack brings its own set of these; see PadPack.sources.
+//
 // Minor keys play the *relative major* clip (tonic + 3 semitones), which shares
 // the same notes as the natural minor key (A minor -> C major pad).
-function sourceForKey(note: string, minor: boolean) {
+function sourceForKey(pack: PadPack, note: string, minor: boolean) {
   const idx = (NOTE_INDEX[note] + (minor ? 3 : 0)) % 12;
-  return PAD_SOURCES[NOTE_NAMES[idx]];
+  return pack.sources[NOTE_NAMES[idx]];
 }
-
-const DEFAULT_PAD_SOURCE: number = audio.pads.C;
 
 // Same 12 chromatic pads for both major and minor -- only the sample source
 // (relative major clip, see sourceForKey) and the active color differ. Exported
@@ -78,7 +85,11 @@ const TARGET_VOLUME = 1;
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
+// One stacked pack's voice. `layers` is NOT polyphony -- it's the crossfade
+// pair that lets a single voice loop and change key seamlessly. Sounding two
+// packs together means two of these, not one with more layers.
 type PadPlayer = {
+  packKey: string;
   layers: [AudioPlayer, AudioPlayer];
   activeLayer: 0 | 1;
   loopTimer?: TimerHandle;
@@ -96,7 +107,8 @@ const resetPlayer = (player?: AudioPlayer, volume = TARGET_VOLUME) => {
   player.seekTo(0).catch(console.error);
 };
 
-const createPadPlayer = (source: number): PadPlayer => ({
+const createPadPlayer = (packKey: string, source: number): PadPlayer => ({
+  packKey,
   layers: [
     createAudioPlayer(source, {
       downloadFirst: true,
@@ -146,7 +158,7 @@ type PadPlaybackContextValue = {
 const PadPlaybackContext = createContext<PadPlaybackContextValue | null>(null);
 
 export function PadPlaybackProvider({ children }: { children: ReactNode }) {
-  const { prefs } = usePreferences();
+  const { prefs, isLoaded } = usePreferences();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeKeyIndex, setActiveKeyIndex] = useState<number | null>(null);
@@ -164,12 +176,19 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
 
   const fadeTimersRef = useRef<Map<AudioPlayer, TimerHandle>>(new Map());
 
-  // One shared two-layer player for the whole instrument — each key just
-  // swaps in its own pre-pitched sample via replace().
-  const padPlayerRef = useRef<PadPlayer | null>(null);
-  if (!padPlayerRef.current) {
-    padPlayerRef.current = createPadPlayer(DEFAULT_PAD_SOURCE);
-  }
+  // One voice per stacked pack, keyed by PadPack.key. A key press sounds all
+  // of them; each keeps its own crossfade pair, loop timer and play token, so
+  // they stay independent and a slow prepare on one can't stall the others.
+  const padPlayersRef = useRef<Map<string, PadPlayer>>(new Map());
+
+  // The current stack, mirrored for reading inside timers and callbacks
+  // without stale closures.
+  const padLayersRef = useRef<PadLayer[]>(prefs.padLayers);
+  // The nature bed's mix, and its voice. Unlike the pads it isn't keyed off a
+  // pad press: it runs whenever it's audible and stops when it isn't. It does
+  // share the output bus, so the pad voices have to account for it.
+  const natureRef = useRef<MixSettings>(prefs.natureNoise);
+  const naturePlayerRef = useRef<PadPlayer | null>(null);
 
   // Keep the app's audio session configured for playback in silent mode (iOS).
   useEffect(() => {
@@ -181,6 +200,40 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       console.error("Failed to configure pad audio mode:", error);
     });
   }, []);
+
+  // Playback volume for one stacked pack: its own mix level, scaled by the
+  // master pad volume, then divided down so the stack as a whole can't exceed
+  // full scale.
+  //
+  // Native players sum in the OS mixer with no headroom, so three voices at
+  // level 1 would clip rather than just sound loud. Normalising by the summed
+  // level means a single layer at 1 plays exactly as it did before layering
+  // existed, and adding a second one splits the same ceiling between them
+  // instead of piling on top of it. Levels below a total of 1 are left alone —
+  // the scale only ever attenuates, never boosts a quiet stack.
+  const volumeForPack = useCallback((packKey: string) => {
+    const layers = padLayersRef.current;
+    // The nature bed shares this output bus, so it counts towards the scale
+    // even though it isn't one of the pad voices — otherwise bringing it in
+    // would push the total past full scale and clip everything.
+    const scale = padBusScale([...layers, natureRef.current]);
+
+    if (packKey === NATURE_CHANNEL.key) {
+      const nature = natureRef.current;
+      if (nature.muted) return 0;
+      return padVolumeRef.current * nature.level * scale;
+    }
+
+    const layer = layers.find((entry) => entry.pack === packKey);
+    if (!layer || layer.muted) return 0;
+
+    return padVolumeRef.current * layer.level * scale;
+  }, []);
+
+  // The bed is audible only when it's both unmuted and above zero — a fader
+  // pulled to the bottom stops it rather than leaving a silent player running.
+  const isNatureAudible = (settings: MixSettings) =>
+    !settings.muted && settings.level > 0;
 
   const clearFade = useCallback((player: AudioPlayer) => {
     const timer = fadeTimersRef.current.get(player);
@@ -250,8 +303,7 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   );
 
   const stopPad = useCallback(() => {
-    const player = padPlayerRef.current;
-    if (player) teardownPad(player, true);
+    padPlayersRef.current.forEach((player) => teardownPad(player, true));
     isPlayingRef.current = false;
     activeKeyIndexRef.current = null;
     setIsPlaying(false);
@@ -298,7 +350,11 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
 
             nextPlayer.play();
 
-            fadeVolume(nextPlayer, padVolumeRef.current, LOOP_CROSSFADE_MS);
+            fadeVolume(
+              nextPlayer,
+              volumeForPack(player.packKey),
+              LOOP_CROSSFADE_MS
+            );
             fadeVolume(activePlayer, 0, LOOP_CROSSFADE_MS, () => {
               if (loopToken !== player.playToken) return;
 
@@ -313,29 +369,29 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
           });
       }, LOOP_POLL_MS);
     },
-    [fadeVolume]
+    [fadeVolume, volumeForPack]
   );
 
-  const togglePad = useCallback(
-    (index: number) => {
-      const padPlayer = padPlayerRef.current;
-      if (!padPlayer) return;
+  // Bring one stacked pack in on the given key. Each voice does this for
+  // itself, so a pack whose clip is slow to prepare delays only its own
+  // entrance rather than holding up the rest of the stack.
+  const startVoice = useCallback(
+    (padPlayer: PadPlayer, index: number, isKeyChange: boolean) => {
+      const pack = findPadPackByKey(padPlayer.packKey);
+      if (!pack) return;
 
-      // Tapping the lit pad stops it.
-      if (activeKeyIndexRef.current === index && isPlayingRef.current) {
-        stopPad();
-        return;
-      }
-
-      const noteLetter = KEYS[index];
-      const source = sourceForKey(noteLetter, modeRef.current === "minor");
+      const source = sourceForKey(
+        pack,
+        KEYS[index],
+        modeRef.current === "minor"
+      );
 
       padPlayer.playToken += 1;
       const pressToken = padPlayer.playToken;
 
       let targetLayer = padPlayer.activeLayer;
 
-      if (activeKeyIndexRef.current !== null) {
+      if (isKeyChange) {
         // Switch keys with a crossfade instead of a hard cut: fade the old key
         // out on its current layer and bring the new key in on the other one.
         if (padPlayer.loopTimer) {
@@ -352,13 +408,6 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       padPlayer.currentSource = source;
       const player = padPlayer.layers[targetLayer];
 
-      // Light the pad immediately for responsiveness; the audio fades in once
-      // the layer is prepared.
-      activeKeyIndexRef.current = index;
-      isPlayingRef.current = true;
-      setActiveKeyIndex(index);
-      setIsPlaying(true);
-
       prepareLayer(player, source, 0)
         .then(() => {
           if (pressToken !== padPlayer.playToken) return;
@@ -366,14 +415,38 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
           padPlayer.activeLayer = targetLayer;
           player.play();
 
-          fadeVolume(player, padVolumeRef.current);
+          fadeVolume(player, volumeForPack(padPlayer.packKey));
           startSelfCrossfadeLoop(padPlayer);
         })
         .catch((error) => {
           console.error("Failed to prepare pad:", error);
         });
     },
-    [fadeVolume, startSelfCrossfadeLoop, stopPad]
+    [fadeVolume, startSelfCrossfadeLoop, volumeForPack]
+  );
+
+  const togglePad = useCallback(
+    (index: number) => {
+      // Tapping the lit pad stops it.
+      if (activeKeyIndexRef.current === index && isPlayingRef.current) {
+        stopPad();
+        return;
+      }
+
+      const isKeyChange = activeKeyIndexRef.current !== null;
+
+      // Light the pad immediately for responsiveness; the audio fades in once
+      // each voice's layer is prepared.
+      activeKeyIndexRef.current = index;
+      isPlayingRef.current = true;
+      setActiveKeyIndex(index);
+      setIsPlaying(true);
+
+      padPlayersRef.current.forEach((padPlayer) =>
+        startVoice(padPlayer, index, isKeyChange)
+      );
+    },
+    [startVoice, stopPad]
   );
 
   // Changing voicing stops any current drone and clears the selection, matching
@@ -388,34 +461,176 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     [stopPad]
   );
 
-  // Apply Pad Volume changes: keep the ref current for future fades, and
-  // retarget the sounding layer live — unless a crossfade is already driving
-  // its volume, in which case the next fade picks up the new level.
+  // Reconcile the live voices with the stack the user has configured. Runs on
+  // mount to build the initial voices, and again whenever a pack is added,
+  // removed or remixed.
+  //
+  // Editing the stack mid-drone is the interesting case: a pack added while
+  // something is sounding joins on the current key rather than waiting for the
+  // next press, and one removed fades out instead of cutting. Levels are
+  // reapplied to every voice on any change, since the bus scale depends on the
+  // whole stack — raising one layer quietly lowers the others.
   useEffect(() => {
     padVolumeRef.current = prefs.padVolume;
-    const player = padPlayerRef.current;
-    if (player && isPlayingRef.current && !player.isLoopCrossfading) {
-      const layer = player.layers[player.activeLayer];
-      clearFade(layer);
-      layer.volume = prefs.padVolume;
+    padLayersRef.current = prefs.padLayers;
+    natureRef.current = prefs.natureNoise;
+
+    // Preferences start at DEFAULTS and are replaced once the file is read.
+    // Building voices for the defaults first would open native players just to
+    // tear them down a moment later.
+    if (!isLoaded) return;
+
+    const players = padPlayersRef.current;
+    const wanted = new Set(prefs.padLayers.map((layer) => layer.pack));
+
+    // Drop voices whose pack has left the stack.
+    players.forEach((player, packKey) => {
+      if (wanted.has(packKey)) return;
+      teardownPad(player, true);
+      players.delete(packKey);
+      // Fade first, then release the natives once the fade can't still be
+      // writing to them.
+      setTimeout(() => {
+        player.layers.forEach((layer) => {
+          clearFade(layer);
+          layer.pause();
+          layer.loop = false;
+          layer.remove();
+        });
+      }, CROSSFADE_MS + CROSSFADE_MARGIN_MS);
+    });
+
+    // Build voices for packs that have just joined.
+    prefs.padLayers.forEach((layer) => {
+      if (players.has(layer.pack)) return;
+      const pack = findPadPackByKey(layer.pack);
+      if (!pack) return; // stale key from an older catalog
+
+      const player = createPadPlayer(layer.pack, pack.sources.C);
+      players.set(layer.pack, player);
+
+      if (isPlayingRef.current && activeKeyIndexRef.current !== null) {
+        startVoice(player, activeKeyIndexRef.current, false);
+      }
+    });
+
+    // Retarget everything still sounding to its new share of the mix. A voice
+    // mid-crossfade is left alone; its fade already ends on a fresh value.
+    if (!isPlayingRef.current) return;
+    players.forEach((player) => {
+      if (player.isLoopCrossfading) return;
+      const audioLayer = player.layers[player.activeLayer];
+      clearFade(audioLayer);
+      audioLayer.volume = volumeForPack(player.packKey);
+    });
+  }, [
+    isLoaded,
+    prefs.padLayers,
+    prefs.padVolume,
+    prefs.natureNoise,
+    clearFade,
+    startVoice,
+    teardownPad,
+    volumeForPack,
+  ]);
+
+  // Run the nature bed whenever it's audible, independently of the pads. It
+  // isn't triggered by a key press the way a pad voice is — it's an ambience
+  // that either plays or doesn't — so unmuting it (or lifting its fader off
+  // zero) is the trigger, and muting it or dropping to zero is the stop.
+  //
+  // It loops through the same crossfade pair the pads use rather than
+  // AudioPlayer.loop. A 60-second slice of a field recording doesn't
+  // butt-splice cleanly, and AAC's encoder padding would add a gap on top of
+  // that; overlapping the end against a fresh copy hides the seam entirely.
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const audible = isNatureAudible(prefs.natureNoise);
+    const player = naturePlayerRef.current;
+
+    if (!audible) {
+      if (player) {
+        teardownPad(player, true);
+        naturePlayerRef.current = null;
+        // Release the natives once the fade can no longer be writing to them.
+        setTimeout(() => {
+          player.layers.forEach((layer) => {
+            clearFade(layer);
+            layer.pause();
+            layer.loop = false;
+            layer.remove();
+          });
+        }, CROSSFADE_MS + CROSSFADE_MARGIN_MS);
+      }
+      return;
     }
-  }, [prefs.padVolume, clearFade]);
+
+    // Already running: just follow the fader.
+    if (player) {
+      if (player.isLoopCrossfading) return;
+      const audioLayer = player.layers[player.activeLayer];
+      clearFade(audioLayer);
+      audioLayer.volume = volumeForPack(NATURE_CHANNEL.key);
+      return;
+    }
+
+    const nature = createPadPlayer(NATURE_CHANNEL.key, NATURE_CHANNEL.source);
+    naturePlayerRef.current = nature;
+
+    nature.playToken += 1;
+    const startToken = nature.playToken;
+    nature.currentSource = NATURE_CHANNEL.source;
+    const first = nature.layers[0];
+
+    prepareLayer(first, NATURE_CHANNEL.source, 0)
+      .then(() => {
+        if (startToken !== nature.playToken) return;
+        nature.activeLayer = 0;
+        first.play();
+        fadeVolume(first, volumeForPack(NATURE_CHANNEL.key));
+        startSelfCrossfadeLoop(nature);
+      })
+      .catch((error) => {
+        console.error("Failed to start nature bed:", error);
+      });
+  }, [
+    isLoaded,
+    prefs.natureNoise,
+    prefs.padVolume,
+    prefs.padLayers,
+    clearFade,
+    fadeVolume,
+    startSelfCrossfadeLoop,
+    teardownPad,
+    volumeForPack,
+  ]);
 
   // Release the native players when the app itself tears down (this provider
   // lives for the app's lifetime, so this only runs on full unmount).
   useEffect(() => {
     const fadeTimers = fadeTimersRef.current;
-    const padPlayer = padPlayerRef.current;
+    const players = padPlayersRef.current;
+    // The nature ref is read inside the cleanup, not out here: it's still null
+    // at mount and only gets a player once the bed is first unmuted, so
+    // capturing it now would leak those two natives.
     return () => {
       fadeTimers.forEach((timer) => clearInterval(timer));
       fadeTimers.clear();
-      if (!padPlayer) return;
-      if (padPlayer.loopTimer) clearInterval(padPlayer.loopTimer);
-      padPlayer.layers.forEach((layer) => {
-        layer.pause();
-        layer.loop = false;
-        layer.remove();
-      });
+      const release = (padPlayer: PadPlayer) => {
+        if (padPlayer.loopTimer) clearInterval(padPlayer.loopTimer);
+        padPlayer.layers.forEach((layer) => {
+          layer.pause();
+          layer.loop = false;
+          layer.remove();
+        });
+      };
+      players.forEach(release);
+      players.clear();
+      if (naturePlayerRef.current) {
+        release(naturePlayerRef.current);
+        naturePlayerRef.current = null;
+      }
     };
   }, []);
 

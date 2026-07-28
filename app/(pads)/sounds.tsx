@@ -6,15 +6,13 @@ import ScreenHeader from "../../components/ui/screenHeader";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import SelectPadView from "../../components/selectPadView";
-import { SettingSwitch } from "../../components/ui/settingRow";
+import PadMixer from "../../components/padMixer";
 import { PAD_PACKS } from "../../constants/pads";
 
 type BrowseMode = "all" | "byArtist";
 
 export default function PadSoundsScreen() {
   const [browseMode, setBrowseMode] = useState<BrowseMode>("all");
-  // UI-only for now -- no audio layer to actually mix nature sounds in yet.
-  const [natureNoises, setNatureNoises] = useState(false);
 
   const packs = useMemo(() => {
     if (browseMode === "all") return PAD_PACKS;
@@ -66,12 +64,11 @@ export default function PadSoundsScreen() {
 
         <SelectPadView packs={packs} groupByArtist={browseMode === "byArtist"} />
 
-        <SettingSwitch
-          label="Nature Noises"
-          sublabel="Add bird, sea and other nature noises"
-          value={natureNoises}
-          onValueChange={setNatureNoises}
-        />
+        {/* Below the catalog, where a console sits under what feeds it: the
+            list adds channels, this balances them. Nature Noises used to be a
+            switch here — it's a mixer channel now, since it's a sound that
+            plays over the pads rather than a setting. */}
+        <PadMixer />
       </View>
     </SafeAreaView>
   );

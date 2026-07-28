@@ -315,9 +315,8 @@ export default function LoopScreen() {
           <TouchableOpacity
             accessibilityLabel={prefs.loopClick ? "Disable loop click" : "Enable loop click"}
             onPress={() => setPref("loopClick", !prefs.loopClick)}
-            className={`items-center justify-center px-[12px] py-[10px] rounded-sm border-2 ${
-              prefs.loopClick ? "bg-white border-white" : "border-hairline-strong"
-            }`}
+            className={`items-center justify-center px-[12px] py-[10px] rounded-sm border-2 ${prefs.loopClick ? "bg-white border-white" : "border-hairline-strong"
+              }`}
           >
             {prefs.loopClick ? (
               <MetronomeFill size={20} color={COLORS.black} />
@@ -341,7 +340,7 @@ export default function LoopScreen() {
                 <TouchableOpacity
                   key={feel.label}
                   accessibilityLabel={feel.label}
-                  onPress={() => setFeelIndex(index)}
+                  onPressIn={() => setFeelIndex(index)}
                   style={{ width: SIZES.segmentWidth }}
                   className={`items-center justify-center py-[7px] rounded-sm ${selected
                     ? "bg-white"

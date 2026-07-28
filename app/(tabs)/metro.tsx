@@ -528,7 +528,7 @@ export default function MetroScreen() {
                 <TouchableOpacity
                   key={feel.label}
                   accessibilityLabel={feel.label}
-                  onPress={() => setFeelIndex(index)}
+                  onPressIn={() => setFeelIndex(index)}
                   style={{ width: SIZES.segmentWidth }}
                   className={`items-center justify-center py-[7px] rounded-sm ${selected
                     ? "bg-white"

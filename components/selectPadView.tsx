@@ -2,11 +2,10 @@ import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import React, { useRef, useState } from "react";
 
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
-import { useRouter } from "expo-router";
 import { PAD_PACKS, type PadPack } from "../constants/pads";
-import { usePreferences } from "../context/PreferencesContext";
+import { usePadLayers } from "../hooks/usePadLayers";
 import { COLORS } from "../constants/theme";
-import { Musicnote, PlayCircle, PauseCircle } from "./icons";
+import { Musicnote, PlayCircle, PauseCircle, TickCircle } from "./icons";
 
 type SelectPadViewProps = {
   // Which packs to show -- defaults to the full catalog. The picker screen
@@ -20,12 +19,11 @@ const SelectPadView = ({
   packs = PAD_PACKS,
   groupByArtist = false,
 }: SelectPadViewProps) => {
-  const { setPref } = usePreferences();
+  const { layerFor, addLayer, removeLayer, isFull } = usePadLayers();
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const playbackSubscriptionRef =
     useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
-  const router = useRouter();
 
   const unloadCurrentSound = async () => {
     if (!soundRef.current) return;
@@ -49,7 +47,7 @@ const SelectPadView = ({
 
     await unloadCurrentSound();
 
-    const sound = createAudioPlayer(packs[index].source);
+    const sound = createAudioPlayer(packs[index].sources.C);
     soundRef.current = sound;
     sound.play();
     setPlayingIndex(index);
@@ -80,27 +78,35 @@ const SelectPadView = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packs]);
 
-  // Records the choice so the Pad screen can name what's loaded. TODO: it is
-  // still only a name -- pad.tsx plays the one recorded chromatic sample set
-  // (PAD_SOURCES) whichever pack is selected, since there's no per-pack audio
-  // yet. Swapping samples here is what makes the selection audible.
-  const loadPack = (pack: PadPack) => {
-    if (soundRef.current) {
-      soundRef.current.pause();
-      soundRef.current.seekTo(0).catch(console.error);
-    }
-    setPlayingIndex(null);
-    setPref("padPack", pack.key);
-    router.back();
-  };
-
+  // Loading changes what the instrument sounds like, so it asks first — a
+  // stray tap while scrolling the catalog shouldn't rearrange the mixer.
+  // Unloading is confirmed the same way rather than being the one destructive
+  // action that happens instantly.
   const handleRowPress = (pack: PadPack) => {
+    // removeLayer runs its own confirmation, so unloading is one call.
+    if (layerFor(pack.key)) {
+      removeLayer(pack.key);
+      return;
+    }
+
     Alert.alert(
       "Load Pad",
-      `Load "${pack.title}"?`,
+      `Add "${pack.title}" to the mixer?`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Load", onPress: () => loadPack(pack) },
+        {
+          text: "Load",
+          onPress: () => {
+            // The pack is about to be audible through the instrument, so the
+            // preview has done its job.
+            if (soundRef.current) {
+              soundRef.current.pause();
+              soundRef.current.seekTo(0).catch(console.error);
+            }
+            setPlayingIndex(null);
+            addLayer(pack);
+          },
+        },
       ],
       { cancelable: true }
     );
@@ -124,6 +130,8 @@ const SelectPadView = ({
           const isNewArtistGroup =
             groupByArtist && (i === 0 || packs[i - 1].artist !== item.artist);
 
+          const layer = layerFor(item.key);
+
           return (
             <View key={item.key}>
               {isNewArtistGroup && (
@@ -132,19 +140,73 @@ const SelectPadView = ({
                 </Text>
               )}
               <TouchableOpacity
-                className="flex-row items-center gap-[10px] p-[12px] mb-1 bg-surface rounded-[12px]"
+                className="flex-row items-center gap-[12px] p-[12px] mb-[6px] rounded-[12px]"
+                activeOpacity={0.75}
+                // Loaded packs are lit from the left by a brand bar and a
+                // tinted fill, unloaded ones sit flat. A row still has to read
+                // as a list item, and up to three can be lit at once, so the
+                // state has to be legible without dominating the list.
+                style={{
+                  backgroundColor: layer ? "rgba(0,139,194,0.14)" : COLORS.surface,
+                  borderWidth: 1,
+                  borderColor: layer ? COLORS.brand : "transparent",
+                  // Greys out packs you can't load until you free a channel,
+                  // so a full mixer is visible before the alert says so.
+                  opacity: !layer && isFull ? 0.45 : 1,
+                }}
                 onPress={() => handleRowPress(item)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: !!layer }}
+                accessibilityLabel={`${item.title} by ${item.artist}, ${
+                  layer ? "loaded in the mixer" : "not loaded"
+                }`}
               >
+                {/* Channel marker: filled and ticked when loaded, an empty
+                    outline otherwise, so both states occupy the same space and
+                    the rows don't shift as packs come and go. */}
+                <View
+                  className="items-center justify-center rounded-full"
+                  style={{
+                    width: 26,
+                    height: 26,
+                    backgroundColor: layer ? COLORS.brand : "transparent",
+                    borderWidth: layer ? 0 : 1,
+                    borderColor: "rgba(255,255,255,0.2)",
+                  }}
+                >
+                  {layer && <TickCircle size={12} color={COLORS.white} />}
+                </View>
+
                 <View className="flex-1">
-                  <Text className="text-white text-body font-satoshiMedium">
+                  <Text
+                    className="text-white text-body font-satoshiMedium"
+                    numberOfLines={1}
+                  >
                     {item.title}
                   </Text>
-                  <Text className="text-ink-muted text-[11px] font-satoshiRegular">
+                  <Text
+                    className="text-ink-muted text-[11px] font-satoshiRegular"
+                    numberOfLines={1}
+                  >
                     {item.artist} · {item.genre}
                   </Text>
                 </View>
+
+                {layer?.muted && (
+                  <Text
+                    className="text-[10px] font-spaceBold px-[6px] py-[2px] rounded"
+                    style={{
+                      color: COLORS.danger,
+                      backgroundColor: "rgba(239,68,68,0.15)",
+                    }}
+                  >
+                    MUTED
+                  </Text>
+                )}
+
                 <TouchableOpacity
                   onPress={() => handlePlayPause(i)}
+                  accessibilityLabel={`Preview ${item.title}`}
                   className="items-center justify-center rounded-full"
                   style={{
                     width: 34,

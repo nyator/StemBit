@@ -12,7 +12,7 @@ import {
   KEYS,
   KEY_DISPLAY_LABELS,
 } from "../../context/PadPlaybackContext";
-import { findPadPackByKey } from "../../constants/pads";
+import { findPadPackByKey, type PadPack } from "../../constants/pads";
 import { hapticImpact } from "../../utils/haptics";
 import { COLORS } from "../../constants/theme";
 import { SortPad } from "../../components/icons";
@@ -29,10 +29,19 @@ export default function PadScreen() {
   const { activeKeyIndex, mode, setMode, togglePad } = usePadPlayback();
 
   const isMinor = mode === "minor";
-  // Falls back to null if a persisted key no longer matches the catalog (a
-  // pack renamed or dropped between releases), so the control reads
-  // "Select Pad" rather than going blank.
-  const selectedPad = findPadPackByKey(prefs.padPack);
+  // Names the stack in the space of one line: the first pack, plus a count of
+  // whatever else is layered under it. Unknown keys are dropped rather than
+  // rendered blank, so a pack removed from the catalog between releases can't
+  // leave a gap in the label.
+  const stackedPads = prefs.padLayers
+    .map((layer) => findPadPackByKey(layer.pack))
+    .filter((pack): pack is PadPack => !!pack);
+  const padStackLabel =
+    stackedPads.length === 0
+      ? "Select Pad"
+      : stackedPads.length === 1
+        ? stackedPads[0].title
+        : `${stackedPads[0].title} +${stackedPads.length - 1}`;
 
   const handlePadPress = (idx: number) => {
     hapticImpact(prefs.haptics);
@@ -86,7 +95,11 @@ export default function PadScreen() {
             onPress={() => router.push("/(pads)/sounds")}
             activeOpacity={0.7}
             accessibilityLabel={
-              selectedPad ? `Select pad, currently ${selectedPad.title}` : "Select pad"
+              stackedPads.length > 0
+                ? `Select pads, currently ${stackedPads
+                    .map((pack) => pack.title)
+                    .join(", ")}`
+                : "Select pads"
             }
           >
             <SortPad size={20} color={COLORS.white} />
@@ -94,7 +107,7 @@ export default function PadScreen() {
               className="text-white shrink text-md font-satoshiMedium"
               numberOfLines={1}
             >
-              {selectedPad?.title ?? "Select Pad"}
+              {padStackLabel}
             </Text>
           </TouchableOpacity>
         </View>
