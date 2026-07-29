@@ -230,10 +230,15 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     return padVolumeRef.current * layer.level * scale;
   }, []);
 
-  // The bed is audible only when it's both unmuted and above zero — a fader
-  // pulled to the bottom stops it rather than leaving a silent player running.
-  const isNatureAudible = (settings: MixSettings) =>
-    !settings.muted && settings.level > 0;
+  // The bed only sounds when a pad is sounding. It's ambience *under the
+  // instrument*, not a standalone player: with no pad held there's nothing for
+  // it to sit beneath, and leaving it running would mean the app quietly
+  // playing forest audio with the transport stopped and no obvious way to
+  // notice. So no combination of unmuting and fader position starts it on its
+  // own — the pad is the gate, and the mix settings only decide whether it
+  // comes along.
+  const isNatureAudible = (settings: MixSettings, padSounding: boolean) =>
+    padSounding && !settings.muted && settings.level > 0;
 
   const clearFade = useCallback((player: AudioPlayer) => {
     const timer = fadeTimersRef.current.get(player);
@@ -534,10 +539,10 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     volumeForPack,
   ]);
 
-  // Run the nature bed whenever it's audible, independently of the pads. It
-  // isn't triggered by a key press the way a pad voice is — it's an ambience
-  // that either plays or doesn't — so unmuting it (or lifting its fader off
-  // zero) is the trigger, and muting it or dropping to zero is the stop.
+  // Run the nature bed whenever it's audible. Unlike a pad voice it isn't tied
+  // to a particular key — switching keys leaves it running rather than
+  // restarting it — but it does follow the transport: it comes in when a pad
+  // starts and goes out when the last one stops.
   //
   // It loops through the same crossfade pair the pads use rather than
   // AudioPlayer.loop. A 60-second slice of a field recording doesn't
@@ -546,7 +551,7 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded) return;
 
-    const audible = isNatureAudible(prefs.natureNoise);
+    const audible = isNatureAudible(prefs.natureNoise, isPlaying);
     const player = naturePlayerRef.current;
 
     if (!audible) {
@@ -596,6 +601,9 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       });
   }, [
     isLoaded,
+    // The transport gates the bed, so starting or stopping a pad has to
+    // re-evaluate it — this is what brings it in and takes it out.
+    isPlaying,
     prefs.natureNoise,
     prefs.padVolume,
     prefs.padLayers,

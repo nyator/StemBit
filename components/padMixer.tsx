@@ -12,10 +12,11 @@ import VerticalFader from "./ui/verticalFader";
 // catalog fills the next channel; empty channels stay on the panel so the
 // capacity is visible rather than something you discover by hitting it.
 //
-// The percentage under each fader is that channel's share of the output, not
-// its fader position. They differ because the mix is normalised to keep the
-// summed voices from clipping (see padBusScale) — pushing one fader up leaves
-// the others less room, and muting one hands its share back to the rest.
+// The percentage is the fader's own position, top of the throw being 100 on
+// every channel regardless of what else is loaded. The engine still normalises
+// the summed voices so they can't clip (see padBusScale), but that's the
+// desk's internal business — a fader that stopped reading 100 because you
+// loaded a second pack would just look broken.
 
 function ChannelStrip({ channel }: { channel: MixerChannel }) {
   const { setLevel, removeLayer, toggleMute } = usePadLayers();
@@ -57,11 +58,15 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
       >
         {channel.title}
       </Text>
+      {/* Reads the draft while the fader is under a finger, so the number
+          counts as you push it rather than jumping once on release. */}
       <Text
         className="text-[10px] font-spaceBold mb-2"
         style={{ color: channel.muted ? COLORS.danger : COLORS.textMuted }}
       >
-        {channel.muted ? "MUTED" : `${Math.round(channel.share * 100)}%`}
+        {channel.muted
+          ? "MUTED"
+          : `${Math.round((draftLevel ?? channel.level) * 100)}%`}
       </Text>
 
       <View style={channel.muted ? { opacity: 0.45 } : undefined}>

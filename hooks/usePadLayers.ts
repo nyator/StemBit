@@ -4,7 +4,6 @@ import {
   MAX_PAD_LAYERS,
   NATURE_CHANNEL,
   findPadPackByKey,
-  padBusScale,
   type PadPack,
 } from "../constants/pads";
 import { usePreferences } from "../context/PreferencesContext";
@@ -15,14 +14,15 @@ export type MixerChannel = {
   id: string;
   title: string;
   subtitle: string;
+  /**
+   * Fader position, 0–1, and what the strip reads out. This is the channel's
+   * own setting, not its share of the output — the engine still normalises the
+   * summed voices so they can't clip (see padBusScale), but that's the desk's
+   * business rather than something to show on the scale. A fader at the top
+   * reads 100 whatever else is loaded, the way a fader should.
+   */
   level: number;
   muted: boolean;
-  /**
-   * Fraction of the total output this channel occupies, 0–1. Not the same as
-   * its level: the mix is normalised, so a channel at level 1 alongside another
-   * at level 1 takes half the output, and a muted one takes none.
-   */
-  share: number;
   /** The nature bed is permanent; pad packs can be unloaded. */
   removable: boolean;
 };
@@ -47,18 +47,12 @@ export function usePadLayers() {
     return pack ? [{ pack, layer }] : [];
   });
 
-  // The nature bed shares the output bus with the pads, so it has to be in the
-  // scale — otherwise bringing it in would push the total past full scale and
-  // clip everything.
-  const busScale = padBusScale([...layers, nature]);
-
   const padChannels: MixerChannel[] = loaded.map(({ pack, layer }) => ({
     id: pack.key,
     title: pack.title,
     subtitle: pack.artist,
     level: layer.level,
     muted: layer.muted,
-    share: layer.muted ? 0 : layer.level * busScale,
     removable: true,
   }));
 
@@ -68,7 +62,6 @@ export function usePadLayers() {
     subtitle: NATURE_CHANNEL.subtitle,
     level: nature.level,
     muted: nature.muted,
-    share: nature.muted ? 0 : nature.level * busScale,
     removable: false,
   };
 

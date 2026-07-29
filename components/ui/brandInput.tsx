@@ -9,33 +9,17 @@ import {
 
 import { COLORS } from "../../constants/theme";
 
-// 55pt, per the Figma. Same figure as SIZES.buttonHeight, but kept separate —
-// a field and a button matching in the design isn't a reason for one to change
-// when the other does.
+
 const FIELD_HEIGHT = 55;
+const ERROR_SLOT_HEIGHT = 3;
 
-// One line of the 14pt label type the error is set in, so the space a message
-// will need is already there before it arrives.
-const ERROR_SLOT_HEIGHT = 18;
-
-// Focus/blur handler types, derived from TextInputProps so they track whatever
-// event shape the installed React Native version uses.
 type FocusHandler = NonNullable<TextInputProps["onFocus"]>;
 type BlurHandler = NonNullable<TextInputProps["onBlur"]>;
 
-// The design's text field (Figma node 124:870). A #17181F fill inside a 2pt
-// teal-navy hairline, 14pt radius, 55pt tall, with a Space Grotesk label above.
-// The border picks up the brand accent on focus and the danger colour when the
-// field carries an error, so the same component covers every auth input.
-
 type BrandInputProps = TextInputProps & {
-  /** Label rendered above the field. Omit for an unlabelled input. */
   label?: string;
-  /** Validation message shown beneath the field; also reddens the border. */
   error?: string;
-  /** Element pinned to the right of the input, e.g. a password reveal toggle. */
   rightSlot?: ReactNode;
-  /** Styles for the outer wrapper (label + field + error). */
   containerStyle?: ViewStyle;
 };
 
@@ -61,10 +45,6 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
       : focused
         ? COLORS.brand
         : COLORS.border;
-
-    // Explicit margins rather than `gap` on the wrapper, so the error slot
-    // below can own its own spacing and stay a fixed size whether or not it
-    // currently has text in it.
     return (
       <View className="w-full" style={containerStyle}>
         {label ? (
@@ -97,13 +77,6 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
           />
           {rightSlot}
         </View>
-
-        {/* The slot is always here, so an error appearing colours it in rather
-            than pushing every field below it down the screen — which on a form
-            mid-validation moves the control the user is reaching for.
-            minHeight, not height: one line is reserved because that's what
-            almost every message is, but a longer one grows instead of being
-            clipped. An error you can't read in full is worse than a shift. */}
         <View
           className="justify-center mt-1"
           style={{ minHeight: ERROR_SLOT_HEIGHT }}
