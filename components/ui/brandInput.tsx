@@ -9,7 +9,6 @@ import {
 
 import { COLORS } from "../../constants/theme";
 
-
 const FIELD_HEIGHT = 55;
 const ERROR_SLOT_HEIGHT = 3;
 
@@ -52,12 +51,6 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
             {label}
           </Text>
         ) : null}
-
-        {/* Height comes from the design (55pt) and nothing else sets one.
-            `h-12` with `py-6` was 48pt of box holding 48pt of padding plus a
-            2pt border, which left the field a content box of zero height — the
-            input was still mounted but had no area to draw in or be tapped,
-            so it read as a text field you could not type into. */}
         <View
           className="flex-row items-center w-full px-4 border-2 rounded-md bg-surface-field"
           style={{ height: FIELD_HEIGHT, borderColor }}
@@ -67,9 +60,6 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
             className="flex-1 text-white font-satoshiBold text-body"
             placeholderTextColor={COLORS.textFaint}
             selectionColor={COLORS.brand}
-            // Fills the field so the whole thing is a tap target rather than
-            // just the line of text. padding:0 drops the inner padding Android
-            // adds by default, which would otherwise push the text off-centre.
             style={{ height: "100%", padding: 0, textAlignVertical: "center" }}
             onFocus={handleFocus}
             onBlur={handleBlur}

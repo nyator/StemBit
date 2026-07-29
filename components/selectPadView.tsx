@@ -157,9 +157,8 @@ const SelectPadView = ({
                 onPress={() => handleRowPress(item)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: !!layer }}
-                accessibilityLabel={`${item.title} by ${item.artist}, ${
-                  layer ? "loaded in the mixer" : "not loaded"
-                }`}
+                accessibilityLabel={`${item.title} by ${item.artist}, ${layer ? "loaded in the mixer" : "not loaded"
+                  }`}
               >
                 {/* Channel marker: filled and ticked when loaded, an empty
                     outline otherwise, so both states occupy the same space and
@@ -167,8 +166,8 @@ const SelectPadView = ({
                 <View
                   className="items-center justify-center rounded-full"
                   style={{
-                    width: 26,
-                    height: 26,
+                    width: 16,
+                    height: 16,
                     backgroundColor: layer ? COLORS.brand : "transparent",
                     borderWidth: layer ? 0 : 1,
                     borderColor: "rgba(255,255,255,0.2)",

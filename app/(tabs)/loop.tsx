@@ -12,7 +12,7 @@ import { useBpmControl } from "../../hooks/useBpmControl";
 import { usePreferences } from "../../context/PreferencesContext";
 import { hapticImpact } from "../../utils/haptics";
 
-import { PLAYBACK_FEELS, DEFAULT_FEEL_INDEX } from "../../context/MetronomeContext";
+import { PLAYBACK_FEELS } from "../../context/MetronomeContext";
 
 import HeaderComponent from "../../components/headerComponent";
 import {
@@ -54,6 +54,9 @@ export default function LoopScreen() {
     selectedTitle,
     nativeBpm,
     beatsPerBar,
+    feelIndex,
+    setFeelIndex,
+    speedMultiplier,
     resetBpm,
     startLoop,
     stopLoop,
@@ -68,14 +71,14 @@ export default function LoopScreen() {
   const canResetBpm = nativeBpm !== null && bpm !== nativeBpm;
   const { prefs, setPref } = usePreferences();
 
-  // UI-only for now -- LoopPlaybackContext has no playback-rate multiplier to
-  // wire this into yet (see getPlaybackRate in LoopPlaybackContext.tsx).
-  const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX);
 
   // The loop engine (a WebView Web Audio graph) doesn't report its playhead
   // back to React, so there's no real beat position to visualize like the
   // Metronome's currentBeat. This just pulses a fixed 4-beat cycle locally at
   // the current BPM -- a tempo-synced approximation, not a sample-accurate one.
+  //
+  // Scaled by the feel, so half time pulses at half the rate the loop is now
+  // running at rather than carrying on at the raw BPM.
   const [currentBeat, setCurrentBeat] = useState(0);
   useEffect(() => {
     if (!isPlaying) {
@@ -84,9 +87,9 @@ export default function LoopScreen() {
     }
     const timer = setInterval(() => {
       setCurrentBeat((beat) => (beat + 1) % loopBeats);
-    }, (60 * 1000) / bpm);
+    }, (60 * 1000) / (bpm * speedMultiplier));
     return () => clearInterval(timer);
-  }, [isPlaying, bpm, loopBeats]);
+  }, [isPlaying, bpm, speedMultiplier, loopBeats]);
 
   const {
     bpmText,

@@ -86,9 +86,8 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
         onPress={() => toggleMute(channel.id)}
         accessibilityRole="button"
         accessibilityState={{ selected: channel.muted }}
-        accessibilityLabel={`${channel.muted ? "Unmute" : "Mute"} ${
-          channel.title
-        }`}
+        accessibilityLabel={`${channel.muted ? "Unmute" : "Mute"} ${channel.title
+          }`}
         className="items-center justify-center w-full py-[6px] mt-3 rounded"
         style={{
           backgroundColor: channel.muted
@@ -127,7 +126,7 @@ export default function PadMixer() {
   const emptySlots = Math.max(0, MAX_PAD_LAYERS - loadedCount);
 
   return (
-    <View className="p-3 mt-2 mb-3 bg-hairline-dial rounded-lg">
+    <View className="p-3 mt-2 mb-2 bg-hairline-dial rounded-lg">
       <View className="flex-row items-center justify-between mb-3">
         <Text className="uppercase text-overline tracking-widest text-ink-muted font-spaceBold">
           Mixer

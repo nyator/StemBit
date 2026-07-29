@@ -15,7 +15,11 @@ import { buildLoopEngineHtml } from "../constants/loopEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
-import { METRONOME_SOUNDS } from "./MetronomeContext";
+import {
+  METRONOME_SOUNDS,
+  PLAYBACK_FEELS,
+  DEFAULT_FEEL_INDEX,
+} from "./MetronomeContext";
 
 export const LOOP_MIN_BPM = 20;
 export const LOOP_MAX_BPM = 240;
@@ -57,6 +61,14 @@ type LoopPlaybackContextValue = {
   // Beats per bar of the selected loop (time-signature numerator, defaults
   // to 4). Drives the beat-dot count on the loop screen.
   beatsPerBar: number;
+  /** Index into PLAYBACK_FEELS: half / normal / double time. */
+  feelIndex: number;
+  setFeelIndex: (index: number) => void;
+  /**
+   * The feel's multiplier, exposed so the screen's beat dots can pulse at the
+   * rate the loop is actually running rather than at the raw BPM.
+   */
+  speedMultiplier: number;
   resetBpm: () => void;
   setSelectedLoopKey: (key: string | undefined) => void;
   startLoop: () => void;
@@ -90,6 +102,17 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(false);
+
+  // Playback feel (subdivision): half / normal / double time, same three
+  // options the Metronome offers. It lives here rather than on the screen
+  // because it's part of the playback rate the engine runs at — on the screen
+  // it was a control that changed nothing.
+  const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX);
+  const speedMultiplier = PLAYBACK_FEELS[feelIndex].multiplier;
+  // Read by getPlaybackRate, which is called from callbacks that would
+  // otherwise close over a stale value.
+  const speedMultiplierRef = useRef(speedMultiplier);
+  speedMultiplierRef.current = speedMultiplier;
 
   // The tempo the loaded loop was recorded at; BPM changes are warped onto
   // it via playback rate (bpm / nativeBpm = 1x at the loop's own tempo).
@@ -346,8 +369,18 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getPlaybackRate = (nextBpm = bpm) =>
-    nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
+  // Rate the engine warps the loop to: the tempo the user asked for against
+  // the tempo it was recorded at, times the feel.
+  //
+  // Folding the feel in here rather than giving it its own control is what
+  // makes half/double time work everywhere at once — the WSOLA stretcher
+  // time-stretches to whatever rate it's handed (so the pitch holds), and the
+  // loop click derives its beat interval from the same currentRate, so the
+  // click subdivides along with the music instead of drifting off it.
+  const getPlaybackRate = (nextBpm = bpm) => {
+    const base = nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
+    return base * speedMultiplierRef.current;
+  };
 
   const beginPlayback = () => {
     isPlayingRef.current = true;
@@ -482,13 +515,16 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Warp the loop's playback rate to match the current BPM relative to the
-  // tempo it was recorded at (e.g. sample_bpm80 at bpm=160 plays at 2x).
+  // tempo it was recorded at (e.g. sample_bpm80 at bpm=160 plays at 2x), and
+  // to the chosen feel. A feel change is a rate change like any other, so the
+  // engine debounces it and crossfades at the matching musical position rather
+  // than jumping.
   useEffect(() => {
     if (loopReady) {
       postToEngine({ type: "setRate", rate: getPlaybackRate() });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm, loopReady]);
+  }, [bpm, loopReady, feelIndex]);
 
   // Keep the engine's click samples + config in sync with preferences. Runs on
   // mount (queued until the engine is ready) and whenever any click-relevant
@@ -564,6 +600,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         selectedTitle,
         nativeBpm,
         beatsPerBar,
+        feelIndex,
+        setFeelIndex,
+        speedMultiplier,
         resetBpm,
         setSelectedLoopKey,
         startLoop,
