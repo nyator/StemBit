@@ -6,6 +6,7 @@ import {BottomSheetModalProvider} from "@gorhom/bottom-sheet";
 import {PreferencesProvider} from "../context/PreferencesContext";
 import {PlaybackLockProvider} from "../context/PlaybackLockContext";
 import {MetronomeProvider} from "../context/MetronomeContext";
+import {UserLoopsProvider} from "../context/UserLoopsContext";
 import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
 import FloatingEngineControls from "../components/floatingEngineControls";
@@ -57,6 +58,10 @@ function RootLayout() {
                     */}
                     <PlaybackLockProvider>
                         <MetronomeProvider>
+                            {/* Above the loop engine: it reads the user's
+                                imported loops to preload them alongside the
+                                shipped catalog. */}
+                            <UserLoopsProvider>
                             <LoopPlaybackProvider>
                                 <PadPlaybackProvider>
                                     <Stack>
@@ -71,6 +76,7 @@ function RootLayout() {
                                     <KeepAwakeWhilePlaying />
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
+                            </UserLoopsProvider>
                         </MetronomeProvider>
                     </PlaybackLockProvider>
                 </BottomSheetModalProvider>

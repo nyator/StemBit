@@ -27,11 +27,29 @@
 // offline into a stretched buffer (fast: a few ms of CPU per second of
 // audio) and playback crossfades to it at the matching musical position.
 // The source node itself always plays at rate 1.
+//
+// TEMPO DETECTION, for loops the user imports, is realtime-bpm-analyzer, injected
+// as source into the page below. It has to run here rather than in React Native
+// because it needs Web Audio -- it renders a biquad lowpass through an
+// OfflineAudioContext -- and only this page has that. See
+// constants/vendor/bpmAnalyzerSource.ts for how it gets here.
+import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
+
 export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 <html>
   <head><meta charset="utf-8" /></head>
   <body>
     <script>
+      // realtime-bpm-analyzer's CommonJS bundle, verbatim. It has no external
+      // requires, so a module/exports pair is all it needs to load anywhere.
+      (function () {
+        var module = { exports: {} };
+        var exports = module.exports;
+        ${BPM_ANALYZER_SOURCE}
+        window.bpmAnalyzer = module.exports;
+      })();
+    </script>
+    <script id="engine">
       (function () {
         var AudioContextClass = window.AudioContext || window.webkitAudioContext;
         var audioContext = null;
@@ -83,6 +101,15 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // Samples quieter than this (on any channel) count as silence when
         // trimming encoder padding. ~ -46 dBFS.
         var SILENCE_THRESHOLD = 0.005;
+        // Shortest region that counts as a loop. An explicit trim shorter than
+        // this is treated as a mistake rather than looped -- below a couple of
+        // stretch frames there is nothing musical left to warp.
+        var MIN_LOOP_SECONDS = 0.05;
+        // Waveform resolution for "analyze", and how many samples each of its
+        // buckets inspects (a bucket is ~1px wide; it does not need all of a
+        // long file's frames to draw right).
+        var PEAK_BUCKETS = 480;
+        var PEAK_SAMPLES_PER_BUCKET = 256;
         // Only snap to the beat grid if the trimmed length is within this
         // fraction of a whole number of beats; otherwise trust the trim.
         var BEAT_SNAP_TOLERANCE = 0.1;
@@ -536,15 +563,131 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           );
         }
 
-        function applyActive(key, entry, beatsPerBar) {
+        // Which region of the buffer to loop: the trim the app sent, or the one
+        // found at decode time. An explicit trim is a user edit (imported loops
+        // are trimmed by hand, since an arbitrary file has no reason to start
+        // on the beat) so it wins -- but only if it really describes a region
+        // inside this buffer. A nonsense trim falls back to the automatic
+        // points rather than leaving the engine looping a sliver of silence.
+        function resolveRegion(entry, trimStart, trimEnd) {
+          var limit = entry.buffer.duration;
+          if (typeof trimStart === "number" && typeof trimEnd === "number") {
+            var start = Math.max(0, Math.min(limit, trimStart));
+            var end = Math.max(0, Math.min(limit, trimEnd));
+            if (end - start >= MIN_LOOP_SECONDS) {
+              return { start: start, end: end };
+            }
+          }
+          return { start: entry.loopStart, end: entry.loopEnd };
+        }
+
+        // --- Tempo detection (realtime-bpm-analyzer) ----------------------
+        // The library's analyzeFullBuffer takes a whole AudioBuffer, so a region
+        // becomes a buffer of its own first. That isn't only plumbing: analysing
+        // the trim rather than the file is a cleaner read, with no count-in, tail
+        // or applause to drag the answer around.
+        function sliceRegion(buffer, startSeconds, endSeconds) {
+          var ctx = ensureContext();
+          var sampleRate = buffer.sampleRate;
+          var from = Math.max(0, Math.floor(startSeconds * sampleRate));
+          var to = Math.min(buffer.length, Math.ceil(endSeconds * sampleRate));
+          var length = to - from;
+          if (length < sampleRate) return null; // under a second: nothing to read
+
+          var region = ctx.createBuffer(buffer.numberOfChannels, length, sampleRate);
+          for (var c = 0; c < buffer.numberOfChannels; c++) {
+            region
+              .getChannelData(c)
+              .set(buffer.getChannelData(c).subarray(from, to));
+          }
+          return region;
+        }
+
+        // Turn the library's candidate list into the one answer the app wants.
+        //
+        // Candidates come back sorted by "count" -- how many peak-to-peak
+        // intervals agree with that tempo -- and the library leaves its own
+        // confidence field at 0 in the offline path, so confidence here is the
+        // winner's share of all the candidates' counts. A loop with a clear pulse
+        // puts half the intervals or more on one tempo; on material with no pulse
+        // the top few come out level, which is exactly what a low share means.
+        function describeTempo(candidates) {
+          if (!candidates || !candidates.length) return null;
+
+          var total = 0;
+          for (var i = 0; i < candidates.length; i++) {
+            total += candidates[i].count || 0;
+          }
+          var top = candidates[0];
+          if (!top || !top.tempo) return null;
+
+          return {
+            bpm: top.tempo,
+            confidence: total > 0 ? (top.count || 0) / total : 0,
+            // The other readings, best first. The library folds every tempo into
+            // 90-180 BPM, so the reading a listener wanted is often one of these
+            // rather than the winner -- the screen offers them as one-tap chips,
+            // which beats making someone tap the tempo out.
+            alternatives: candidates.slice(1, 4).map(function (candidate) {
+              return candidate.tempo;
+            }),
+          };
+        }
+
+        // Read the tempo of a region. Asynchronous: the library renders its
+        // lowpass through an OfflineAudioContext, which is a promise.
+        function detectTempo(buffer, startSeconds, endSeconds, onDone) {
+          var region = sliceRegion(buffer, startSeconds, endSeconds);
+          if (!region || !window.bpmAnalyzer) {
+            onDone(null);
+            return;
+          }
+
+          try {
+            window.bpmAnalyzer
+              .analyzeFullBuffer(region)
+              .then(function (candidates) {
+                onDone(describeTempo(candidates));
+              })
+              .catch(function () {
+                // A file it can't read isn't worth surfacing as an error: the
+                // screen falls back to working the tempo out from the loop's
+                // length, and says that's what it did.
+                onDone(null);
+              });
+          } catch (e) {
+            onDone(null);
+          }
+        }
+
+        // Re-read the tempo of one region of an already-decoded file. The import
+        // screen calls this on the trim the user has settled on.
+        function detect(key, start, end) {
+          var entry = decodedByKey[key];
+          if (!entry) {
+            post({ type: "detected", key: key, tempo: null });
+            return;
+          }
+          detectTempo(entry.buffer, start, end, function (tempo) {
+            post({ type: "detected", key: key, tempo: tempo });
+          });
+        }
+
+        function applyActive(key, entry, nativeBpm, beatsPerBar, trimStart, trimEnd) {
+          var region = resolveRegion(entry, trimStart, trimEnd);
+          // The tempo the app declared on THIS select, not the one cached with
+          // the decode. The two differ whenever a loop was decoded by an
+          // "analyze" (no declared tempo yet -- the import screen is still
+          // finding out what it is) and selected later at the tempo the user
+          // settled on.
+          var bpm = nativeBpm > 0 ? nativeBpm : entry.nativeBpm;
           // How many whole beats the loop region spans, at its native tempo.
-          // computeLoopPoints already snapped the length to whole beats, so
-          // this is an integer; it's the click's beat count per loop pass.
+          // The region is a whole number of beats -- either snapped there by
+          // computeLoopPoints or trimmed there on the import screen -- so this
+          // is an integer; it's the click's beat count per loop pass.
           var loopBeats = 0;
-          if (entry.nativeBpm > 0) {
-            loopBeats = Math.round(
-              ((entry.loopEnd - entry.loopStart) * entry.nativeBpm) / 60
-            );
+          if (bpm > 0) {
+            loopBeats = Math.round(((region.end - region.start) * bpm) / 60);
           }
           // Beats per bar from the loop's time signature. The click accents
           // every bar downbeat (beatIndex % beatsPerBar === 0), so a long
@@ -553,9 +696,9 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           active = {
             key: key,
             buffer: entry.buffer,
-            loopStart: entry.loopStart,
-            loopEnd: entry.loopEnd,
-            nativeBpm: entry.nativeBpm,
+            loopStart: region.start,
+            loopEnd: region.end,
+            nativeBpm: bpm,
             loopBeats: loopBeats,
             beatsPerBar: bpb,
           };
@@ -564,14 +707,17 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             type: "loaded",
             key: key,
             duration: entry.buffer.duration,
-            loopStart: entry.loopStart,
-            loopEnd: entry.loopEnd,
+            loopStart: region.start,
+            loopEnd: region.end,
           });
         }
 
         // Make a loop the active one. Instant when preloaded; falls back to
-        // decoding inline (from provided base64) when it isn't.
-        function select(key, nativeBpm, base64, beatsPerBar) {
+        // decoding inline (from provided base64) when it isn't. trimStart /
+        // trimEnd are optional and override the automatic loop points -- the
+        // import screen re-selects through here on every trim edit, which is
+        // cheap because the decode is already cached.
+        function select(key, nativeBpm, base64, beatsPerBar, trimStart, trimEnd) {
           selectToken += 1;
           var token = selectToken;
           stop();
@@ -580,7 +726,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 
           var cached = decodedByKey[key];
           if (cached) {
-            applyActive(key, cached, beatsPerBar);
+            applyActive(key, cached, nativeBpm, beatsPerBar, trimStart, trimEnd);
             return;
           }
 
@@ -593,10 +739,129 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             nativeBpm,
             function (entry) {
               if (token !== selectToken) return; // superseded
-              applyActive(key, entry, beatsPerBar);
+              applyActive(key, entry, nativeBpm, beatsPerBar, trimStart, trimEnd);
             },
             function (code, message) {
               if (token !== selectToken) return;
+              post({ type: "error", code: code, key: key, message: message });
+            }
+          );
+        }
+
+        // --- Analysis (the import screen) ---------------------------------
+        // Down-sample the whole buffer to one peak value per bucket, 0..1, for
+        // the waveform the user trims against. A bucket is about a pixel wide,
+        // so it inspects a sample of its frames rather than all of them -- a
+        // five-minute file holds 13 million and the picture is the same.
+        // Optionally over a frame range only, which is what the import screen's
+        // zoom asks for: the same number of buckets across one second instead of
+        // the whole file turns 60ms per bucket into 2ms, which is the difference
+        // between seeing that there's a drum hit and seeing where it starts.
+        function analyzePeaks(buffer, buckets, fromFrame, toFrame) {
+          var first = fromFrame == null ? 0 : Math.max(0, Math.floor(fromFrame));
+          var last =
+            toFrame == null
+              ? buffer.length
+              : Math.min(buffer.length, Math.ceil(toFrame));
+          var frames = last - first;
+          if (frames <= 0) return [];
+
+          var count = Math.max(1, Math.min(buckets || PEAK_BUCKETS, frames));
+          var per = frames / count;
+          var stride = Math.max(1, Math.floor(per / PEAK_SAMPLES_PER_BUCKET));
+
+          var channels = [];
+          for (var c = 0; c < buffer.numberOfChannels; c++) {
+            channels.push(buffer.getChannelData(c));
+          }
+
+          var peaks = [];
+          for (var b = 0; b < count; b++) {
+            var from = first + Math.floor(b * per);
+            var to = Math.min(last, first + Math.floor((b + 1) * per));
+            var peak = 0;
+            for (var ch = 0; ch < channels.length; ch++) {
+              var data = channels[ch];
+              for (var i = from; i < to; i += stride) {
+                var v = data[i] < 0 ? -data[i] : data[i];
+                if (v > peak) peak = v;
+              }
+            }
+            // Three decimals: the waveform is drawn a few dozen pixels tall,
+            // and this keeps the message that crosses the bridge small.
+            peaks.push(Math.round(peak * 1000) / 1000);
+          }
+          return peaks;
+        }
+
+        // Peaks for one window of an already-decoded file, for the zoomed trim
+        // view. Cheap: the buffer is already in hand, so this is a scan, no
+        // decode and nothing crossing the bridge but the numbers.
+        function sendRegionPeaks(key, start, end, buckets) {
+          var entry = decodedByKey[key];
+          var sampleRate = entry ? entry.buffer.sampleRate : 0;
+          post({
+            type: "regionPeaks",
+            key: key,
+            start: start,
+            end: end,
+            peaks: entry
+              ? analyzePeaks(
+                  entry.buffer,
+                  buckets,
+                  start * sampleRate,
+                  end * sampleRate
+                )
+              : [],
+          });
+        }
+
+        // Decode a file the user picked and report what the import screen needs
+        // to draw it: its length, a waveform, and the audible region to offer
+        // as an opening trim. Decoding under the same key the loop will be
+        // selected with means the preview that follows costs nothing.
+        function analyze(key, base64, buckets) {
+          if (
+            base64 &&
+            !decodedByKey[key] &&
+            !encodedByKey[key] &&
+            !pendingDecodes[key]
+          ) {
+            encodedByKey[key] = base64ToArrayBuffer(base64);
+          }
+
+          // nativeBpm 0: there is no declared tempo yet -- finding it is what
+          // the screen is for -- so the decode's own points are the raw audible
+          // region with no beat snap, which is what we want to suggest.
+          decodeKey(
+            key,
+            0,
+            function (entry) {
+              // The waveform and the region are ready now; the tempo takes a
+              // moment longer (the detector renders a filter pass through an
+              // OfflineAudioContext). Both go in one message so the screen lays
+              // itself out once, with everything agreeing.
+              //
+              // Over the audible region rather than the whole file: silence at
+              // either end carries no beat and only dilutes the reading.
+              detectTempo(
+                entry.buffer,
+                entry.loopStart,
+                entry.loopEnd,
+                function (tempo) {
+                  post({
+                    type: "analyzed",
+                    key: key,
+                    duration: entry.buffer.duration,
+                    audibleStart: entry.loopStart,
+                    audibleEnd: entry.loopEnd,
+                    peaks: analyzePeaks(entry.buffer, buckets),
+                    tempo: tempo,
+                  });
+                }
+              );
+            },
+            function (code, message) {
               post({ type: "error", code: code, key: key, message: message });
             }
           );
@@ -935,7 +1200,23 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
               preload(data.key, data.base64, data.nativeBpm);
               break;
             case "select":
-              select(data.key, data.nativeBpm, data.base64, data.beatsPerBar);
+              select(
+                data.key,
+                data.nativeBpm,
+                data.base64,
+                data.beatsPerBar,
+                data.trimStart,
+                data.trimEnd
+              );
+              break;
+            case "analyze":
+              analyze(data.key, data.base64, data.buckets);
+              break;
+            case "detect":
+              detect(data.key, data.start, data.end);
+              break;
+            case "regionPeaks":
+              sendRegionPeaks(data.key, data.start, data.end, data.buckets);
               break;
             case "play":
               play(data.rate);

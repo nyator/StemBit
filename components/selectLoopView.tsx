@@ -3,23 +3,26 @@ import React, { useState, useRef } from "react";
 
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
-import { LOOPS, type Loop } from "../constants/loops";
+import { getAllLoops, type Loop } from "../constants/loops";
+import { COLORS } from "../constants/theme";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
+import { useUserLoops } from "../context/UserLoopsContext";
 import { Musicnote, PauseCircle, PlayCircle } from "./icons";
 
 type SelectLoopViewProps = {
-  // Which loops to show — defaults to the full catalog. The browser screen
-  // passes a category- or artist-filtered subset.
+  // Which loops to show — defaults to everything (catalog + the user's
+  // imports). The browser screen passes a category- or artist-filtered subset.
   loops?: Loop[];
 };
 
-const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
+const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const playbackSubscriptionRef =
     useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
   const router = useRouter();
-  const { setSelectedLoopKey } = useLoopPlayback();
+  const { setSelectedLoopKey, selectedKey } = useLoopPlayback();
+  const { removeUserLoop } = useUserLoops();
 
   const unloadCurrentSound = async () => {
     if (!soundRef.current) return;
@@ -107,12 +110,66 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
     );
   };
 
+  const confirmDelete = (loop: Loop) => {
+    Alert.alert(
+      "Delete Loop",
+      `Remove "${loop.title}"? Its audio is deleted from the app — the original file on your device isn't touched.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await unloadCurrentSound();
+            // Clear the transport if this was the loaded loop, so the Loop tab
+            // isn't left pointing at something the engine can no longer find.
+            if (selectedKey === loop.key) setSelectedLoopKey(undefined);
+            removeUserLoop(loop.key).catch(console.error);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Imported loops can be edited and removed again; the shipped ones can't.
+  // Long press rather than controls on every row: both are occasional, and a row
+  // this narrow has no space for buttons most rows would leave blank.
+  const handleRowLongPress = async (loop: Loop) => {
+    if (!loop.userAdded) return;
+
+    Alert.alert(
+      loop.title,
+      "Edit this loop's tempo, trim and details, or remove it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Edit",
+          onPress: async () => {
+            await unloadCurrentSound();
+            router.push({
+              pathname: "/(loops)/import",
+              params: { key: loop.key },
+            });
+          },
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => confirmDelete(loop),
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   if (loops.length === 0) {
     return (
       <View className="flex-1 items-center justify-center px-10">
         <Musicnote size={40} color="rgba(255,255,255,0.3)" />
         <Text className="mt-4 text-center text-white/50 font-satoshiMedium">
-          No loops here yet — they'll show up as the catalog grows.
+          No loops here yet — they'll show up as the catalog grows, or add one of
+          your own with + above.
         </Text>
       </View>
     );
@@ -126,6 +183,8 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
             key={item.key}
             className="flex-row items-center justify-between py-4 border-b border-white/10"
             onPress={() => handleRowPress(item)}
+            onLongPress={() => handleRowLongPress(item)}
+            delayLongPress={400}
           >
             <TouchableOpacity
               onPress={() => handlePlayPause(i)}
@@ -143,12 +202,28 @@ const SelectLoopView = ({ loops = LOOPS }: SelectLoopViewProps) => {
             </TouchableOpacity>
 
             <View className="w-2/6">
-              <Text className="text-white text-md font-satoshiBold">
-                {item.title}
-              </Text>
+              <View className="flex-row items-center gap-2">
+                <Text
+                  className="text-white text-md font-satoshiBold"
+                  numberOfLines={1}
+                  style={{ flexShrink: 1 }}
+                >
+                  {item.title}
+                </Text>
+                {selectedKey === item.key && (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 6,
+                      backgroundColor: COLORS.brand,
+                    }}
+                  />
+                )}
+              </View>
               <View className="flex-row items-center justify-start gap-2">
                 <Text className="text-ink-muted text-xs font-satoshiRegular">
-                  {item.artist} Artist
+                  {item.userAdded ? "Imported" : `${item.artist} Artist`}
                 </Text>
                 <Text className="text-ink-muted text-xs font-satoshiRegular">
                   .
