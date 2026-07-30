@@ -215,13 +215,16 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     const layers = padLayersRef.current;
     // The nature bed shares this output bus, so it counts towards the scale
     // even though it isn't one of the pad voices — otherwise bringing it in
-    // would push the total past full scale and clip everything.
-    const scale = padBusScale([...layers, natureRef.current]);
+    // would push the total past full scale and clip everything. It counts at
+    // its trimmed level, which is what actually reaches the bus: charging the
+    // pads for gain the bed never uses would duck them for nothing.
+    const nature = natureRef.current;
+    const natureGain = nature.level * NATURE_CHANNEL.trim;
+    const scale = padBusScale([...layers, { ...nature, level: natureGain }]);
 
     if (packKey === NATURE_CHANNEL.key) {
-      const nature = natureRef.current;
       if (nature.muted) return 0;
-      return padVolumeRef.current * nature.level * scale;
+      return padVolumeRef.current * natureGain * scale;
     }
 
     const layer = layers.find((entry) => entry.pack === packKey);

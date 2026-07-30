@@ -20,8 +20,7 @@ import VerticalFader from "./ui/verticalFader";
 
 function ChannelStrip({ channel }: { channel: MixerChannel }) {
   const { setLevel, removeLayer, toggleMute } = usePadLayers();
-  // Fader position mid-drag, before it's committed to preferences. Writing on
-  // every move would mean a file write per frame.
+
   const [draftLevel, setDraftLevel] = useState<number | null>(null);
   const isNature = channel.id === NATURE_CHANNEL.key;
 
@@ -31,35 +30,27 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
       style={{
         flex: 1,
         minWidth: 64,
-        // The nature bed is set apart from the pad channels: it plays over all
-        // of them rather than being one of them.
-        backgroundColor: isNature ? "rgba(0,65,91,0.35)" : "rgba(0,0,0,0.25)",
+        backgroundColor: isNature ? "" : "rgba(0,0,0,0.25)",
       }}
     >
-      {/* Unload sits in the top corner, the full height of the fader away from
-          Mute at the base. The two were side by side and a strip is too narrow
-          to tell them apart by feel — one is used constantly, the other undoes
-          your setup. */}
       {channel.removable && (
         <TouchableOpacity
           onPress={() => removeLayer(channel.id)}
           hitSlop={10}
           accessibilityLabel={`Unload ${channel.title} from the mixer`}
-          style={{ position: "absolute", top: 4, right: 4, zIndex: 1 }}
+          style={{ position: "absolute", top: 4, right: 3, zIndex: 1 }}
         >
-          <MinusCircle size={16} color="rgba(255,255,255,0.35)" />
+          <MinusCircle size={18} color="rgba(255,255,255,0.35)" />
         </TouchableOpacity>
       )}
 
       <Text
         className="text-white text-[11px] font-satoshiMedium"
         numberOfLines={1}
-        style={{ paddingHorizontal: 14 }}
+        style={{ paddingHorizontal: 16 }}
       >
         {channel.title}
       </Text>
-      {/* Reads the draft while the fader is under a finger, so the number
-          counts as you push it rather than jumping once on release. */}
       <Text
         className="text-[10px] font-spaceBold mb-2"
         style={{ color: channel.muted ? COLORS.danger : COLORS.textMuted }}
@@ -126,7 +117,7 @@ export default function PadMixer() {
   const emptySlots = Math.max(0, MAX_PAD_LAYERS - loadedCount);
 
   return (
-    <View className="p-3 mt-2 mb-2 bg-hairline-dial rounded-lg">
+    <View className="p-2 mt-2 rounded-lg">
       <View className="flex-row items-center justify-between mb-3">
         <Text className="uppercase text-overline tracking-widest text-ink-muted font-spaceBold">
           Mixer

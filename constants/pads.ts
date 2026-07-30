@@ -47,6 +47,17 @@ export const NATURE_CHANNEL = {
   title: "Nature Noises",
   subtitle: "Forest and birds at dawn",
   source: audio.nature_forest as number,
+  /**
+   * Fixed input trim, applied before the fader. The recording is mastered far
+   * hotter than the pads, so a fader at the top was drowning the instrument
+   * it's meant to sit under -- this caps the bed at 40% of full scale and
+   * gives the whole throw back as usable range.
+   *
+   * Engine-side, like padBusScale: the strip still reads out its fader
+   * position, because that's what the fader is doing. Trim is the desk's
+   * business.
+   */
+  trim: 0.4,
 };
 
 // What every channel gets multiplied by so the voices can't sum past full

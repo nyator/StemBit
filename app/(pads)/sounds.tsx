@@ -63,11 +63,6 @@ export default function PadSoundsScreen() {
         </View>
 
         <SelectPadView packs={packs} groupByArtist={browseMode === "byArtist"} />
-
-        {/* Below the catalog, where a console sits under what feeds it: the
-            list adds channels, this balances them. Nature Noises used to be a
-            switch here — it's a mixer channel now, since it's a sound that
-            plays over the pads rather than a setting. */}
         <PadMixer />
       </View>
     </SafeAreaView>
