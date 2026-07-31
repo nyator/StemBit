@@ -12,9 +12,11 @@ import * as FileSystem from "expo-file-system";
 import {
   LOOP_CATEGORIES,
   USER_LOOP_ARTIST,
+  setCatalogOverrides,
   setUserLoopRegistry,
   type Loop,
   type LoopCategory,
+  type LoopOverride,
 } from "../constants/loops";
 
 // Loops the user imported from their own device (app/(loops)/import.tsx): the
@@ -31,6 +33,10 @@ import {
 
 const LOOPS_DIR = `${FileSystem.documentDirectory}loops/`;
 const INDEX_FILE = `${FileSystem.documentDirectory}userLoops.json`;
+// Corrections to shipped loops, kept in their own file rather than folded into
+// the index above: they're about audio the app ships, not audio the user added,
+// and mixing them would mean migrating a format that's already on devices.
+const OVERRIDES_FILE = `${FileSystem.documentDirectory}loopOverrides.json`;
 
 /** Everything an import needs; the rest is derived or generated. */
 export type NewUserLoop = {
@@ -85,6 +91,16 @@ type UserLoopsContextValue = {
   /** Re-save an existing import's tempo, trim and details, keeping its key. */
   updateUserLoop: (key: string, edits: UserLoopEdits) => void;
   removeUserLoop: (key: string) => Promise<void>;
+  /**
+   * Correct what the app believes about a SHIPPED loop -- its tempo, trim or time
+   * signature. The audio is bundled and can't change; this is the app's reading
+   * of it, which is what every warp is measured from.
+   */
+  setLoopOverride: (key: string, override: LoopOverride) => void;
+  /** Put a shipped loop back to the values it ships with. */
+  clearLoopOverride: (key: string) => void;
+  /** Keys of shipped loops currently corrected, so the browser can mark them. */
+  overriddenKeys: string[];
 };
 
 const UserLoopsContext = createContext<UserLoopsContextValue | null>(null);
@@ -187,6 +203,8 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
   // Mirrors records for the async mutations, which would otherwise build their
   // next list from whatever state they closed over when they were called.
   const recordsRef = useRef<StoredUserLoop[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, LoopOverride>>({});
+  const overridesRef = useRef<Record<string, LoopOverride>>({});
 
   // Every write goes through here, so the module-level registry the engine
   // reads (constants/loops.ts) is updated in the same breath as the state the
@@ -238,9 +256,28 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Failed to load imported loops", error);
-      } finally {
-        if (isMounted) setIsLoaded(true);
       }
+
+      try {
+        const info = await FileSystem.getInfoAsync(OVERRIDES_FILE);
+        if (info.exists) {
+          const parsed = JSON.parse(
+            await FileSystem.readAsStringAsync(OVERRIDES_FILE)
+          );
+          if (isMounted && parsed && typeof parsed === "object") {
+            // Registry first, state second: a correction has to be in place
+            // before anything looks a loop up, and the engine's lookups don't go
+            // through React at all.
+            overridesRef.current = parsed;
+            setCatalogOverrides(parsed);
+            setOverrides(parsed);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load loop corrections", error);
+      }
+
+      if (isMounted) setIsLoaded(true);
     };
 
     load();
@@ -291,6 +328,30 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  // Same discipline as the imports: the module-level registry the engine reads is
+  // updated in the same breath as the state the UI reads, not in an effect.
+  const commitOverrides = (next: Record<string, LoopOverride>) => {
+    overridesRef.current = next;
+    setOverrides(next);
+    setCatalogOverrides(next);
+    FileSystem.writeAsStringAsync(OVERRIDES_FILE, JSON.stringify(next)).catch(
+      (error) => {
+        console.error("Failed to save loop corrections", error);
+      }
+    );
+  };
+
+  const setLoopOverride = (key: string, override: LoopOverride) => {
+    commitOverrides({ ...overridesRef.current, [key]: override });
+  };
+
+  const clearLoopOverride = (key: string) => {
+    if (!overridesRef.current[key]) return;
+    const next = { ...overridesRef.current };
+    delete next[key];
+    commitOverrides(next);
+  };
+
   const removeUserLoop = async (key: string) => {
     const record = recordsRef.current.find((entry) => entry.key === key);
     if (!record) return;
@@ -312,7 +373,16 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
 
   return (
     <UserLoopsContext.Provider
-      value={{ userLoops, isLoaded, addUserLoop, updateUserLoop, removeUserLoop }}
+      value={{
+        userLoops,
+        isLoaded,
+        addUserLoop,
+        updateUserLoop,
+        removeUserLoop,
+        setLoopOverride,
+        clearLoopOverride,
+        overriddenKeys: Object.keys(overrides),
+      }}
     >
       {children}
     </UserLoopsContext.Provider>

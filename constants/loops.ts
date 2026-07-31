@@ -125,11 +125,43 @@ export const setUserLoopRegistry = (loops: Loop[]) => {
 };
 
 /**
+ * Corrections to a shipped loop's own tempo, trim or time signature.
+ *
+ * A catalog entry states the tempo its audio was recorded at, and every warp is
+ * measured from that -- so a loop declared 155 that is really 154 plays slightly
+ * off at every other tempo, and the click walks away from it. The audio is
+ * bundled and can't be edited, but what the app believes about it can be, and
+ * that's what this is. context/UserLoopsContext.tsx owns loading and saving.
+ */
+export type LoopOverride = {
+  bpm?: number;
+  timeSignature?: string;
+  trimStart?: number;
+  trimEnd?: number;
+};
+
+let catalogOverrides: Record<string, LoopOverride> = {};
+
+export const setCatalogOverrides = (overrides: Record<string, LoopOverride>) => {
+  catalogOverrides = overrides;
+};
+
+/** Whether a shipped loop is playing at something other than its shipped values. */
+export const isLoopOverridden = (key: string) => !!catalogOverrides[key];
+
+/** The shipped catalog, with any corrections applied. */
+export const getCatalogLoops = (): Loop[] =>
+  LOOPS.map((loop) => {
+    const override = catalogOverrides[loop.key];
+    return override ? { ...loop, ...override } : loop;
+  });
+
+/**
  * The bundled catalog plus the user's imports. Imports come first: they're the
  * few loops among many that the user put there on purpose, so they belong at
  * the top of the browser rather than at the bottom of the shipped list.
  */
-export const getAllLoops = (): Loop[] => [...userLoops, ...LOOPS];
+export const getAllLoops = (): Loop[] => [...userLoops, ...getCatalogLoops()];
 
 export const findLoopByKey = (key: string | undefined) =>
   getAllLoops().find((loop) => loop.key === key);

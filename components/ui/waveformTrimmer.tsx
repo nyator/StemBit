@@ -26,7 +26,7 @@ import { COLORS } from "../../constants/theme";
 // The view is drawn from a visible time range rather than always from the whole
 // file, which is what lets one set of drawing code serve both.
 
-export const HEIGHT = 96;
+export const HEIGHT = 66;
 const HANDLE_WIDTH = 14;
 /** Shortest region the handles will let you make. */
 export const MIN_TRIM_SECONDS = 0.3;
@@ -78,6 +78,7 @@ type WaveformTrimmerProps = {
   /** The loop region, seconds. */
   start: number;
   end: number;
+  classname?: string;
   /** Live during a drag — cheap updates only (readouts). */
   onChange: (start: number, end: number) => void;
   /** Once, on release: reload the preview here, not on every frame. */
@@ -93,6 +94,12 @@ type WaveformTrimmerProps = {
   onNeedPeaks?: (viewStart: number, viewEnd: number) => void;
   /** Set while zoomed in; null draws the whole file. */
   zoom?: TrimZoom | null;
+  /**
+   * Where playback has reached, seconds into the file, or null when stopped.
+   * Comes off the engine's audio clock, so it marks what is actually being heard
+   * rather than where a timer in React thinks it should be.
+   */
+  playhead?: number | null;
 };
 
 export default function WaveformTrimmer({
@@ -100,12 +107,14 @@ export default function WaveformTrimmer({
   duration,
   start,
   end,
+  classname,
   onChange,
   onComplete,
   onEdgeLongPress,
   onEdgeRelease,
   onNeedPeaks,
   zoom,
+  playhead,
 }: WaveformTrimmerProps) {
   const [width, setWidth] = useState(0);
   // The slice of the buffer on screen. It lives here rather than with the peaks
@@ -316,9 +325,13 @@ export default function WaveformTrimmer({
   const originX = zoomed ? toX(zoom!.origin) : 0;
   const originVisible = zoomed && originX >= 0 && originX <= width;
 
+  const playX = playhead == null ? 0 : toX(playhead);
+  const playVisible =
+    playhead != null && width > 0 && playX >= 0 && playX <= width;
+
   return (
-    <View onLayout={handleLayout} style={{ width: "100%" }}>
-      <View style={{ height: HEIGHT, justifyContent: "center" }}>
+    <View onLayout={handleLayout} style={{ width: "100%" }} className={classname}>
+      <View style={{ height: HEIGHT, justifyContent: "center"}}>
         {width > 0 && (
           <Svg width={width} height={HEIGHT}>
             <Rect
@@ -375,6 +388,19 @@ export default function WaveformTrimmer({
                 strokeDasharray="2 4"
               />
             )}
+            {/* The playhead. Drawn last so it reads over the dimming and the
+                region outline -- it's the one thing on here that moves, and it
+                answers "where am I hearing" at a glance. */}
+            {playVisible && (
+              <Line
+                x1={playX}
+                y1={0}
+                x2={playX}
+                y2={HEIGHT}
+                stroke={COLORS.white}
+                strokeWidth={2}
+              />
+            )}
           </Svg>
         )}
 
@@ -410,9 +436,9 @@ export default function WaveformTrimmer({
       >
         {zoomed
           ? `${formatWindow(viewSpan)} view · ${(activeEdge === "start"
-              ? start
-              : end
-            ).toFixed(3)}s · ${msPerPixel(viewSpan, width)}ms per pixel`
+            ? start
+            : end
+          ).toFixed(3)}s · ${msPerPixel(viewSpan, width)}ms per pixel`
           : "Hold a handle to zoom in for a finer trim."}
       </Text>
     </View>

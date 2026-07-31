@@ -109,6 +109,12 @@ type LoopPreviewEngineProps = {
     end: number,
     peaks: number[]
   ) => void;
+  /**
+   * Where playback has reached, as a fraction through the loop, several times a
+   * second while it plays — and null when it stops. Read off the audio clock in
+   * the engine, which is the only clock that knows what's actually being heard.
+   */
+  onPosition: (phase: number | null) => void;
   onError: (message: string) => void;
   /** Layer the metronome click over the preview, locked to the loop's grid. */
   clickEnabled: boolean;
@@ -121,7 +127,7 @@ export const LoopPreviewEngine = forwardRef<
   LoopPreviewHandle,
   LoopPreviewEngineProps
 >(function LoopPreviewEngine(
-  { onAnalyzed, onDetected, onRegionPeaks, onError, clickEnabled },
+  { onAnalyzed, onDetected, onRegionPeaks, onPosition, onError, clickEnabled },
   ref
 ) {
   const { prefs } = usePreferences();
@@ -142,6 +148,8 @@ export const LoopPreviewEngine = forwardRef<
   onDetectedRef.current = onDetected;
   const onRegionPeaksRef = useRef(onRegionPeaks);
   onRegionPeaksRef.current = onRegionPeaks;
+  const onPositionRef = useRef(onPosition);
+  onPositionRef.current = onPosition;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
@@ -218,6 +226,9 @@ export const LoopPreviewEngine = forwardRef<
         queued.forEach((message) =>
           webViewRef.current?.postMessage(JSON.stringify(message))
         );
+        // Only this engine asks for the playhead: the import screen has a
+        // waveform to draw it on, and it's several messages a second.
+        post({ type: "positionUpdates", enabled: true });
       } else if (data.type === "analyzed") {
         onAnalyzedRef.current({
           key: data.key,
@@ -229,6 +240,10 @@ export const LoopPreviewEngine = forwardRef<
         });
       } else if (data.type === "detected") {
         onDetectedRef.current(data.key, data.tempo ?? null);
+      } else if (data.type === "position") {
+        onPositionRef.current(
+          typeof data.phase === "number" ? data.phase : null
+        );
       } else if (data.type === "regionPeaks") {
         onRegionPeaksRef.current(
           data.key,

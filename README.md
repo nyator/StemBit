@@ -123,6 +123,23 @@ text: `scripts/vendor-bpm-analyzer.js` copies its bundle into
 upgrading the package), and the engine injects that ahead of its own script. A test
 asserts the copy still matches what's installed, so it can't go stale.
 
+The library will not answer at all until it finds **15 peaks**, and it lowpasses
+at **200 Hz** before looking for them. Both assumptions suit a song and fail a
+loop: two bars at 120 BPM is four seconds and eight kick hits, and a click track
+has nothing under 200 Hz whatsoever. So `detectTempo` reads the region up to three
+times, stopping as soon as one reading is convincing:
+
+1. **As it stands** — right for anything long enough to hold those peaks, and the
+   only reading a seam can't distort.
+2. **Repeated** to ~20 s, for regions under 6 s. Fair rather than a trick: a loop
+   repeating is what a loop does. This goes *first* on short regions, because
+   there pass 1 is the unreliable one — it answers off a handful of intervals and
+   can look confident doing it (a 2-bar loop reads 117 unrepeated, 120 repeated).
+   Only for short regions: a four-bar mix reads correctly as itself and an octave
+   out when tiled.
+3. **Filter opened to 3 kHz**, which is the only way a click track or a hats-driven
+   loop is heard at all.
+
 What's ours around it (`detectTempo` / `describeTempo` in the engine):
 
 - **Region slicing**, so the trim can be analysed instead of the whole file — no

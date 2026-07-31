@@ -69,7 +69,7 @@ describe("the page the engine actually renders", () => {
     expect(scripts[0]).toContain("window.bpmAnalyzer = module.exports");
     expect(scripts[0]).toContain("analyzeFullBuffer");
     expect(scripts[1]).toContain("window.bpmAnalyzer");
-    expect(scripts[1]).toContain("analyzeFullBuffer(region)");
+    expect(scripts[1]).toMatch(/analyzeFullBuffer\(\s*region/);
     expect(html.indexOf("window.bpmAnalyzer = module.exports")).toBeLessThan(
       html.indexOf('<script id="engine">')
     );

@@ -3,7 +3,7 @@ import React, { useState, useRef } from "react";
 
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
-import { getAllLoops, type Loop } from "../constants/loops";
+import { getAllLoops, isLoopOverridden, type Loop } from "../constants/loops";
 import { COLORS } from "../constants/theme";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import { useUserLoops } from "../context/UserLoopsContext";
@@ -22,7 +22,7 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
     useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
   const router = useRouter();
   const { setSelectedLoopKey, selectedKey } = useLoopPlayback();
-  const { removeUserLoop } = useUserLoops();
+  const { removeUserLoop, clearLoopOverride, overriddenKeys } = useUserLoops();
 
   const unloadCurrentSound = async () => {
     if (!soundRef.current) return;
@@ -135,30 +135,50 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
   // Imported loops can be edited and removed again; the shipped ones can't.
   // Long press rather than controls on every row: both are occasional, and a row
   // this narrow has no space for buttons most rows would leave blank.
+  // Shipped loops are editable too, just not removable. Their audio is bundled,
+  // but the tempo the app believes it was recorded at is what every warp is
+  // measured from -- so a catalog entry that's a beat out is worth correcting,
+  // and putting it back is one tap.
   const handleRowLongPress = async (loop: Loop) => {
-    if (!loop.userAdded) return;
+    const buttons: Parameters<typeof Alert.alert>[2] = [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Edit tempo & trim",
+        onPress: async () => {
+          await unloadCurrentSound();
+          router.push({
+            pathname: "/(loops)/import",
+            params: { key: loop.key },
+          });
+        },
+      },
+    ];
+
+    if (loop.userAdded) {
+      buttons.push({
+        text: "Delete",
+        style: "destructive",
+        onPress: () => confirmDelete(loop),
+      });
+    } else if (isLoopOverridden(loop.key)) {
+      buttons.push({
+        text: "Reset to original",
+        style: "destructive",
+        onPress: () => {
+          clearLoopOverride(loop.key);
+          // Reload it if it's the loaded one, so the engine picks the shipped
+          // values back up rather than keeping the correction.
+          if (selectedKey === loop.key) setSelectedLoopKey(loop.key);
+        },
+      });
+    }
 
     Alert.alert(
       loop.title,
-      "Edit this loop's tempo, trim and details, or remove it.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Edit",
-          onPress: async () => {
-            await unloadCurrentSound();
-            router.push({
-              pathname: "/(loops)/import",
-              params: { key: loop.key },
-            });
-          },
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => confirmDelete(loop),
-        },
-      ],
+      loop.userAdded
+        ? "Edit this loop's tempo, trim and details, or remove it."
+        : "Change what the app believes this loop's tempo is. Its audio isn't touched.",
+      buttons,
       { cancelable: true }
     );
   };
@@ -223,7 +243,11 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
               </View>
               <View className="flex-row items-center justify-start gap-2">
                 <Text className="text-ink-muted text-xs font-satoshiRegular">
-                  {item.userAdded ? "Imported" : `${item.artist} Artist`}
+                  {item.userAdded
+                    ? "Imported"
+                    : overriddenKeys.includes(item.key)
+                      ? "Edited"
+                      : `${item.artist} Artist`}
                 </Text>
                 <Text className="text-ink-muted text-xs font-satoshiRegular">
                   .

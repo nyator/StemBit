@@ -16,7 +16,6 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 
 import {
-  LOOP_BAR_OPTIONS,
   LOOP_CATEGORIES,
   LOOP_TIME_SIGNATURES,
   beatsPerBarOf,
@@ -86,7 +85,6 @@ import {
 // this high is really only here to catch someone picking a whole album.
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
-const NUDGE_SECONDS = 0.01;
 
 // How wide a window a held handle zooms into: about a second across the same few
 // hundred pixels the whole file had, so roughly 2ms per pixel — finer than the
@@ -132,7 +130,7 @@ const fileBaseName = (name: string) =>
 export default function ImportLoopScreen() {
   const router = useRouter();
   const { prefs } = usePreferences();
-  const { addUserLoop, updateUserLoop } = useUserLoops();
+  const { addUserLoop, updateUserLoop, setLoopOverride } = useUserLoops();
   const { stopLoop, setSelectedLoopKey, selectedKey } = useLoopPlayback();
   const { activeEngine, requestStart, release } = usePlaybackLock();
 
@@ -142,7 +140,10 @@ export default function ImportLoopScreen() {
   const { key: editKey } = useLocalSearchParams<{ key?: string }>();
   const [editing] = useState(() => {
     const loop = editKey ? findLoopByKey(editKey) : null;
-    return loop?.userAdded ? loop : null;
+    // Shipped loops are editable too. Their audio can't change -- it's bundled --
+    // but the tempo the app believes it was recorded at can, and every warp is
+    // measured from that, so a catalog entry that's a BPM out is worth correcting.
+    return loop ?? null;
   });
 
   const engineRef = useRef<LoopPreviewHandle>(null);
@@ -204,6 +205,12 @@ export default function ImportLoopScreen() {
   const [showMore, setShowMore] = useState(false);
   /** The window the zoomed trim strip is showing, or null when it's closed. */
   const [zoom, setZoom] = useState<TrimZoom | null>(null);
+  // Where playback has reached, as a fraction through the loop region, straight
+  // off the engine's audio clock. Null when nothing is playing.
+  const [playPhase, setPlayPhase] = useState<number | null>(null);
+  // Room for the keyboard, only while a field is focused -- otherwise the screen
+  // carries a keyboard's worth of empty space under Save the whole time.
+  const [fieldFocused, setFieldFocused] = useState(false);
 
   const beatsPerBar = beatsPerBarOf(timeSignature);
   const duration = analysis?.duration ?? 0;
@@ -215,6 +222,9 @@ export default function ImportLoopScreen() {
   // what a listener can hear drift over a couple of passes; looser than that and
   // the click walks off the loop.
   const isOnGrid = trimLength > 0 && Math.abs(barsInTrim - wholeBars) < 0.02;
+  // Only an import owns its name and category; a shipped loop's are catalog facts
+  // and this screen just corrects what's believed about its audio.
+  const canRename = !editing || !!editing.userAdded;
   const hasAudio = !!editing || !!picked;
   const canSave =
     hasAudio && !!analysis && trimLength >= MIN_TRIM_SECONDS && !!title.trim();
@@ -608,42 +618,15 @@ export default function ImportLoopScreen() {
     });
   };
 
-
-  const nudge = (edge: "start" | "end", delta: number) => {
-    const next = { ...trimRef.current };
-    if (edge === "start") {
-      next.start = Math.max(
-        0,
-        Math.min(next.end - MIN_TRIM_SECONDS, next.start + delta)
-      );
-    } else {
-      next.end = Math.min(
-        duration,
-        Math.max(next.start + MIN_TRIM_SECONDS, next.end + delta)
-      );
-    }
-    commitTrim(next.start, next.end);
-  };
-
   const resetTrimToAudible = () => {
     if (!analysis) return;
     commitTrim(analysis.audibleStart, analysis.audibleEnd);
   };
 
-  // Take the trim's length as the truth and work out the tempo that makes it
-  // exactly `bars` bars, then move the trim's end onto that tempo's grid. The
-  // tempo is rounded to a whole number -- so the trim shifts by a millisecond or
-  // two -- because everything downstream (the BPM readout, the dial, tap tempo)
-  // deals in whole BPM, and a loop that is exactly N bars at a whole tempo is
-  // one the click and the stretcher can both land on perfectly.
-  const fitTempoToTrim = (barCount: number) => {
-    if (trimLength <= 0) return;
-    const fitted = clampBpm((barCount * beatsPerBar * 60) / trimLength);
-    setBpm(fitted);
-    setTempoSource("manual");
-    snapTrimToGrid(barCount, fitted);
-  };
-
+  // Move the region's end onto the nearest whole bar at the current tempo, which
+  // is what stops a loop drifting out of time as it repeats. The shift is a
+  // fraction of a beat -- this straightens a region that's nearly right, it
+  // doesn't rescue one that's wrong.
   const snapTrimToGrid = (barCount: number, atBpm: number) => {
     const length = (barCount * beatsPerBar * 60) / atBpm;
     let start = trimRef.current.start;
@@ -695,16 +678,18 @@ export default function ImportLoopScreen() {
     maxBpm: LOOP_MAX_BPM,
   });
 
+  // Plain words, because what this line is really saying is how much to trust the
+  // number above it -- and "0.42 confidence" tells nobody that.
   const tempoNote =
     tempoSource === "detected"
       ? tempoConfidence >= STRONG_TEMPO_CONFIDENCE
-        ? "Detected from the audio — strong, steady beat"
-        : "Detected from the audio — faint beat, worth checking against the click"
+        ? "Found in the audio — a clear, steady beat"
+        : "Found in the audio, but not certain — check it with the click below"
       : tempoSource === "estimated"
-        ? "Estimated from the loop's length — no clear beat to read"
+        ? "Guessed from the length — no clear beat to hear. Check it below"
         : tempoSource === "saved"
-          ? "As you saved it — DETECT to read it off the audio again"
-          : "Set by hand";
+          ? "The tempo you saved. FIND IT reads the audio again"
+          : "You set this";
 
   const save = async () => {
     if (!analysis || !canSave || saving) return;
@@ -712,14 +697,26 @@ export default function ImportLoopScreen() {
     stopPreview();
 
     if (editing) {
-      updateUserLoop(editing.key, {
-        title: title.trim(),
-        category,
-        bpm,
-        timeSignature,
-        trimStart: trim.start,
-        trimEnd: trim.end,
-      });
+      if (editing.userAdded) {
+        updateUserLoop(editing.key, {
+          title: title.trim(),
+          category,
+          bpm,
+          timeSignature,
+          trimStart: trim.start,
+          trimEnd: trim.end,
+        });
+      } else {
+        // A shipped loop keeps its name and category -- they're catalog facts,
+        // and the audio behind them is bundled. What's saved is the correction:
+        // what this app now believes the file's own tempo and loop points are.
+        setLoopOverride(editing.key, {
+          bpm,
+          timeSignature,
+          trimStart: trim.start,
+          trimEnd: trim.end,
+        });
+      }
       // If this loop is the one loaded in the Loop tab, re-select it so the
       // engine picks up the new trim and tempo. The key and the file haven't
       // changed, so the decode is still cached and this costs nothing.
@@ -770,16 +767,17 @@ export default function ImportLoopScreen() {
           space left over (iOS; Android does it through the window's own resize),
           the padding at the bottom leaves room to scroll the last field clear,
           and focusing a field scrolls it into view. */}
-      <KeyboardAvoidingView
+      {/* <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      > */}
       <ScrollView
         ref={scrollRef}
         className="flex-1 px-5"
-        contentContainerStyle={{ paddingBottom: 220 }}
+        contentContainerStyle={{ paddingBottom: fieldFocused ? 220 : 0 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
       >
         {/* The screen is laid out as the job actually goes: the file, the region,
             the tempo, hear it, name it, save. Detection sets the tempo and the
@@ -833,8 +831,9 @@ export default function ImportLoopScreen() {
 
         {analysis && (
           <>
-            {/* The region. Handles, hold-to-zoom, and the readout under it. */}
-            <SectionLabel text="Loop region" />
+            {/* What plays. Drag the ends; hold one to zoom in, which is finer
+                than any nudge button could be, so there are none. */}
+            {/* <SectionLabel text="The part that loops" /> */}
             <WaveformTrimmer
               peaks={analysis.peaks}
               duration={analysis.duration}
@@ -849,44 +848,48 @@ export default function ImportLoopScreen() {
               onEdgeRelease={() => setZoom(null)}
               onNeedPeaks={handleNeedPeaks}
               zoom={zoom}
+              classname="mt-2"
             />
 
-            <View className="flex-row items-start justify-between mt-3">
-              <EdgeNudge
-                label="Start"
-                value={formatSeconds(trim.start)}
-                onDown={() => nudge("start", -NUDGE_SECONDS)}
-                onUp={() => nudge("start", NUDGE_SECONDS)}
-              />
-              <View className="items-center">
-                <Text className="text-white font-spaceBold text-title">
-                  {formatSeconds(trimLength)}
+            {/* One line about the region rather than three timestamps. What
+                matters isn't where it starts in the file, it's whether it's a
+                whole number of bars -- a region that isn't drifts a little
+                further from the beat on every pass. */}
+            <View className="flex-row items-center justify-between mt-1">
+              <View className="flex-1">
+                {/* <Text className="text-white font-satoshiBold text-body">
+                  {isOnGrid
+                    ? `${wholeBars} ${wholeBars === 1 ? "bar" : "bars"} · ${formatSeconds(trimLength)}`
+                    : `${formatSeconds(trimLength)} — not a whole bar`}
+                </Text> */}
+                <Text className="text-white text-[12px] font-satoshiRegular mt-[2px]">
+                  {isOnGrid
+                    ? "Drag the ends to trim. Hold one to zoom in."
+                    : "It'll drift out of time as it repeats."}
                 </Text>
-                <Text className="text-ink-muted text-[10px] font-spaceBold uppercase">
-                  length
-                </Text>
-                <TouchableOpacity
-                  onPress={resetTrimToAudible}
-                  hitSlop={8}
-                  accessibilityLabel="Reset the region to the audible part of the file"
-                  className="px-2 py-1 mt-1 rounded bg-white/10"
-                >
-                  <Text className="text-white text-[10px] font-spaceBold">
-                    RESET
-                  </Text>
-                </TouchableOpacity>
               </View>
-              <EdgeNudge
-                label="End"
-                value={formatSeconds(trim.end)}
-                onDown={() => nudge("end", -NUDGE_SECONDS)}
-                onUp={() => nudge("end", NUDGE_SECONDS)}
-              />
+
+              {!isOnGrid && (
+                <TouchableOpacity
+                  onPress={() => snapTrimToGrid(wholeBars, bpm)}
+                  accessibilityLabel="Snap the region to whole bars"
+                  className="px-3 py-2 ml-2 bg-white rounded-sm"
+                >
+                  <Text className="text-black text-xs font-spaceBold">FIX</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={resetTrimToAudible}
+                accessibilityLabel="Reset to the whole file"
+                className="px-3 py-2 ml-2 rounded-sm bg-white/10"
+              >
+                <Text className="text-white text-xs font-spaceBold">RESET</Text>
+              </TouchableOpacity>
             </View>
 
             {/* <SectionLabel text="Tempo" /> */}
             <View
-              className="flex-row items-center mt-4 gap-[10px] self-center"
+              className="flex-row items-center mt-8 gap-[10px] self-center"
               onLayout={(event) => {
                 tempoOffsetRef.current = event.nativeEvent.layout.y;
               }}
@@ -919,7 +922,11 @@ export default function ImportLoopScreen() {
                     maxLength={3}
                     selectTextOnFocus
                     underlineColorAndroid="transparent"
-                    onFocus={() => scrollFieldIntoView(tempoOffsetRef.current)}
+                    onFocus={() => {
+                      setFieldFocused(true);
+                      scrollFieldIntoView(tempoOffsetRef.current);
+                    }}
+                    onBlur={() => setFieldFocused(false)}
                   />
                   <Text className="uppercase text-label text-ink-muted font-satoshiBold">
                     BPM
@@ -959,7 +966,7 @@ export default function ImportLoopScreen() {
             {alternatives.length > 0 && (
               <View className="flex-row flex-wrap items-center justify-center gap-2 mt-3">
                 <Text className="text-xs text-ink-muted font-satoshiRegular">
-                  {tempoSource === "detected" ? "Or:" : "Heard:"}
+                  {tempoSource === "detected" ? "" : "Heard:"}
                 </Text>
                 {alternatives.map((option) => (
                   <Chip
@@ -982,70 +989,32 @@ export default function ImportLoopScreen() {
               </View>
             )}
 
-            {/* The tempo fixes, on the main path rather than folded away. They
-                exist because the detector is sometimes wrong, and when it is,
-                this is the whole job -- burying them behind a tap makes the one
-                thing you came here to correct the one thing you have to go
-                looking for. Two buttons and a row of chips is small enough to sit
-                under the number it corrects. */}
+            {/* The two ways to fix a wrong tempo, on the main path rather than
+                folded away: when the detector is wrong this is the whole job, and
+                burying it makes the one thing you came here for the one thing you
+                have to go looking for. Labelled with what they do, not what they
+                are. */}
             <View className="flex-row gap-2 mt-4">
               <TouchableOpacity
                 onPressIn={handleTapTempo}
-                accessibilityLabel="Tap the tempo"
+                accessibilityLabel="Tap along to set the tempo"
                 className="items-center justify-center flex-1 py-[10px] border-2 border-hairline-strong rounded-sm"
               >
-                <Text className="text-white text-title font-spaceBold">TAP</Text>
+                <Text className="text-white text-title font-spaceBold">
+                  TAP IT OUT
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={redetectTempo}
                 disabled={detecting}
                 style={detecting ? { opacity: 0.5 } : undefined}
-                accessibilityLabel="Read the tempo off the trimmed region again"
+                accessibilityLabel="Find the tempo in the audio again"
                 className="items-center justify-center flex-1 py-[10px] border-2 border-hairline-strong rounded-sm"
               >
                 <Text className="text-white text-title font-spaceBold">
-                  {detecting ? "…" : "DETECT"}
+                  {detecting ? "LISTENING…" : "FIND IT"}
                 </Text>
               </TouchableOpacity>
-            </View>
-
-            {/* Setting the tempo without knowing it: say how many bars the region
-                is and the BPM follows from its length. */}
-            <View className="flex-row flex-wrap items-center gap-2 mt-3">
-              <Text className="text-xs text-ink-muted font-satoshiRegular">
-                Bars:
-              </Text>
-              {LOOP_BAR_OPTIONS.map((option) => (
-                <Chip
-                  key={option}
-                  label={`${option}`}
-                  selected={isOnGrid && wholeBars === option}
-                  onPress={() => fitTempoToTrim(option)}
-                />
-              ))}
-            </View>
-
-            {/* Whether the region and the tempo agree, which is what decides
-                whether warping holds: a region that isn't a whole number of beats
-                drifts against the click a little more every pass. */}
-            <View className="flex-row items-center justify-between p-3 mt-3 rounded-md bg-surface">
-              <Text className="flex-1 text-xs text-ink-soft font-satoshiRegular">
-                {isOnGrid
-                  ? `On the grid — ${wholeBars} ${
-                      wholeBars === 1 ? "bar" : "bars"
-                    } at ${bpm} BPM.`
-                  : `${barsInTrim.toFixed(
-                      2
-                    )} bars at ${bpm} BPM — not a whole bar, so the loop will drift.`}
-              </Text>
-              {!isOnGrid && (
-                <TouchableOpacity
-                  onPress={() => snapTrimToGrid(wholeBars, bpm)}
-                  className="px-3 py-2 ml-2 bg-white rounded-sm"
-                >
-                  <Text className="text-black text-xs font-spaceBold">SNAP</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
             {/* Hear it. The click is locked to the loop's own grid, so if it
@@ -1081,28 +1050,45 @@ export default function ImportLoopScreen() {
               </TouchableOpacity>
             </View>
 
-            {isBlockedByOtherEngine && (
-              <Text className="mt-2 text-xs text-center text-white/60 font-satoshiMedium">
-                Stop the Metronome first
+            {/* <Text className="mt-2 text-[11px] text-center text-ink-muted font-satoshiRegular">
+              {isBlockedByOtherEngine
+                ? "Stop the Metronome first"
+                : clickOn
+                  ? "Click follows the loop. If it slides out of time, the tempo is wrong."
+                  : "Turn click on to check the tempo."}
+            </Text> */}
+
+            {/* A shipped loop keeps its name: it's a catalog fact, and only the
+                tempo and trim are being corrected here. Showing an editable field
+                that silently discarded what you typed would be worse than no
+                field at all. */}
+            {canRename ? (
+              <View
+                className="mt-5"
+                onLayout={(event) => {
+                  nameOffsetRef.current = event.nativeEvent.layout.y;
+                }}
+              >
+                <BrandInput
+                  label="Name"
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Loop name"
+                  maxLength={40}
+                  error={title.trim() ? undefined : "Give it a name"}
+                  onFocus={() => {
+                    setFieldFocused(true);
+                    scrollFieldIntoView(nameOffsetRef.current);
+                  }}
+                  onBlur={() => setFieldFocused(false)}
+                />
+              </View>
+            ) : (
+              <Text className="mt-5 text-xs text-ink-muted font-satoshiRegular">
+                {title} · this loop came with the app, so only its tempo and
+                region are saved.
               </Text>
             )}
-
-            <View
-              className="mt-5"
-              onLayout={(event) => {
-                nameOffsetRef.current = event.nativeEvent.layout.y;
-              }}
-            >
-              <BrandInput
-                label="Name"
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Loop name"
-                maxLength={40}
-                error={title.trim() ? undefined : "Give it a name"}
-                onFocus={() => scrollFieldIntoView(nameOffsetRef.current)}
-              />
-            </View>
 
             <BrandButton
               label={saving ? "Saving…" : editing ? "Save changes" : "Save loop"}
@@ -1134,23 +1120,26 @@ export default function ImportLoopScreen() {
                 ))}
               </View>
 
-              <Text className="mt-4 mb-2 text-ink font-spaceMedium text-label">
-                Category
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {LOOP_CATEGORIES.map((option) => (
-                  <Chip
-                    key={option}
-                    label={option}
-                    selected={option === category}
-                    onPress={() => setCategory(option)}
-                  />
-                ))}
-              </View>
+              {canRename && (
+                <>
+                  <Text className="mt-4 mb-2 text-ink font-spaceMedium text-label">
+                    Category
+                  </Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {LOOP_CATEGORIES.map((option) => (
+                      <Chip
+                        key={option}
+                        label={option}
+                        selected={option === category}
+                        onPress={() => setCategory(option)}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
 
               <Text className="mt-5 text-xs text-ink-soft font-satoshiRegular">
-                Hear it warp: play it at another tempo, the same stretching the
-                Loop tab does.
+                Hear it warp: play it at another tempo.
               </Text>
               <View className="flex-row items-center justify-center gap-4 mt-2">
                 <TouchableOpacity
@@ -1198,13 +1187,14 @@ export default function ImportLoopScreen() {
           </>
         )}
       </ScrollView>
-      </KeyboardAvoidingView>
+      {/* </KeyboardAvoidingView> */}
 
       <LoopPreviewEngine
         ref={engineRef}
         onAnalyzed={handleAnalyzed}
         onDetected={handleDetected}
         onRegionPeaks={handleRegionPeaks}
+        onPosition={setPlayPhase}
         onError={(message) => {
           setBusy(false);
           setDetecting(false);
@@ -1289,41 +1279,3 @@ function Chip({ label, selected, onPress }: ChipProps) {
   );
 }
 
-type EdgeNudgeProps = {
-  label: string;
-  value: string;
-  onDown: () => void;
-  onUp: () => void;
-};
-
-// A readout with 10ms nudges either side. Dragging a handle across a whole file
-// is coarse -- a couple of hundred pixels standing in for minutes of audio --
-// so the last few milliseconds of a trim get set here.
-function EdgeNudge({ label, value, onDown, onUp }: EdgeNudgeProps) {
-  return (
-    <View className="items-center">
-      <View className="flex-row items-center gap-2">
-        <TouchableOpacity
-          accessibilityLabel={`Move ${label.toLowerCase()} earlier`}
-          onPress={onDown}
-          hitSlop={6}
-          className="px-2 py-1 rounded bg-white/10"
-        >
-          <Text className="text-white text-xs font-spaceBold">−10ms</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          accessibilityLabel={`Move ${label.toLowerCase()} later`}
-          onPress={onUp}
-          hitSlop={6}
-          className="px-2 py-1 rounded bg-white/10"
-        >
-          <Text className="text-white text-xs font-spaceBold">+10ms</Text>
-        </TouchableOpacity>
-      </View>
-      <Text className="mt-1 text-white text-xs font-spaceBold">{value}</Text>
-      <Text className="text-ink-muted text-[10px] font-spaceBold uppercase">
-        {label}
-      </Text>
-    </View>
-  );
-}
