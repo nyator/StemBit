@@ -24,7 +24,7 @@ function extractStretchLoop() {
     path.join(__dirname, "..", "..", "constants", "loopEngine.ts"),
     "utf8"
   );
-  const script = ts.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = ts.match(/<script id="engine">([\s\S]*?)<\/script>/)[1];
   // \r?\n throughout: git's autocrlf checks this file out with CRLF endings on
   // Windows, and an \n-only pattern silently fails to match there.
   const fn = script

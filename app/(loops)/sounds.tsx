@@ -8,19 +8,23 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import SelectLoopView from "../../components/selectLoopView";
 import {
-  LOOPS,
   LOOP_CATEGORIES,
+  getAllLoops,
   getArtists,
   getLoopsByArtist,
   getLoopsByCategory,
   type LoopCategory,
 } from "../../constants/loops";
+import { useUserLoops } from "../../context/UserLoopsContext";
 import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import { Add } from "../../components/icons";
+import { COLORS } from "../../constants/theme";
 
 type BrowseMode = "categories" | "artists";
 
@@ -30,19 +34,27 @@ const BROWSE_MODES: { key: BrowseMode; label: string }[] = [
 ];
 
 const LoopBrowserScreen = () => {
+  const router = useRouter();
   const [browseMode, setBrowseMode] = useState<BrowseMode>("categories");
   // null = "All" — no filter applied within the current browse mode.
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
 
+  // The shipped catalog plus the user's imports. Re-derived when the imports
+  // change so a loop added (or deleted) shows up here immediately; every filter
+  // below works off this one list, which is what keeps a chip's count and its
+  // contents from disagreeing.
+  const { userLoops } = useUserLoops();
+  const allLoops = useMemo(() => getAllLoops(), [userLoops]);
+
   const filters =
-    browseMode === "categories" ? [...LOOP_CATEGORIES] : getArtists();
+    browseMode === "categories" ? [...LOOP_CATEGORIES] : getArtists(allLoops);
 
   const filteredLoops = useMemo(() => {
-    if (!selectedFilter) return LOOPS;
+    if (!selectedFilter) return allLoops;
     return browseMode === "categories"
-      ? getLoopsByCategory(selectedFilter as LoopCategory)
-      : getLoopsByArtist(selectedFilter);
-  }, [browseMode, selectedFilter]);
+      ? getLoopsByCategory(selectedFilter as LoopCategory, allLoops)
+      : getLoopsByArtist(selectedFilter, allLoops);
+  }, [browseMode, selectedFilter, allLoops]);
 
   const switchMode = (mode: BrowseMode) => {
     setBrowseMode(mode);
@@ -51,8 +63,8 @@ const LoopBrowserScreen = () => {
 
   const countFor = (filter: string) =>
     browseMode === "categories"
-      ? getLoopsByCategory(filter as LoopCategory).length
-      : getLoopsByArtist(filter).length;
+      ? getLoopsByCategory(filter as LoopCategory, allLoops).length
+      : getLoopsByArtist(filter, allLoops).length;
 
   return (
     <SafeAreaView className="flex-1 bg-canvas">
@@ -61,7 +73,21 @@ const LoopBrowserScreen = () => {
       <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
       <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
 
-      <ScreenHeader title="Bits" />
+      {/* The way in to importing a loop of your own. Sits in the header rather
+          than in the list: it isn't one of the loops, it's what makes another
+          one. */}
+      <ScreenHeader
+        title="Bits"
+        action={
+          <TouchableOpacity
+            onPress={() => router.push("/(loops)/import")}
+            accessibilityLabel="Add your own loop"
+            className="p-2 rounded-full bg-brand"
+          >
+            <Add size={22} color={COLORS.white} />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Browse mode: Categories / Artists */}
       <View className="items-center mb-4">
@@ -93,7 +119,7 @@ const LoopBrowserScreen = () => {
           contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
         >
           <FilterChip
-            label={`All (${LOOPS.length})`}
+            label={`All (${allLoops.length})`}
             selected={selectedFilter === null}
             onPress={() => setSelectedFilter(null)}
           />

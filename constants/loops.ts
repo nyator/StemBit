@@ -5,6 +5,13 @@ import audio from "./audio";
 export const LOOP_CATEGORIES = ["Worship", "Praise", "Funk", "Afro", "Drill", "Highlife"] as const;
 export type LoopCategory = (typeof LOOP_CATEGORIES)[number];
 
+/**
+ * Where a loop's audio comes from: a bundled asset module id (the require()s in
+ * constants/audio.js) or a `file://` URI for a loop the user imported from
+ * their device. utils/loadAssetBase64 reads either.
+ */
+export type LoopSource = number | string;
+
 export type Loop = {
   key: string;
   title: string;
@@ -12,8 +19,25 @@ export type Loop = {
   category: LoopCategory;
   bpm: number;
   timeSignature: string;
-  source: number;
+  source: LoopSource;
+  /**
+   * The loop region, in seconds into the file. Only imported loops carry these:
+   * the user trims them by hand (app/(loops)/import.tsx), because an arbitrary
+   * file has no reason to start and end on the beat. Bundled loops leave them
+   * off and let the engine find the region itself -- silence trim plus a snap
+   * to whole beats (see constants/loopEngine.ts).
+   */
+  trimStart?: number;
+  trimEnd?: number;
+  /** Imported by the user rather than shipped with the app. */
+  userAdded?: boolean;
 };
+
+/**
+ * The artist every imported loop is filed under, so the browser's Artists mode
+ * gets a "Yours" chip for free rather than needing a browse mode of its own.
+ */
+export const USER_LOOP_ARTIST = "Yours";
 
 // The single source of truth for the loop catalog. Artists are derived from
 // this list (see getArtists), so adding a loop with a new artist name
@@ -84,26 +108,143 @@ export const LOOPS: Loop[] = [
   },
 ];
 
+// Loops the user imported. context/UserLoopsContext.tsx owns reading and
+// writing them; this is the copy the lookups below see.
+//
+// Module state rather than something pulled out of the context, because these
+// lookups are called from places that aren't React: WebView message handlers,
+// engine callbacks, timers. A list captured at render time is exactly the stale
+// closure that would have the engine reaching for a loop that has since been
+// deleted, or missing one just imported. UserLoopsProvider is the only writer,
+// and it writes on every change (never in an effect, so the value is in place
+// before anything downstream re-renders).
+let userLoops: Loop[] = [];
+
+export const setUserLoopRegistry = (loops: Loop[]) => {
+  userLoops = loops;
+};
+
+/**
+ * Corrections to a shipped loop's own tempo, trim or time signature.
+ *
+ * A catalog entry states the tempo its audio was recorded at, and every warp is
+ * measured from that -- so a loop declared 155 that is really 154 plays slightly
+ * off at every other tempo, and the click walks away from it. The audio is
+ * bundled and can't be edited, but what the app believes about it can be, and
+ * that's what this is. context/UserLoopsContext.tsx owns loading and saving.
+ */
+export type LoopOverride = {
+  bpm?: number;
+  timeSignature?: string;
+  trimStart?: number;
+  trimEnd?: number;
+};
+
+let catalogOverrides: Record<string, LoopOverride> = {};
+
+export const setCatalogOverrides = (overrides: Record<string, LoopOverride>) => {
+  catalogOverrides = overrides;
+};
+
+/** Whether a shipped loop is playing at something other than its shipped values. */
+export const isLoopOverridden = (key: string) => !!catalogOverrides[key];
+
+/** The shipped catalog, with any corrections applied. */
+export const getCatalogLoops = (): Loop[] =>
+  LOOPS.map((loop) => {
+    const override = catalogOverrides[loop.key];
+    return override ? { ...loop, ...override } : loop;
+  });
+
+/**
+ * The bundled catalog plus the user's imports. Imports come first: they're the
+ * few loops among many that the user put there on purpose, so they belong at
+ * the top of the browser rather than at the bottom of the shipped list.
+ */
+export const getAllLoops = (): Loop[] => [...userLoops, ...getCatalogLoops()];
+
 export const findLoopByKey = (key: string | undefined) =>
-  LOOPS.find((loop) => loop.key === key);
+  getAllLoops().find((loop) => loop.key === key);
 
 // Beats per bar = the time signature's numerator ("4 / 4" -> 4, "3 / 4" -> 3).
 // Drives where the loop click's accent falls: on every bar downbeat, so the
 // accent pattern is independent of how many bars long the loop is. Falls back
 // to 4 for a malformed signature.
-export const getBeatsPerBar = (loop: Loop) => {
-  const numerator = parseInt(loop.timeSignature.split("/")[0].trim(), 10);
+export const getBeatsPerBar = (loop: Loop) => beatsPerBarOf(loop.timeSignature);
+
+// The filters below default to the full catalog (bundled + imported) so a
+// screen that just wants "everything" doesn't have to assemble it. The list is
+// still a parameter: the browser passes the same array it rendered its counts
+// from, which is what keeps a chip's count and its contents from disagreeing.
+export const getLoopsByCategory = (
+  category: LoopCategory,
+  loops: Loop[] = getAllLoops()
+) => loops.filter((loop) => loop.category === category);
+
+export const getLoopsByArtist = (artist: string, loops: Loop[] = getAllLoops()) =>
+  loops.filter((loop) => loop.artist === artist);
+
+// Unique artist names, sorted, derived from the catalog.
+export const getArtists = (loops: Loop[] = getAllLoops()) =>
+  [...new Set(loops.map((loop) => loop.artist))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+// Beats in one bar of the given time signature string ("4 / 4" -> 4). The
+// import screen needs this before it has a Loop to hand to getBeatsPerBar.
+export const beatsPerBarOf = (timeSignature: string) => {
+  const numerator = parseInt(timeSignature.split("/")[0].trim(), 10);
   return Number.isFinite(numerator) && numerator > 0 ? numerator : 4;
 };
 
-export const getLoopsByCategory = (category: LoopCategory) =>
-  LOOPS.filter((loop) => loop.category === category);
+/** The time signatures the import screen offers. */
+export const LOOP_TIME_SIGNATURES = ["4 / 4", "3 / 4", "6 / 8", "5 / 4"] as const;
 
-export const getLoopsByArtist = (artist: string) =>
-  LOOPS.filter((loop) => loop.artist === artist);
+/** Loop lengths, in bars, the import screen offers to fit a tempo to. */
+export const LOOP_BAR_OPTIONS = [1, 2, 4, 8, 16] as const;
 
-// Unique artist names, sorted, derived from the catalog.
-export const getArtists = () =>
-  [...new Set(LOOPS.map((loop) => loop.artist))].sort((a, b) =>
-    a.localeCompare(b)
-  );
+// When several bar counts are plausible, the one implying a tempo near here
+// wins: a two-second loop is far likelier to be one bar at 120 than sixteen at
+// 1920.
+const LIKELY_BPM = 110;
+
+/**
+ * Guess the tempo of a region by assuming it's a whole number of bars, and
+ * taking the bar count whose implied tempo is the most musically likely.
+ *
+ * This is where an imported loop's tempo comes from before the user has said
+ * what it is. It's a starting point, not an answer -- nothing in a bare audio
+ * file says how many bars it holds -- but it's right often enough that checking
+ * it against the click beats typing a number in cold.
+ */
+export const suggestLoopTempo = (
+  lengthSeconds: number,
+  beatsPerBar: number,
+  { minBpm, maxBpm }: { minBpm: number; maxBpm: number }
+) => {
+  const clamp = (bpm: number) =>
+    Math.max(minBpm, Math.min(maxBpm, Math.round(bpm)));
+
+  if (!(lengthSeconds > 0)) return { bars: 1, bpm: clamp(LIKELY_BPM) };
+
+  const bpmFor = (bars: number) => (bars * beatsPerBar * 60) / lengthSeconds;
+
+  let best: { bars: number; bpm: number; distance: number } | null = null;
+  for (const bars of LOOP_BAR_OPTIONS) {
+    const bpm = bpmFor(bars);
+    if (bpm < minBpm || bpm > maxBpm) continue;
+    // Compared as a ratio, so half-speed and double-speed sit equally far from
+    // the likely tempo rather than the slow end always winning.
+    const distance = Math.abs(Math.log(bpm / LIKELY_BPM));
+    if (!best || distance < best.distance) {
+      best = { bars, bpm: clamp(bpm), distance };
+    }
+  }
+
+  // Nothing landed in range: a very short or very long region. One bar, clamped
+  // -- the user is going to correct it either way, and this at least gives the
+  // trim a grid to snap to.
+  return best
+    ? { bars: best.bars, bpm: best.bpm }
+    : { bars: 1, bpm: clamp(bpmFor(1)) };
+};

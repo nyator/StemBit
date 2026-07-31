@@ -10,11 +10,17 @@ import { Alert, AppState } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { setAudioModeAsync } from "expo-audio";
 
-import { LOOPS, findLoopByKey, getBeatsPerBar } from "../constants/loops";
+import {
+  findLoopByKey,
+  getAllLoops,
+  getBeatsPerBar,
+  type Loop,
+} from "../constants/loops";
 import { buildLoopEngineHtml } from "../constants/loopEngine";
-import { loadAssetBase64 } from "../utils/loadAssetBase64";
+import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
+import { useUserLoops } from "./UserLoopsContext";
 import {
   METRONOME_SOUNDS,
   PLAYBACK_FEELS,
@@ -55,6 +61,8 @@ type LoopPlaybackContextValue = {
   // Lives here (not in route params) so it survives regardless of which
   // screen instance is currently focused -- same pattern as Pad/Metro.
   selectedTitle: string | null;
+  /** Key of the selected loop, so the browser can mark the loaded row. */
+  selectedKey: string | null;
   // The tempo the selected loop was recorded at, or null when none is
   // selected. Reset returns the BPM control to this.
   nativeBpm: number | null;
@@ -96,6 +104,10 @@ const LoopPlaybackContext = createContext<LoopPlaybackContextValue | null>(
 export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const { activeEngine, requestStart, release } = usePlaybackLock();
   const { prefs } = usePreferences();
+  // The user's imported loops. Read here only to know when a new one has
+  // appeared and needs preloading — every lookup goes through findLoopByKey,
+  // which covers both catalogs.
+  const { userLoops } = useUserLoops();
   const isBlockedByOtherEngine =
     activeEngine !== null && activeEngine !== "loop";
 
@@ -127,6 +139,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const [beatsPerBar, setBeatsPerBar] = useState(4);
   const currentKeyRef = useRef<string | null>(null);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [loopReady, setLoopReady] = useState(false);
   const loopReadyRef = useRef(false);
   // Play was pressed while the loop was still decoding: start as soon as
@@ -162,7 +175,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Read a loop's asset and hand it to the engine to decode ahead of time.
+  // Read a loop's audio and hand it to the engine to decode ahead of time.
+  // Works for either kind of loop: a bundled asset, or a file the user
+  // imported (see context/UserLoopsContext.tsx).
   const preloadLoop = (key: string) => {
     if (preloadStartedRef.current.has(key)) return;
     preloadStartedRef.current.add(key);
@@ -170,7 +185,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     const loop = findLoopByKey(key);
     if (!loop) return;
 
-    loadAssetBase64(loop.source)
+    loadAudioBase64(loop.source)
       .then((base64) => {
         postToEngine({
           type: "preload",
@@ -185,6 +200,19 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         console.error("Failed to preload loop", key, error);
       });
   };
+
+  // What the engine needs to make a loop active. An imported loop carries the
+  // trim the user set on the import screen; a bundled one leaves those off and
+  // lets the engine find its own loop points.
+  const selectMessage = (loop: Loop, base64?: string) => ({
+    type: "select",
+    key: loop.key,
+    nativeBpm: loop.bpm,
+    beatsPerBar: getBeatsPerBar(loop),
+    trimStart: loop.trimStart,
+    trimEnd: loop.trimEnd,
+    base64,
+  });
 
   // Hand a click sample (by metronome sound id) to the engine to decode, once.
   const loadClickSound = (id: string | undefined) => {
@@ -227,16 +255,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     const key = currentKeyRef.current;
     const loop = key ? findLoopByKey(key) : null;
     if (!loop) return;
-    loadAssetBase64(loop.source)
+    loadAudioBase64(loop.source)
       .then((base64) => {
         if (currentKeyRef.current !== loop.key) return; // selection moved on
-        postToEngine({
-          type: "select",
-          key: loop.key,
-          nativeBpm: loop.bpm,
-          beatsPerBar: getBeatsPerBar(loop),
-          base64,
-        });
+        postToEngine(selectMessage(loop, base64));
       })
       .catch((error) => {
         console.error("Loop reload failed", error);
@@ -290,11 +312,14 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     webViewRef.current?.postMessage(JSON.stringify({ type: "ping" }));
   };
 
-  // Warm the whole catalog at startup so play is always instant.
+  // Warm the whole catalog at startup so play is always instant. Runs again
+  // when the user's imports arrive — they're read from disk, so they land after
+  // the first pass — and after a new one is added. preloadStartedRef makes the
+  // repeats free for anything already handed over.
   useEffect(() => {
-    LOOPS.forEach((loop) => preloadLoop(loop.key));
+    getAllLoops().forEach((loop) => preloadLoop(loop.key));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userLoops]);
 
   // Keep the app's audio session configured for playback in silent mode
   // (iOS). The WebView plays through the same session.
@@ -401,7 +426,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           webViewRef.current?.postMessage(JSON.stringify(message))
         );
         preloadStartedRef.current.clear();
-        LOOPS.forEach((loop) => preloadLoop(loop.key));
+        getAllLoops().forEach((loop) => preloadLoop(loop.key));
         // A fresh engine holds nothing, so the loop is not playable again
         // until the re-select below reports back. Saying so keeps the
         // transport from offering Play against an empty engine.
@@ -477,24 +502,18 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     setLoopReady(false);
     stopLoop();
 
-    if (!key) {
-      currentKeyRef.current = null;
-      nativeBpmRef.current = null;
-      setNativeBpm(null);
-      setSelectedTitle(null);
-      return;
-    }
-
-    const selectedLoop = findLoopByKey(key);
+    const selectedLoop = key ? findLoopByKey(key) : null;
     if (!selectedLoop) {
       currentKeyRef.current = null;
       nativeBpmRef.current = null;
       setNativeBpm(null);
       setSelectedTitle(null);
+      setSelectedKey(null);
       return;
     }
 
     currentKeyRef.current = selectedLoop.key;
+    setSelectedKey(selectedLoop.key);
     nativeBpmRef.current = selectedLoop.bpm;
     beatsPerBarRef.current = getBeatsPerBar(selectedLoop);
     setBeatsPerBar(beatsPerBarRef.current);
@@ -506,12 +525,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     // the startup preload. preloadLoop is a no-op if it's in flight, and a
     // recovery path if the original preload failed.
     preloadLoop(selectedLoop.key);
-    postToEngine({
-      type: "select",
-      key: selectedLoop.key,
-      nativeBpm: selectedLoop.bpm,
-      beatsPerBar: beatsPerBarRef.current,
-    });
+    postToEngine(selectMessage(selectedLoop));
   };
 
   // Warp the loop's playback rate to match the current BPM relative to the
@@ -598,6 +612,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         isPlaying,
         isBlockedByOtherEngine,
         selectedTitle,
+        selectedKey,
         nativeBpm,
         beatsPerBar,
         feelIndex,
