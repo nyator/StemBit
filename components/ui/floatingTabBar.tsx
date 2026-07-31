@@ -2,19 +2,22 @@ import { Pressable, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
 import { COLORS, SHADOWS } from "../../constants/theme";
-import { PlayCircleOutline, PlayCircle, Pad, PadFill, MetronomeFill, MetronomeOutline, type IconComponent } from "../icons";
+import { PlayCircleOutline, PlayCircle, Pad, PadFill, MetronomeFill, MetronomeOutline, Clipboard, SortPad, type IconComponent } from "../icons";
 
 // Each tab shows its outline icon when idle and the filled variant when active.
 const TAB_ICONS: Record<string, { active: IconComponent; inactive: IconComponent }> = {
   loop: { active: PlayCircle, inactive: PlayCircleOutline },
   pad: { active: PadFill, inactive: Pad },
   metro: { active: MetronomeFill, inactive: MetronomeOutline },
+  // No filled variant for a running order, so it reads as a list either way.
+  session: { active: Clipboard, inactive: SortPad },
 };
 
 const TAB_LABELS: Record<string, string> = {
   loop: "BITS",
   pad: "PAD",
   metro: "CLICK",
+  session: "SET",
 };
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
@@ -30,7 +33,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
     >
       <View
         className="flex-row items-start justify-between px-[16px] py-[12px] rounded-nav bg-surface-glass border border-hairline-glass"
-        style={{ width: 228, ...SHADOWS.float }}
+        style={{  ...SHADOWS.float }}
       >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;

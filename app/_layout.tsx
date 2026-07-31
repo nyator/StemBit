@@ -7,6 +7,7 @@ import {PreferencesProvider} from "../context/PreferencesContext";
 import {PlaybackLockProvider} from "../context/PlaybackLockContext";
 import {MetronomeProvider} from "../context/MetronomeContext";
 import {UserLoopsProvider} from "../context/UserLoopsContext";
+import {SessionsProvider} from "../context/SessionsContext";
 import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
 import FloatingEngineControls from "../components/floatingEngineControls";
@@ -61,6 +62,7 @@ function RootLayout() {
                             {/* Above the loop engine: it reads the user's
                                 imported loops to preload them alongside the
                                 shipped catalog. */}
+                            <SessionsProvider>
                             <UserLoopsProvider>
                             <LoopPlaybackProvider>
                                 <PadPlaybackProvider>
@@ -70,6 +72,7 @@ function RootLayout() {
                                         <Stack.Screen name="(tabs)" options={{headerShown: false, gestureEnabled: false}}/>
                                         <Stack.Screen name="(settings)" options={{headerShown: false}}/>
                                         <Stack.Screen name="(loops)" options={{headerShown: false}}/>
+                                        <Stack.Screen name="(sessions)" options={{headerShown: false}}/>
                                         <Stack.Screen name="(pads)" options={{headerShown: false}}/>
                                     </Stack>
                                     <FloatingEngineControls />
@@ -77,6 +80,7 @@ function RootLayout() {
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
                             </UserLoopsProvider>
+                            </SessionsProvider>
                         </MetronomeProvider>
                     </PlaybackLockProvider>
                 </BottomSheetModalProvider>

@@ -35,6 +35,7 @@ export default function TabLayout() {
         <Tabs.Screen name="loop" options={{ title: "Loop", headerShown: false }} />
         <Tabs.Screen name="pad" options={{ title: "pad", headerShown: false }} />
         <Tabs.Screen name="metro" options={{ title: "Metro", headerShown: false }} />
+        <Tabs.Screen name="session" options={{ title: "Session", headerShown: false }} />
       </Tabs>
     </View>
   );
