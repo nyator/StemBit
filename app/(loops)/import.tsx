@@ -222,9 +222,14 @@ export default function ImportLoopScreen() {
   // what a listener can hear drift over a couple of passes; looser than that and
   // the click walks off the loop.
   const isOnGrid = trimLength > 0 && Math.abs(barsInTrim - wholeBars) < 0.02;
-  // Only an import owns its name and category; a shipped loop's are catalog facts
-  // and this screen just corrects what's believed about its audio.
-  const canRename = !editing || !!editing.userAdded;
+  // Editing a loop that came with the app. Its audio is bundled and its tempo was
+  // set when the catalog was built, so the tools for working out an unknown
+  // tempo -- tapping it, reading it off the audio, the detector's other readings
+  // -- have nothing to add here: the number is already right or nearly right, and
+  // all this screen is for is nudging it and hearing the result. Its name,
+  // category and time signature are catalog facts and stay put.
+  const isShipped = !!editing && !editing.userAdded;
+  const canRename = !isShipped;
   const hasAudio = !!editing || !!picked;
   const canSave =
     hasAudio && !!analysis && trimLength >= MIN_TRIM_SECONDS && !!title.trim();
@@ -688,7 +693,9 @@ export default function ImportLoopScreen() {
       : tempoSource === "estimated"
         ? "Guessed from the length — no clear beat to hear. Check it below"
         : tempoSource === "saved"
-          ? "The tempo you saved. FIND IT reads the audio again"
+          ? isShipped
+            ? "The tempo this loop came with. Nudge it if it plays out of time"
+            : "The tempo you saved. FIND IT reads the audio again"
           : "You set this";
 
   const save = async () => {
@@ -963,7 +970,7 @@ export default function ImportLoopScreen() {
                 path because this is the one correction that's common: it folds
                 every tempo into 90-180, so a loop a listener would call 70 comes
                 back as 140 and the reading you wanted is usually right here. */}
-            {alternatives.length > 0 && (
+            {!isShipped && alternatives.length > 0 && (
               <View className="flex-row flex-wrap items-center justify-center gap-2 mt-3">
                 <Text className="text-xs text-ink-muted font-satoshiRegular">
                   {tempoSource === "detected" ? "" : "Heard:"}
@@ -989,11 +996,15 @@ export default function ImportLoopScreen() {
               </View>
             )}
 
-            {/* The two ways to fix a wrong tempo, on the main path rather than
-                folded away: when the detector is wrong this is the whole job, and
-                burying it makes the one thing you came here for the one thing you
-                have to go looking for. Labelled with what they do, not what they
-                are. */}
+            {/* The two ways to work out a tempo the app doesn't know, on the main
+                path rather than folded away: when the detector is wrong this is
+                the whole job, and burying it makes the one thing you came here for
+                the one thing you have to go looking for. Labelled with what they
+                do, not what they are.
+
+                Not for a loop that came with the app -- its tempo was set when the
+                catalog was built, so there's nothing to work out, only to nudge. */}
+            {!isShipped && (
             <View className="flex-row gap-2 mt-4">
               <TouchableOpacity
                 onPressIn={handleTapTempo}
@@ -1016,6 +1027,7 @@ export default function ImportLoopScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+            )}
 
             {/* Hear it. The click is locked to the loop's own grid, so if it
                 slides, the tempo or the region is out -- which is the whole
@@ -1084,7 +1096,7 @@ export default function ImportLoopScreen() {
                 />
               </View>
             ) : (
-              <Text className="mt-5 text-xs text-ink-muted font-satoshiRegular">
+              <Text className="my-5 text-xs text-ink-muted font-satoshiRegular">
                 {title} · this loop came with the app, so only its tempo and
                 region are saved.
               </Text>
@@ -1104,21 +1116,29 @@ export default function ImportLoopScreen() {
               title="More"
               open={showMore}
               onToggle={() => setShowMore((open) => !open)}
-              summary={`${timeSignature} · ${category}`}
+              summary={isShipped ? category : `${timeSignature} · ${category}`}
+              // For a shipped loop there's one control and a category left in
+              // here, which isn't enough to be worth a tap to reach.
+              alwaysOpen={isShipped}
             >
-              <Text className="mb-2 text-ink font-spaceMedium text-label">
-                Time signature
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {LOOP_TIME_SIGNATURES.map((signature) => (
-                  <Chip
-                    key={signature}
-                    label={signature}
-                    selected={signature === timeSignature}
-                    onPress={() => setTimeSignature(signature)}
-                  />
-                ))}
-              </View>
+              {/* Also a catalog fact for a shipped loop, so it isn't offered. */}
+              {!isShipped && (
+                <>
+                  <Text className="mb-2 text-ink font-spaceMedium text-label">
+                    Time signature
+                  </Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {LOOP_TIME_SIGNATURES.map((signature) => (
+                      <Chip
+                        key={signature}
+                        label={signature}
+                        selected={signature === timeSignature}
+                        onPress={() => setTimeSignature(signature)}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
 
               {canRename && (
                 <>
@@ -1215,39 +1235,60 @@ type DisclosureProps = {
   onToggle: () => void;
   /** Shown alongside the title while closed, so folding doesn't hide the value. */
   summary?: string;
+  /**
+   * Don't fold at all: plain heading, contents always shown, no toggle. For when
+   * there's so little left inside that hiding it costs a tap and saves nothing --
+   * a shipped loop's "More" is one control and a category.
+   */
+  alwaysOpen?: boolean;
   children: ReactNode;
 };
 
 // A folded section. Everything on this screen that exists to correct an automatic
 // answer lives in one of these: needed often enough to keep, rare enough that
 // having it open by default would bury the four things most imports actually use.
-function Disclosure({ title, open, onToggle, summary, children }: DisclosureProps) {
+function Disclosure({
+  title,
+  open,
+  onToggle,
+  summary,
+  alwaysOpen,
+  children,
+}: DisclosureProps) {
+  const expanded = alwaysOpen || open;
+
   return (
     <View className="pt-4 mt-6 border-t border-hairline">
-      <TouchableOpacity
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        className="flex-row items-center justify-between"
-      >
+      {alwaysOpen ? (
         <Text className="text-white uppercase text-overline tracking-widest font-spaceBold">
           {title}
         </Text>
-        <View className="flex-row items-center gap-2">
-          {!open && summary ? (
-            <Text className="text-xs text-ink-muted font-satoshiRegular">
-              {summary}
-            </Text>
-          ) : null}
-          <Text
-            className="text-[11px] font-spaceBold"
-            style={{ color: COLORS.brand }}
-          >
-            {open ? "HIDE" : "SHOW"}
+      ) : (
+        <TouchableOpacity
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          className="flex-row items-center justify-between"
+        >
+          <Text className="text-white uppercase text-overline tracking-widest font-spaceBold">
+            {title}
           </Text>
-        </View>
-      </TouchableOpacity>
-      {open && <View className="mt-4">{children}</View>}
+          <View className="flex-row items-center gap-2">
+            {!expanded && summary ? (
+              <Text className="text-xs text-ink-muted font-satoshiRegular">
+                {summary}
+              </Text>
+            ) : null}
+            <Text
+              className="text-[11px] font-spaceBold"
+              style={{ color: COLORS.brand }}
+            >
+              {expanded ? "HIDE" : "SHOW"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
+      {expanded && <View className="mt-4">{children}</View>}
     </View>
   );
 }
