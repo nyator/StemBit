@@ -130,6 +130,28 @@ export function SettingNoLink({ onPress, value, ...base }: LinkRowProps) {
   );
 }
 
+// Read-only row: states something rather than offering a control. Used for
+// hardware the app can observe but not change -- an audio output the system
+// routes to on its own, for instance. Deliberately not a TouchableOpacity, so
+// it doesn't invite a tap that would do nothing.
+export function SettingStatus({
+  value,
+  ...base
+}: BaseProps & { value?: string }) {
+  return (
+    <RowShell
+      {...base}
+      right={
+        value ? (
+          <Text className="text-sm text-white/50 font-satoshiRegular">
+            {value}
+          </Text>
+        ) : null
+      }
+    />
+  );
+}
+
 // Toggle settings row.
 export function SettingSwitch({ value, onValueChange, ...base }: SwitchRowProps) {
   return (
