@@ -85,11 +85,33 @@ describe("the page the engine actually renders", () => {
     // The detector's bundle has plenty of both, which is exactly why it's embedded
     // via JSON.stringify. The engine's own code is inside the template literal, so
     // for it they're fatal.
+    //
+    // One interpolation is deliberate and named below: the silent-mode keep-alive,
+    // shared verbatim with the metronome engine. Naming it rather than loosening
+    // the pattern means a stray ${...} anywhere else still fails here, and the
+    // injected source is held to the same rule by the test after this one.
     const engineSource = fs
       .readFileSync(ENGINE_PATH, "utf8")
-      .match(/<script id="engine">([\s\S]*?)<\/script>/)[1];
+      .match(/<script id="engine">([\s\S]*?)<\/script>/)[1]
+      .replace("${SILENT_MODE_KEEP_ALIVE_SOURCE}", "");
     expect(engineSource).not.toMatch(/`/);
     expect(engineSource).not.toMatch(/\$\{/);
+  });
+
+  it("keeps the injected keep-alive source free of backticks and ${...} too", () => {
+    // It lands inside the same template literal, so it carries the same hazard --
+    // and being in another file is exactly how it would get edited without anyone
+    // remembering that.
+    const {
+      SILENT_MODE_KEEP_ALIVE_SOURCE,
+    } = require("../../constants/silentModeKeepAlive");
+    expect(SILENT_MODE_KEEP_ALIVE_SOURCE).not.toMatch(/`/);
+    expect(SILENT_MODE_KEEP_ALIVE_SOURCE).not.toMatch(/\$\{/);
+    // It has to actually reach the page: the engine calls startKeepAlive() on
+    // play, and a missing definition is a ReferenceError that stops playback
+    // outright rather than merely leaving the silent switch in charge.
+    expect(scripts[1]).toContain("function startKeepAlive");
+    expect(scripts[1]).toContain("function stopKeepAlive");
   });
 });
 

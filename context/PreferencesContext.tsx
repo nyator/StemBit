@@ -67,7 +67,7 @@ const DEFAULTS: Preferences = {
   // the slider positions the Figma draws (98/140, 119/140, 70/140).
   metronomeVolume: 0.99,
   padVolume: 0.7,
-  loopVolume: 0.7,
+  loopVolume: 0.8,
   // The loop click is opt-in: loops play with no click until the user turns it
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,

@@ -9,6 +9,8 @@
 // 100ms directly on the audio clock. Playback timing is therefore immune to
 // JS thread jitter; only the RN-side visual beat indicator (posted back via
 // a delayed setTimeout) can lag slightly, which is imperceptible.
+import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
+
 export type MetronomeAssets = {
   /**
    * Map of sound id -> base64-encoded audio, e.g. `{ bright: "...", low: "..." }`.
@@ -62,6 +64,10 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         var beatSoundId = null;
         var currentBeatNumber = 0;
         var nextNoteTime = 0.0;
+        // Minimum lead when scheduling on the audio clock. Web Audio rejects
+        // times in the past; ~2ms is enough headroom while still feeling
+        // attached to the finger. The old 50ms start delay read as sluggish.
+        var MIN_SCHEDULE_LEAD = 0.002;
         var lookaheadMs = 25.0;
         var scheduleAheadTime = 0.1;
         var timerId = null;
@@ -69,7 +75,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         var scheduledBeatTimeouts = [];
 
         var sounds = ${JSON.stringify(sounds)};
-
+${SILENT_MODE_KEEP_ALIVE_SOURCE}
         function post(message) {
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -233,6 +239,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
           setVolumes(nextAccentVolume, nextBeatVolume, nextMasterVolume);
           setSounds(nextAccentSound, nextBeatSound);
           var ctx = ensureContext();
+          startKeepAlive(); // see silentModeKeepAlive.ts
           currentBeatNumber = 0;
           nextNoteTime = ctx.currentTime + 0.05;
           isPlaying = true;
@@ -241,6 +248,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
 
         function stop() {
           isPlaying = false;
+          stopKeepAlive();
           if (timerId) {
             clearTimeout(timerId);
             timerId = null;

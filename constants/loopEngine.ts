@@ -33,6 +33,7 @@
 // because it needs Web Audio -- it renders a biquad lowpass through an
 // OfflineAudioContext -- and only this page has that. See
 // constants/vendor/bpmAnalyzerSource.ts for how it gets here.
+import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
 
 export const buildLoopEngineHtml = () => `<!DOCTYPE html>
@@ -154,7 +155,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // to that channel outright rather than through the panner. See
         // connectClickOutput.
         var HARD_PAN_THRESHOLD = 0.999;
-
+${SILENT_MODE_KEEP_ALIVE_SOURCE}
         function post(message) {
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -1273,6 +1274,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             return;
           }
           if (rate) currentRate = rate;
+          startKeepAlive(); // see silentModeKeepAlive.ts
           if (playing) stopSource(playing, 0);
           playing = null;
           startSource(0, 0);
@@ -1287,6 +1289,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             clearTimeout(rateTimer);
             rateTimer = null;
           }
+          stopKeepAlive();
           stopClick();
           stopPositionUpdates();
           if (playing) {
