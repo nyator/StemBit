@@ -183,6 +183,34 @@ export function SortPad({ size = 24, color = DEFAULT_COLOR, style }: IconProps) 
   );
 }
 
+// Filled counterpart to SortPad, for the SET tab's active state. Hand-drawn
+// rather than lifted from Figma: Iconsax ships no filled variant of this glyph,
+// and without one that tab was swapping to an unrelated icon when selected
+// while its three neighbours only changed weight.
+//
+// Same silhouette as SortPad so the two read as one icon in two states. The
+// four bars are identical; the difference is the note -- its heads become solid
+// discs instead of rings, and its two thin beams merge into one solid wedge.
+export function SortPadFill({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <G>
+        <Path d="M22 3.75H2C1.59 3.75 1.25 3.41 1.25 3C1.25 2.59 1.59 2.25 2 2.25H22C22.41 2.25 22.75 2.59 22.75 3C22.75 3.41 22.41 3.75 22 3.75Z" fill={color} />
+        <Path d="M11 9.75H2C1.59 9.75 1.25 9.41 1.25 9C1.25 8.59 1.59 8.25 2 8.25H11C11.41 8.25 11.75 8.59 11.75 9C11.75 9.41 11.41 9.75 11 9.75Z" fill={color} />
+        <Path d="M8 15.75H2C1.59 15.75 1.25 15.41 1.25 15C1.25 14.59 1.59 14.25 2 14.25H8C8.41 14.25 8.75 14.59 8.75 15C8.75 15.41 8.41 15.75 8 15.75Z" fill={color} />
+        <Path d="M6 21.75H2C1.59 21.75 1.25 21.41 1.25 21C1.25 20.59 1.59 20.25 2 20.25H6C6.41 20.25 6.75 20.59 6.75 21C6.75 21.41 6.41 21.75 6 21.75Z" fill={color} />
+        {/* Stems plus the beam as one solid body. Traced along SortPad's outer
+            edge, then closed across the underside of the beam so the interior
+            fills instead of reading as an outline. */}
+        <Path d="M21.86 7.68C21.28 7.23 20.46 7.13 19.51 7.39L15.16 8.58C13.99 8.89 13.27 9.84 13.27 11.05V19.82H14.77V13.06L21.24 11.26V18.37H22.74V9.87C22.74 8.86 22.44 8.13 21.86 7.68Z" fill={color} />
+        {/* Note heads: solid where SortPad draws rings. */}
+        <Circle cx={11.84} cy={19.82} r={2.93} fill={color} />
+        <Circle cx={19.82} cy={18.37} r={2.93} fill={color} />
+      </G>
+    </Svg>
+  );
+}
+
 export function PauseCircle({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>

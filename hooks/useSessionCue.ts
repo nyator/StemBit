@@ -2,10 +2,20 @@ import { useEffect, useRef, useState } from "react";
 
 import { KEYS, usePadPlayback } from "../context/PadPlaybackContext";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
-import { usePreferences } from "../context/PreferencesContext";
+import { usePreferences, type PadLayer } from "../context/PreferencesContext";
 import { findPadPackByKey } from "../constants/pads";
 import { findLoopByKey } from "../constants/loops";
 import type { SessionItem } from "../context/SessionsContext";
+
+/**
+ * What the Loop and Pad tabs looked like before a session took them over, so
+ * running a setlist can be undone.
+ */
+type TabState = {
+  padLayers: PadLayer[];
+  loopKey: string | null;
+  bpm: number;
+};
 
 // Firing one cue from a setlist: load what it names and start it.
 //
@@ -27,11 +37,22 @@ export function useSessionCue() {
     stopLoop,
     isPlaying: loopPlaying,
     selectedKey,
+    bpm,
   } = useLoopPlayback();
   const { togglePad, stopPad, activeKeyIndex } = usePadPlayback();
 
   /** The cue currently live, so the list can mark it. */
   const [liveItemId, setLiveItemId] = useState<string | null>(null);
+  // What the Loop and Pad tabs held before this session started, captured on
+  // the first cue and put back on stop.
+  //
+  // A session doesn't own any playback of its own -- it drives the same two
+  // engines the tabs do, which is what keeps only one thing sounding at a time
+  // on stage. The cost is that firing a cue overwrites the loop selection, the
+  // tempo, and the pad stack, and padLayers is a *persisted* preference: before
+  // this, running one setlist destroyed whatever the user had built in the pad
+  // mixer, permanently and with no way back.
+  const tabStateRef = useRef<TabState | null>(null);
   // The pad can't be armed and played in the same tick: the engine reads the
   // stack out of preferences, and that write has to land first.
   const pendingPadRef = useRef<{ index: number } | null>(null);
@@ -45,6 +66,17 @@ export function useSessionCue() {
   }, [prefs.padLayers]);
 
   const play = (item: SessionItem) => {
+    // Only on the first cue: later cues in the same setlist are overwriting the
+    // session's own work, not the user's, so re-snapshotting there would record
+    // the previous song and lose what we came in with.
+    if (tabStateRef.current === null) {
+      tabStateRef.current = {
+        padLayers: prefs.padLayers,
+        loopKey: selectedKey,
+        bpm,
+      };
+    }
+
     setLiveItemId(item.id);
 
     if (item.padPack && item.padKey) {
@@ -84,6 +116,17 @@ export function useSessionCue() {
     pendingPadRef.current = null;
     stopLoop();
     stopPad();
+
+    // Hand the tabs back exactly as the session found them.
+    const before = tabStateRef.current;
+    if (!before) return;
+    tabStateRef.current = null;
+
+    setPref("padLayers", before.padLayers);
+    // Same ordering the cue itself relies on: selecting a loop resets the tempo
+    // to that loop's own, so the remembered tempo has to be written after it.
+    setSelectedLoopKey(before.loopKey ?? undefined);
+    setBpm(before.bpm);
   };
 
   return { play, stop, liveItemId };

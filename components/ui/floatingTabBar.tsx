@@ -4,15 +4,14 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
 import { useFeatureTour } from "../../context/FeatureTourContext";
 import { COLORS, SHADOWS } from "../../constants/theme";
-import { PlayCircleOutline, PlayCircle, Pad, PadFill, MetronomeFill, MetronomeOutline, Clipboard, SortPad, type IconComponent } from "../icons";
+import { PlayCircleOutline, PlayCircle, Pad, PadFill, MetronomeFill, MetronomeOutline, SortPad, SortPadFill, type IconComponent } from "../icons";
 
 // Each tab shows its outline icon when idle and the filled variant when active.
 const TAB_ICONS: Record<string, { active: IconComponent; inactive: IconComponent }> = {
   loop: { active: PlayCircle, inactive: PlayCircleOutline },
   pad: { active: PadFill, inactive: Pad },
   metro: { active: MetronomeFill, inactive: MetronomeOutline },
-  // No filled variant for a running order, so it reads as a list either way.
-  session: { active: Clipboard, inactive: SortPad },
+  session: { active: SortPadFill, inactive: SortPad },
 };
 
 const TAB_LABELS: Record<string, string> = {
