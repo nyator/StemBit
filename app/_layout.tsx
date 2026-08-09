@@ -9,7 +9,9 @@ import {MetronomeProvider} from "../context/MetronomeContext";
 import {UserLoopsProvider} from "../context/UserLoopsContext";
 import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
+import {FeatureTourProvider} from "../context/FeatureTourContext";
 import FloatingEngineControls from "../components/floatingEngineControls";
+import FeatureTour from "../components/ui/featureTour";
 import KeepAwakeWhilePlaying from "../components/keepAwakeWhilePlaying";
 import {COLORS} from "../constants/theme";
 
@@ -64,15 +66,23 @@ function RootLayout() {
                             <UserLoopsProvider>
                             <LoopPlaybackProvider>
                                 <PadPlaybackProvider>
-                                    <Stack>
-                                        <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
-                                        <Stack.Screen name="(auths)" options={{headerShown: false}}/>
-                                        <Stack.Screen name="(tabs)" options={{headerShown: false, gestureEnabled: false}}/>
-                                        <Stack.Screen name="(settings)" options={{headerShown: false}}/>
-                                        <Stack.Screen name="(loops)" options={{headerShown: false}}/>
-                                        <Stack.Screen name="(pads)" options={{headerShown: false}}/>
-                                    </Stack>
-                                    <FloatingEngineControls />
+                                    {/* Wraps the Stack so the tab bar (deep
+                                        inside it) can register where each tab
+                                        sits, and FeatureTour -- a sibling of
+                                        the navigator, like the engine controls
+                                        -- can draw its spotlight over the top. */}
+                                    <FeatureTourProvider>
+                                        <Stack>
+                                            <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
+                                            <Stack.Screen name="(auths)" options={{headerShown: false}}/>
+                                            <Stack.Screen name="(tabs)" options={{headerShown: false, gestureEnabled: false}}/>
+                                            <Stack.Screen name="(settings)" options={{headerShown: false}}/>
+                                            <Stack.Screen name="(loops)" options={{headerShown: false}}/>
+                                            <Stack.Screen name="(pads)" options={{headerShown: false}}/>
+                                        </Stack>
+                                        <FloatingEngineControls />
+                                        <FeatureTour />
+                                    </FeatureTourProvider>
                                     <KeepAwakeWhilePlaying />
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
