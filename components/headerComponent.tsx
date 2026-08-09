@@ -1,6 +1,6 @@
-import {View, Text, TouchableOpacity} from "react-native";
-import {useRouter} from "expo-router";
-import { Setting2, Setting4 } from "./icons";
+import { View, Text, TouchableOpacity } from "react-native";
+import { useRouter } from "expo-router";
+import { Setting2, Setting4, VolumeHigh } from "./icons";
 
 const HeaderComponent = () => {
     const router = useRouter();
@@ -19,7 +19,7 @@ const HeaderComponent = () => {
                     onPress={() => router.push("/(settings)/audiovolume")}
                     accessibilityLabel="Go to settings"
                 >
-                    <Setting4 size={24} color="white" />
+                    <VolumeHigh size={24} color="white" />
                 </TouchableOpacity>
                 <TouchableOpacity
                     className="p-2 rounded-full"

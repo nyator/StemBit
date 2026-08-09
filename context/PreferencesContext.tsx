@@ -40,6 +40,7 @@ export type Preferences = {
   padLayers: PadLayer[];
   natureNoise: MixSettings;
   seenOnboarding: boolean;
+  seenFeatureTour: boolean;
 };
 
 /** A mixer channel's own settings. Muting keeps the level for when it returns. */
@@ -67,7 +68,7 @@ const DEFAULTS: Preferences = {
   // the slider positions the Figma draws (98/140, 119/140, 70/140).
   metronomeVolume: 0.99,
   padVolume: 0.7,
-  loopVolume: 0.7,
+  loopVolume: 0.8,
   // The loop click is opt-in: loops play with no click until the user turns it
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,
@@ -81,6 +82,11 @@ const DEFAULTS: Preferences = {
   // press is a deliberate choice, not something to discover already running.
   natureNoise: { level: 0.6, muted: true },
   seenOnboarding: false,
+  // Distinct from seenOnboarding, which gates the pre-login carousel. This one
+  // covers the tour over the tab bar, which can only run once the user is
+  // actually in the app -- so the two are reached at different moments and a
+  // user who skipped one should still get the other.
+  seenFeatureTour: false,
 };
 
 type PreferencesContextValue = {

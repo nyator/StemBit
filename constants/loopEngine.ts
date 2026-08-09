@@ -33,6 +33,7 @@
 // because it needs Web Audio -- it renders a biquad lowpass through an
 // OfflineAudioContext -- and only this page has that. See
 // constants/vendor/bpmAnalyzerSource.ts for how it gets here.
+import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
 
 export const buildLoopEngineHtml = () => `<!DOCTYPE html>
@@ -139,6 +140,11 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         var UNITY_RATE_EPSILON = 0.001;
         // Crossfade used when swapping sources on a rate change.
         var SWAP_FADE_SECONDS = 0.03;
+        // Smallest lead that still schedules reliably on the audio clock. Web
+        // Audio silently drops times already in the past, so a start needs some
+        // headroom -- but only a couple of milliseconds of it. Matches the
+        // metronome engine, so both transports answer with the same immediacy.
+        var MIN_SCHEDULE_LEAD = 0.002;
         // Rate changes are debounced this long so dragging the BPM control
         // doesn't re-render on every step.
         var RATE_DEBOUNCE_MS = 120;
@@ -154,7 +160,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // to that channel outright rather than through the panner. See
         // connectClickOutput.
         var HARD_PAN_THRESHOLD = 0.999;
-
+${SILENT_MODE_KEEP_ALIVE_SOURCE}
         function post(message) {
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -1039,7 +1045,11 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
           source.connect(gain);
           gain.connect(getLoopMaster());
 
-          var startAt = atTime || ctx.currentTime + 0.03;
+          // A caller with its own schedule (the loop swap) passes atTime. The
+          // fallback is the user pressing play, so it wants the smallest lead
+          // Web Audio will reliably accept -- 30ms of cushion here was audible
+          // as the transport lagging the finger.
+          var startAt = atTime || ctx.currentTime + MIN_SCHEDULE_LEAD;
           if (fadeSeconds > 0) {
             gain.gain.setValueAtTime(0, startAt);
             gain.gain.linearRampToValueAtTime(1, startAt + fadeSeconds);
@@ -1273,6 +1283,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             return;
           }
           if (rate) currentRate = rate;
+          startKeepAlive(); // see silentModeKeepAlive.ts
           if (playing) stopSource(playing, 0);
           playing = null;
           startSource(0, 0);
@@ -1287,6 +1298,7 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
             clearTimeout(rateTimer);
             rateTimer = null;
           }
+          stopKeepAlive();
           stopClick();
           stopPositionUpdates();
           if (playing) {

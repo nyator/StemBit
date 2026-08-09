@@ -43,12 +43,12 @@ import { COLORS, CONTROL, SHADOWS, SIZES } from "../../constants/theme";
 import {
   AddCircle,
   MinusCircle,
-  Information,
   PlayFilled,
   Stop,
   ChevronDown,
   Musicnote,
 } from "../../components/icons";
+import InfoButton from "../../components/ui/infoButton";
 
 // Human label for a sound id, from the METRONOME_SOUNDS registry.
 const soundLabel = (id: string) =>
@@ -386,7 +386,7 @@ export default function MetroScreen() {
         <View className="items-center gap-[10px] mb-[18px]">
           <View className="flex-row items-center gap-[5px]">
             <Text className="text-white text-label font-spaceBold">Time Signature</Text>
-            <Information size={16} />
+            <InfoButton topic="timeSignature" />
           </View>
           <TouchableOpacity
             onPress={openSheet}
@@ -519,7 +519,7 @@ export default function MetroScreen() {
         <View className="items-start w-full mt-[18px]">
           <View className="flex-row items-center gap-[5px] mb-[10px]">
             <Text className="text-white text-label font-spaceBold">Subdivision</Text>
-            <Information size={16} />
+            <InfoButton topic="metroSubdivision" />
           </View>
           <View className="flex-row items-center justify-between w-full">
             {PLAYBACK_FEELS.map((feel, index) => {

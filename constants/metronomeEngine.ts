@@ -9,6 +9,8 @@
 // 100ms directly on the audio clock. Playback timing is therefore immune to
 // JS thread jitter; only the RN-side visual beat indicator (posted back via
 // a delayed setTimeout) can lag slightly, which is imperceptible.
+import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
+
 export type MetronomeAssets = {
   /**
    * Map of sound id -> base64-encoded audio, e.g. `{ bright: "...", low: "..." }`.
@@ -62,6 +64,10 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         var beatSoundId = null;
         var currentBeatNumber = 0;
         var nextNoteTime = 0.0;
+        // Minimum lead when scheduling on the audio clock. Web Audio rejects
+        // times in the past; ~2ms is enough headroom while still feeling
+        // attached to the finger. The old 50ms start delay read as sluggish.
+        var MIN_SCHEDULE_LEAD = 0.002;
         var lookaheadMs = 25.0;
         var scheduleAheadTime = 0.1;
         var timerId = null;
@@ -69,7 +75,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         var scheduledBeatTimeouts = [];
 
         var sounds = ${JSON.stringify(sounds)};
-
+${SILENT_MODE_KEEP_ALIVE_SOURCE}
         function post(message) {
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -233,14 +239,49 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
           setVolumes(nextAccentVolume, nextBeatVolume, nextMasterVolume);
           setSounds(nextAccentSound, nextBeatSound);
           var ctx = ensureContext();
+          startKeepAlive(); // see silentModeKeepAlive.ts
           currentBeatNumber = 0;
-          nextNoteTime = ctx.currentTime + 0.05;
+          // Claim the transport before the resume below, so a stop() arriving
+          // while the context is still waking is seen by beginPlayback and
+          // cancels the start instead of being overrun by it.
           isPlaying = true;
+          // A running context is the common case -- every press after the
+          // first -- and starts on the very next audio block. A suspended one
+          // has a frozen currentTime, so reading it now would put the first
+          // click in the past, and Web Audio drops those silently. Resume
+          // first, then take the clock.
+          if (ctx.state === "running") {
+            beginPlayback(ctx);
+            return;
+          }
+          var resuming = ctx.resume();
+          if (resuming && typeof resuming.then === "function") {
+            resuming.then(
+              function () {
+                beginPlayback(ctx);
+              },
+              function () {
+                beginPlayback(ctx);
+              }
+            );
+          } else {
+            beginPlayback(ctx);
+          }
+        }
+
+        // Starts the scheduler against the live audio clock. MIN_SCHEDULE_LEAD
+        // rather than a fixed cushion: the first click lands about 2ms out
+        // instead of 50, which is the difference between the transport feeling
+        // attached to your finger and feeling like it thought about it.
+        function beginPlayback(ctx) {
+          if (!isPlaying) return; // stopped while the context was resuming
+          nextNoteTime = ctx.currentTime + MIN_SCHEDULE_LEAD;
           scheduler();
         }
 
         function stop() {
           isPlaying = false;
+          stopKeepAlive();
           if (timerId) {
             clearTimeout(timerId);
             timerId = null;

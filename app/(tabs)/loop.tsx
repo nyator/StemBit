@@ -28,7 +28,6 @@ import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
 import {
   AddCircle,
   MinusCircle,
-  Information,
   PlayFilled,
   Stop,
   Folder,
@@ -36,6 +35,7 @@ import {
   MetronomeOutline,
   Reset,
 } from "../../components/icons";
+import InfoButton from "../../components/ui/infoButton";
 
 export default function LoopScreen() {
   const router = useRouter();
@@ -170,7 +170,7 @@ export default function LoopScreen() {
         <View className="items-center gap-[10px] mb-[18px]">
           <View className="flex-row items-center gap-[5px]">
             <Text className="text-white text-label font-spaceBold">Select Loop</Text>
-            <Information size={16} />
+            <InfoButton topic="selectLoop" />
           </View>
           <TouchableOpacity
             onPress={() => router.push("/(loops)/sounds")}
@@ -334,7 +334,7 @@ export default function LoopScreen() {
         <View className="items-start w-full mt-[18px]">
           <View className="flex-row items-center gap-[5px] mb-[10px]">
             <Text className="text-white text-label font-spaceBold">Subdivision</Text>
-            <Information size={16} />
+            <InfoButton topic="loopSubdivision" />
           </View>
           <View className="flex-row items-center justify-between w-full">
             {PLAYBACK_FEELS.map((feel, index) => {
