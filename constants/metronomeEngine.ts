@@ -241,8 +241,41 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var ctx = ensureContext();
           startKeepAlive(); // see silentModeKeepAlive.ts
           currentBeatNumber = 0;
-          nextNoteTime = ctx.currentTime + 0.05;
+          // Claim the transport before the resume below, so a stop() arriving
+          // while the context is still waking is seen by beginPlayback and
+          // cancels the start instead of being overrun by it.
           isPlaying = true;
+          // A running context is the common case -- every press after the
+          // first -- and starts on the very next audio block. A suspended one
+          // has a frozen currentTime, so reading it now would put the first
+          // click in the past, and Web Audio drops those silently. Resume
+          // first, then take the clock.
+          if (ctx.state === "running") {
+            beginPlayback(ctx);
+            return;
+          }
+          var resuming = ctx.resume();
+          if (resuming && typeof resuming.then === "function") {
+            resuming.then(
+              function () {
+                beginPlayback(ctx);
+              },
+              function () {
+                beginPlayback(ctx);
+              }
+            );
+          } else {
+            beginPlayback(ctx);
+          }
+        }
+
+        // Starts the scheduler against the live audio clock. MIN_SCHEDULE_LEAD
+        // rather than a fixed cushion: the first click lands about 2ms out
+        // instead of 50, which is the difference between the transport feeling
+        // attached to your finger and feeling like it thought about it.
+        function beginPlayback(ctx) {
+          if (!isPlaying) return; // stopped while the context was resuming
+          nextNoteTime = ctx.currentTime + MIN_SCHEDULE_LEAD;
           scheduler();
         }
 

@@ -267,10 +267,12 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopMetronome = () => {
+    // Silence first, bookkeeping after -- same reasoning as startMetronome.
+    postToEngine({ type: "stop" });
+
     isPlayingRef.current = false;
     setIsPlaying(false);
     setCurrentBeat(0);
-    postToEngine({ type: "stop" });
     release("metro");
   };
 
@@ -408,9 +410,9 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    isPlayingRef.current = true;
-    setIsPlaying(true);
-    setCurrentBeat(0);
+    // The engine message goes out before the React state updates. Both are
+    // cheap, but setState schedules a render and this is the one call whose
+    // latency is audible -- so it gets the head start.
     postToEngine({
       type: "start",
       bpm,
@@ -423,6 +425,10 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       accentSound,
       beatSound,
     });
+
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+    setCurrentBeat(0);
   };
 
   // BPM changes take effect immediately mid-playback.
