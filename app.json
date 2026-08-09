@@ -42,8 +42,7 @@
     "plugins": [
       "expo-router",
       "expo-audio",
-      "expo-font",
-      "react-native-audio-api"
+      "expo-font"
     ],
     "extra": {
       "router": {},
