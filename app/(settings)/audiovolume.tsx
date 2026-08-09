@@ -4,51 +4,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import {
-    SettingLink,
     SettingSwitch,
     SettingSection,
-    SettingRadio,
-    SettingStatus,
     SettingSegmented,
     SettingSlider
 } from "../../components/ui/settingRow";
 import type { Preferences } from "../../context/PreferencesContext";
 import { usePreferences } from "../../context/PreferencesContext";
-import { useAudioOutputs } from "../../hooks/useAudioOutputs";
 import {
-    selectOutput,
-    showOutputPicker,
-    type AudioOutputKind,
-} from "../../modules/audio-routes";
-import {
-    VolumeHigh,
-    Bluetooth,
-    USBDevice,
-    Musicnote,
     Pad,
     Metromone,
     Loop,
     PhoneVibration
 } from "../../components/icons";
 
-// The design drew three fixed rows (phone / bluetooth / USB). Those were a
-// mockup, not a device list: they never reflected what was plugged in, and
-// tapping one changed a local boolean and nothing else. They're replaced by the
-// real routes reported by modules/audio-routes, which updates live as devices
-// connect and disconnect.
-const OUTPUT_ICONS: Record<AudioOutputKind, typeof VolumeHigh> = {
-    speaker: VolumeHigh,
-    receiver: VolumeHigh,
-    wiredHeadset: Musicnote,
-    bluetoothA2dp: Bluetooth,
-    bluetoothSco: Bluetooth,
-    usb: USBDevice,
-    hdmi: USBDevice,
-    dock: USBDevice,
-    airplay: VolumeHigh,
-    carAudio: VolumeHigh,
-    unknown: VolumeHigh,
-};
+// No output-device section here on purpose. Listing and switching audio outputs
+// needs custom native code, which rules out Expo Go, and the half of it users
+// actually asked for -- tapping a device to route to it -- isn't permitted on
+// iOS at all. The OS already auto-routes to headphones and interfaces when they
+// connect, and its own output switcher handles the rest, so the app doesn't try
+// to duplicate either.
 
 // Three-way stereo placement for the loop click. Typed off the preference so
 // adding a position here without widening Preferences won't compile.
@@ -60,7 +35,6 @@ const PAN_OPTIONS: readonly { value: Preferences["loopClickPan"]; label: string 
 
 const AudioVolume = () => {
     const { prefs, setPref } = usePreferences();
-    const outputs = useAudioOutputs();
 
     // Local mirrors of the persisted per-engine volumes. The slider drives
     // these live for a smooth thumb; we persist to preferences (which pushes to
@@ -81,56 +55,12 @@ const AudioVolume = () => {
     const setVolume = (engine: keyof typeof volumes) => (value: number) =>
         setVolumes((prev) => ({ ...prev, [engine]: value }));
 
-    // The platform can still refuse a switch it advertised as selectable (the
-    // audio session category can change under us between render and tap). Fall
-    // through to the system picker rather than leaving the tap doing nothing.
-    const handleSelect = async (id: string) => {
-        const switched = await selectOutput(id);
-        if (!switched) showOutputPicker();
-    };
-
     return (
         <SafeAreaView className="flex-1 bg-canvas">
             <StatusBar barStyle="light-content" />
             <ScreenHeader title="Audio Output / Volume" />
 
             <ScrollView className="flex-1 px-5 ">
-                <SettingSection title="Output Devices">
-                    {outputs.map((output) => {
-                        const Icon = OUTPUT_ICONS[output.kind] ?? VolumeHigh;
-
-                        // Only iOS, and only in the right audio session mode,
-                        // actually lets us move playback. Where it doesn't, the
-                        // row reports the route instead of pretending to set it
-                        // -- the picker below is the working control.
-                        return output.isSelectable ? (
-                            <SettingRadio
-                                key={output.id}
-                                icon={Icon}
-                                label={output.name}
-                                selected={output.isActive}
-                                onSelect={() => handleSelect(output.id)}
-                                border={true}
-                            />
-                        ) : (
-                            <SettingStatus
-                                key={output.id}
-                                icon={Icon}
-                                label={output.name}
-                                value={output.isActive ? "Playing" : undefined}
-                                border={true}
-                            />
-                        );
-                    })}
-
-                    <SettingLink
-                        icon={Bluetooth}
-                        label="Change output"
-                        sublabel="Opens your device's audio switcher"
-                        onPress={showOutputPicker}
-                    />
-                </SettingSection>
-
                 <SettingSection title=" Volume">
                     <SettingSlider
                         icon={Loop}
