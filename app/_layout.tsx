@@ -12,6 +12,7 @@ import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
 import {FeatureTourProvider} from "../context/FeatureTourContext";
 import {SessionCueProvider} from "../context/SessionCueContext";
+import {SessionPlaybackProvider} from "../context/SessionPlaybackContext";
 import FloatingEngineControls from "../components/floatingEngineControls";
 import FeatureTour from "../components/ui/featureTour";
 import KeepAwakeWhilePlaying from "../components/keepAwakeWhilePlaying";
@@ -69,6 +70,16 @@ function RootLayout() {
                             <UserLoopsProvider>
                             <LoopPlaybackProvider>
                                 <PadPlaybackProvider>
+                                    {/* The session's own engine: a third hidden
+                                        WebView, holding a stem cue's tracks on
+                                        one AudioContext so they stay locked to
+                                        each other. Mounted here for the same
+                                        reason the others are -- its audio has to
+                                        survive navigating anywhere -- and left
+                                        out of FloatingEngineControls, so a
+                                        running set never shows up on another
+                                        tab. */}
+                                    <SessionPlaybackProvider>
                                     {/* Above the Stack because a running
                                         setlist outlives the screen that started
                                         it: (sessions)/setlist unmounts when the
@@ -95,6 +106,7 @@ function RootLayout() {
                                         <FeatureTour />
                                     </FeatureTourProvider>
                                     </SessionCueProvider>
+                                    </SessionPlaybackProvider>
                                     <KeepAwakeWhilePlaying />
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
