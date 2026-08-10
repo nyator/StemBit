@@ -20,6 +20,25 @@ import * as FileSystem from "expo-file-system";
 
 const SESSIONS_FILE = `${FileSystem.documentDirectory}sessions.json`;
 
+/**
+ * One imported stem in a cue: a single audio file that plays as part of a
+ * multi-track song, locked to the others.
+ *
+ * Holds a URI, never audio. These files are tens of megabytes and this whole
+ * structure is serialised to preferences.json on every change -- putting audio
+ * in here would make saving a setlist rewrite hundreds of megabytes. The file
+ * is copied into app storage on import and read back when the cue is loaded.
+ */
+export type CueTrack = {
+  id: string;
+  /** Shown in the mixer -- "Drums", "Bass", whatever the file was called. */
+  name: string;
+  /** Location in app storage, not the pick location, which doesn't persist. */
+  uri: string;
+  level: number;
+  muted: boolean;
+};
+
 export type SessionItem = {
   id: string;
   /** What it's called on the night -- a song name, "Altar call", "Walk-in". */
@@ -32,6 +51,16 @@ export type SessionItem = {
   padPack?: string;
   padKey?: string;
   padMode?: "major" | "minor";
+  /**
+   * Imported stems, when this cue is a multi-track song rather than a loop or a
+   * pad. Optional because a cue is one kind or the other: the two are different
+   * enough on stage that mixing them in one cue would only be confusing.
+   *
+   * Sections within a song come later and hang off here too -- a section is a
+   * span of these same tracks, so the tracks are the thing that has to exist
+   * first.
+   */
+  tracks?: CueTrack[];
 };
 
 export type Session = {
