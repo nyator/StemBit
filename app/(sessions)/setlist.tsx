@@ -11,7 +11,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { useSessions, type SessionItem } from "../../context/SessionsContext";
+import {
+  useSessions,
+  type CueTrack,
+  type SessionItem,
+} from "../../context/SessionsContext";
+import { importStems, removeStems } from "../../utils/importStems";
 import { useSessionCue } from "../../context/SessionCueContext";
 import LoopFillBar from "../../components/ui/loopFillBar";
 import { usePreferences } from "../../context/PreferencesContext";
@@ -26,7 +31,13 @@ import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { BrandInput } from "../../components/ui/brandInput";
 import { BrandButton } from "../../components/ui/brandButton";
 import { COLORS } from "../../constants/theme";
-import { Add, PlayFilled, SortPad, Stop } from "../../components/icons";
+import {
+  Add,
+  Musicnote,
+  PlayFilled,
+  SortPad,
+  Stop,
+} from "../../components/icons";
 
 // The running order, and the screen that gets used on stage.
 //
@@ -60,6 +71,13 @@ export default function SetlistScreen() {
   // draft fields below serve both: an edit is the same form, seeded.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  // Imported stems for the cue being drafted, and the tempo they were played
+  // at. The tempo is typed rather than detected: detection is a guess, and a
+  // guess that's a beat out makes every quantised launch land in the wrong
+  // place, which is worse than being asked.
+  const [tracks, setTracks] = useState<CueTrack[]>([]);
+  const [bpmText, setBpmText] = useState("");
+  const [importing, setImporting] = useState(false);
   const [loopKey, setLoopKey] = useState<string | undefined>();
   const [padPack, setPadPack] = useState<string | undefined>();
   const [padKey, setPadKey] = useState<string | undefined>();
@@ -153,8 +171,31 @@ export default function SetlistScreen() {
     setLoopKey(undefined);
     setPadPack(undefined);
     setPadKey(undefined);
+    setTracks([]);
+    setBpmText("");
     setAdding(false);
     setEditingId(null);
+  };
+
+  // Copies the files into app storage before returning, so what lands in the
+  // draft is already permanent -- the picker's URIs are cache handles the OS may
+  // delete, and a setlist that loses its audio between soundcheck and the gig is
+  // the worst failure this could have.
+  const pickStems = async () => {
+    setImporting(true);
+    try {
+      const picked = await importStems();
+      if (picked.length === 0) return; // cancelled, or nothing readable
+      // Added to whatever is there, so a song can be built up in more than one
+      // pass -- stems often live in more than one folder.
+      setTracks((current) => [...current, ...picked]);
+      if (!title.trim()) setTitle(picked[0].name);
+    } catch (error) {
+      console.error("Stem import failed", error);
+      Alert.alert("Import failed", "Those files couldn't be read.");
+    } finally {
+      setImporting(false);
+    }
   };
 
   // Open the same form over an existing cue. Nothing is written until save, so
@@ -165,24 +206,47 @@ export default function SetlistScreen() {
     setLoopKey(item.loopKey);
     setPadPack(item.padPack);
     setPadKey(item.padKey);
+    setTracks(item.tracks ?? []);
+    setBpmText(item.bpm ? String(item.bpm) : "");
     setAdding(true);
   };
 
-  const canAdd = !!title.trim() && (!!loopKey || (!!padPack && !!padKey));
+  const bpmValue = parseInt(bpmText, 10);
+  const hasValidBpm = !Number.isNaN(bpmValue) && bpmValue >= 20 && bpmValue <= 320;
+
+  // A stem cue needs its tempo typed in. Everything on the transport grid --
+  // where a launch lands, when a section changes -- is measured in beats, and a
+  // tempo that's a little wrong puts every one of those in the wrong place.
+  const canAdd =
+    !!title.trim() &&
+    (tracks.length > 0
+      ? hasValidBpm
+      : !!loopKey || (!!padPack && !!padKey));
 
   const save = () => {
     if (!id || !canAdd) return;
     const loop = loopKey ? findLoopByKey(loopKey) : null;
-    const draft = {
-      title: title.trim(),
-      loopKey,
-      // The loop's own tempo unless it's changed later: a cue that says nothing
-      // about tempo should sound exactly like loading the loop by hand.
-      bpm: loop?.bpm,
-      padPack,
-      padKey,
-      padMode: "major" as const,
-    };
+    // A cue is stems OR loop/pad, never both -- they behave differently enough
+    // on stage that one cue meaning two things would only be confusing.
+    const isStemCue = tracks.length > 0;
+
+    const draft = isStemCue
+      ? {
+          title: title.trim(),
+          tracks,
+          bpm: bpmValue,
+        }
+      : {
+          title: title.trim(),
+          loopKey,
+          // The loop's own tempo unless it's changed later: a cue that says
+          // nothing about tempo should sound exactly like loading the loop by
+          // hand.
+          bpm: loop?.bpm,
+          padPack,
+          padKey,
+          padMode: "major" as const,
+        };
 
     if (editingId) updateItem(id, editingId, draft);
     else addItem(id, draft);
@@ -191,6 +255,13 @@ export default function SetlistScreen() {
   };
 
   const describe = (item: SessionItem) => {
+    if (item.tracks?.length) {
+      const count = item.tracks.length;
+      return `${count} ${count === 1 ? "stem" : "stems"}${
+        item.bpm ? `   ·   ${item.bpm} BPM` : ""
+      }`;
+    }
+
     const parts: string[] = [];
     const loop = item.loopKey ? findLoopByKey(item.loopKey) : null;
     if (loop) parts.push(`${loop.title}${item.bpm ? ` · ${item.bpm} BPM` : ""}`);
@@ -209,7 +280,13 @@ export default function SetlistScreen() {
         {
           text: "Remove",
           style: "destructive",
-          onPress: () => removeItem(id, item.id),
+          onPress: () => {
+            removeItem(id, item.id);
+            // The cue's copied stems go with it. Nothing else can reach them
+            // once the cue is gone, so leaving them behind would quietly fill
+            // the device with audio the user can't see or delete.
+            if (item.tracks?.length) removeStems(item.tracks);
+          },
         },
       ],
       { cancelable: true }
@@ -283,6 +360,82 @@ export default function SetlistScreen() {
                 maxLength={40}
               />
 
+              {/* Stems first: a cue is either a song's stems or a loop/pad
+                  pairing, and once files are in, the pickers below have nothing
+                  to offer. */}
+              <Text className="mt-1 mb-2 text-ink font-spaceMedium text-label">
+                Stems
+              </Text>
+
+              {tracks.map((track) => (
+                <View
+                  key={track.id}
+                  className="flex-row items-center px-3 py-2 mb-2 border rounded-lg bg-surface border-hairline"
+                >
+                  <Musicnote size={16} color={COLORS.textMuted} />
+                  <Text
+                    className="flex-1 ml-2 text-white font-satoshiMedium text-[13px]"
+                    numberOfLines={1}
+                  >
+                    {track.name}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setTracks((current) =>
+                        current.filter((entry) => entry.id !== track.id)
+                      )
+                    }
+                    accessibilityLabel={`Remove ${track.name}`}
+                    hitSlop={10}
+                  >
+                    <Text className="text-[11px] text-ink-muted font-spaceBold">
+                      REMOVE
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                onPress={pickStems}
+                disabled={importing}
+                accessibilityLabel="Import stems"
+                className="items-center py-3 mb-1 border rounded-lg border-hairline"
+                style={importing ? { opacity: 0.5 } : undefined}
+              >
+                <Text className="text-xs text-white font-spaceBold">
+                  {importing
+                    ? "IMPORTING…"
+                    : tracks.length
+                      ? "ADD MORE STEMS"
+                      : "IMPORT STEMS"}
+                </Text>
+              </TouchableOpacity>
+
+              {tracks.length > 0 ? (
+                <>
+                  <Text className="mb-3 text-[11px] text-ink-muted font-satoshiRegular">
+                    Open the folder and select every stem. They&apos;ll play
+                    locked together.
+                  </Text>
+
+                  <BrandInput
+                    label="Tempo (BPM)"
+                    value={bpmText}
+                    onChangeText={(text) =>
+                      setBpmText(text.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder="e.g. 120"
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    error={
+                      bpmText && !hasValidBpm ? "Between 20 and 320" : undefined
+                    }
+                  />
+                </>
+              ) : null}
+
+              {tracks.length === 0 && (
+                <>
               <Text className="mt-1 mb-2 text-ink font-spaceMedium text-label">
                 Loop
               </Text>
@@ -339,6 +492,8 @@ export default function SetlistScreen() {
                       />
                     ))}
                   </View>
+                </>
+              )}
                 </>
               )}
 
