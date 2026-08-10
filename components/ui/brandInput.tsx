@@ -1,4 +1,9 @@
-import { forwardRef, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import {
   Text,
   TextInput,
@@ -20,14 +25,38 @@ type BrandInputProps = TextInputProps & {
   error?: string;
   rightSlot?: ReactNode;
   containerStyle?: ViewStyle;
+  /**
+   * The text input to render inside the field. Defaults to React Native's.
+   *
+   * Exists for @gorhom/bottom-sheet: a sheet only lifts itself clear of the
+   * keyboard for inputs it knows about, and a plain TextInput never reports its
+   * focus to the sheet -- so a field inside one sits under the keyboard as soon
+   * as it's tapped. Passing BottomSheetTextInput fixes that while keeping every
+   * bit of the styling here.
+   */
+  InputComponent?: ComponentType<TextInputProps>;
 };
 
 export const BrandInput = forwardRef<TextInput, BrandInputProps>(
   function BrandInput(
-    { label, error, rightSlot, containerStyle, onFocus, onBlur, ...props },
+    {
+      label,
+      error,
+      rightSlot,
+      containerStyle,
+      onFocus,
+      onBlur,
+      InputComponent,
+      ...props
+    },
     ref
   ) {
     const [focused, setFocused] = useState(false);
+    // Cast so the forwarded ref still typechecks. The prop is declared loosely
+    // (ComponentType<TextInputProps>) because gorhom's input arrives wrapped in
+    // memo + forwardRef and so isn't literally `typeof TextInput` -- but it does
+    // forward a TextInput ref, which is the part that has to hold here.
+    const Input = (InputComponent ?? TextInput) as typeof TextInput;
 
     const handleFocus: FocusHandler = (e) => {
       setFocused(true);
@@ -55,7 +84,7 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
           className="flex-row items-center w-full px-4 border-2 rounded-md bg-surface-field"
           style={{ height: FIELD_HEIGHT, borderColor }}
         >
-          <TextInput
+          <Input
             ref={ref}
             className="flex-1 text-white font-satoshiBold text-body"
             placeholderTextColor={COLORS.textFaint}

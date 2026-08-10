@@ -11,6 +11,7 @@ import {SessionsProvider} from "../context/SessionsContext";
 import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
 import {FeatureTourProvider} from "../context/FeatureTourContext";
+import {SessionCueProvider} from "../context/SessionCueContext";
 import FloatingEngineControls from "../components/floatingEngineControls";
 import FeatureTour from "../components/ui/featureTour";
 import KeepAwakeWhilePlaying from "../components/keepAwakeWhilePlaying";
@@ -68,6 +69,13 @@ function RootLayout() {
                             <UserLoopsProvider>
                             <LoopPlaybackProvider>
                                 <PadPlaybackProvider>
+                                    {/* Above the Stack because a running
+                                        setlist outlives the screen that started
+                                        it: (sessions)/setlist unmounts when the
+                                        user goes to a tab, and which cue is live
+                                        has to survive that the way the audio
+                                        does. */}
+                                    <SessionCueProvider>
                                     {/* Wraps the Stack so the tab bar (deep
                                         inside it) can register where each tab
                                         sits, and FeatureTour -- a sibling of
@@ -86,6 +94,7 @@ function RootLayout() {
                                         <FloatingEngineControls />
                                         <FeatureTour />
                                     </FeatureTourProvider>
+                                    </SessionCueProvider>
                                     <KeepAwakeWhilePlaying />
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>

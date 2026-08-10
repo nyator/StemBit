@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   PanResponder,
@@ -12,7 +12,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
 import { useSessions, type SessionItem } from "../../context/SessionsContext";
-import { useSessionCue } from "../../hooks/useSessionCue";
+import { useSessionCue } from "../../context/SessionCueContext";
+import LoopFillBar from "../../components/ui/loopFillBar";
 import { usePreferences } from "../../context/PreferencesContext";
 import { findLoopByKey, getAllLoops } from "../../constants/loops";
 import { PAD_PACKS, findPadPackByKey } from "../../constants/pads";
@@ -37,7 +38,20 @@ export default function SetlistScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { findSession, addItem, removeItem, reorderItems } = useSessions();
   const { prefs } = usePreferences();
-  const { play, stop, liveItemId } = useSessionCue();
+  const { play, stop, endSession, liveItemId, loopPhase } = useSessionCue();
+
+  // Leaving the setlist ends the set: the loop and pad tabs get back whatever
+  // they held before it started. Deliberately not on every stop -- see the note
+  // on endSession for why restoring between cues made the next one hang.
+  //
+  // Held in a ref and depended on with [], because endSession is a new closure
+  // every render. As `useEffect(() => endSession, [endSession])` the dependency
+  // changed on each render, so React ran the cleanup each time too -- ending the
+  // set continuously while the screen was in use rather than once on the way
+  // out.
+  const endSessionRef = useRef(endSession);
+  endSessionRef.current = endSession;
+  useEffect(() => () => endSessionRef.current(), []);
   const session = findSession(id);
 
   const [adding, setAdding] = useState(false);
@@ -305,6 +319,13 @@ export default function SetlistScreen() {
           {items.map((item, index) => {
             const live = liveItemId === item.id;
             const held = dragId === item.id;
+            // One handler behind both the transport and the title, so the two
+            // can never disagree about what a tap on this row does.
+            const fire = () => {
+              hapticImpact(prefs.haptics, "medium");
+              if (live) stop();
+              else play(item);
+            };
             return (
               <View
                 key={item.id}
@@ -313,53 +334,73 @@ export default function SetlistScreen() {
                   // drag counts in, and it moves with the system font size.
                   rowHeightRef.current = event.nativeEvent.layout.height + 12;
                 }}
-                className={`flex-row items-center p-3 mb-3 border rounded-lg ${
-                  live
-                    ? "bg-surface border-brand"
-                    : held
-                      ? "bg-surface border-white"
-                      : "bg-surface border-hairline"
-                }`}
+                // overflow-hidden so the sweeping fill is clipped to the row's
+                // rounded corners instead of squaring them off.
+                // overflow-hidden so the fill is clipped to the rounded corners
+                // instead of squaring them off.
+                className={`flex-row items-center p-3 mb-3 border-hairline border-2 rounded-lg overflow-hidden ${live
+                  ? "bg-surface border-brand"
+                  : held
+                    ? "bg-surface border-white"
+                    : "bg-surface border-hairline"
+                  }`}
                 style={
                   held
                     ? {
-                        transform: [{ translateY: dragOffset }],
-                        // Lifted clear of its neighbours so it's obvious which
-                        // row is in hand.
-                        zIndex: 10,
-                        elevation: 10,
-                      }
-                    : undefined
+                      minHeight: 84,
+                      transform: [{ translateY: dragOffset }],
+                      // Lifted clear of its neighbours so it's obvious which
+                      // row is in hand.
+                      zIndex: 10,
+                      elevation: 10,
+                    }
+                    : { minHeight: 84 }
                 }
               >
+                {/* Behind the row's content, and only while this cue is live:
+                    fills across in time with the loop and restarts each pass. */}
+                {live && <LoopFillBar phase={loopPhase} />}
+
                 {/* One tap: load the loop at its tempo, arm the pad at its key,
                     and go. Between songs there is no time for anything else. */}
+                {/* The transport is deliberately oversized. A 44pt target is
+                    the accessibility floor for someone sitting still; this gets
+                    hit in the dark, mid-song, by a hand that is already busy,
+                    and a missed cue is heard by the whole room. */}
                 <TouchableOpacity
-                  onPress={() => {
-                    hapticImpact(prefs.haptics, "medium");
-                    if (live) stop();
-                    else play(item);
-                  }}
+                  onPress={fire}
                   accessibilityLabel={live ? `Stop ${item.title}` : `Play ${item.title}`}
-                  className="items-center justify-center mr-3"
-                  style={{ width: 44, height: 44 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
+                  className="items-center justify-center mr-3 rounded-full"
+                  style={{
+                    width: 68,
+                    height: 68,
+                    // Filled while live so the thing you need to hit next --
+                    // stop -- is the brightest object on the row.
+                    backgroundColor: live ? COLORS.brand : "rgba(255,255,255,0.08)",
+                  }}
                 >
-                  {live ? <Stop size={34} /> : <PlayFilled size={34} />}
+                  {live ? <Stop size={40} /> : <PlayFilled size={40} />}
                 </TouchableOpacity>
 
+                {/* The title fires the cue too, roughly tripling the target.
+                    Long-press still removes, so the destructive action stays
+                    behind a deliberate gesture rather than a tap. */}
                 <TouchableOpacity
+                  onPress={fire}
                   onLongPress={() => confirmRemove(item)}
                   delayLongPress={400}
-                  style={{ flex: 1 }}
+                  accessibilityLabel={live ? `Stop ${item.title}` : `Play ${item.title}`}
+                  style={{ flex: 1, justifyContent: "center", minHeight: 68 }}
                 >
                   <Text
-                    className="text-white font-satoshiBold text-body"
+                    className={`font-satoshiBold text-lg ${live ? "text-white" : "text-white"}`}
                     numberOfLines={1}
                   >
                     {index + 1}. {item.title}
                   </Text>
                   <Text
-                    className="text-ink-muted text-[11px] font-satoshiRegular mt-[2px]"
+                    className="text-ink-muted text-[13px] font-satoshiRegular mt-[3px]"
                     numberOfLines={1}
                   >
                     {describe(item)}
@@ -375,9 +416,9 @@ export default function SetlistScreen() {
                   accessibilityLabel={`Reorder ${item.title}`}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   className="items-center justify-center ml-2"
-                  style={{ width: 40, height: 44 }}
+                  style={{ width: 48, height: 68 }}
                 >
-                  <SortPad size={22} color={held ? COLORS.brand : COLORS.white} />
+                  <SortPad size={26} color={held ? COLORS.brand : COLORS.white} />
                 </View>
               </View>
             );
@@ -401,14 +442,12 @@ function Chip({ label, selected, onPress }: ChipProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`px-4 py-2 rounded-full border ${
-        selected ? "bg-ink border-ink-muted" : "bg-white/10 border-white/20"
-      }`}
+      className={`px-4 py-2 rounded-full border ${selected ? "bg-ink border-ink-muted" : "bg-white/10 border-white/20"
+        }`}
     >
       <Text
-        className={`text-sm font-satoshiMedium ${
-          selected ? "text-black" : "text-white"
-        }`}
+        className={`text-sm font-satoshiMedium ${selected ? "text-black" : "text-white"
+          }`}
       >
         {label}
       </Text>

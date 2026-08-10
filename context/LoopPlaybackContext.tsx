@@ -6,7 +6,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { Alert, AppState } from "react-native";
+import { Alert, Animated, AppState, Easing } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { setAudioModeAsync } from "expo-audio";
 
@@ -33,6 +33,10 @@ export const LOOP_MAX_BPM = 240;
 // How long the engine gets to answer a liveness ping before it's declared
 // dead. Generous: the WebView may still be waking up after a spell in the
 // background, and a needless restart costs a re-decode.
+// Matches POSITION_INTERVAL_MS in constants/loopEngine.ts: how often the engine
+// reports the playhead, and therefore how long each tween between reports runs.
+const POSITION_REPORT_MS = 60;
+
 const ENGINE_PONG_TIMEOUT_MS = 2000;
 
 // How long playback survives after the app reports it went to the background
@@ -78,6 +82,20 @@ type LoopPlaybackContextValue = {
    */
   speedMultiplier: number;
   resetBpm: () => void;
+  /**
+   * How far through the current loop pass playback is, 0–1, resetting to 0 on
+   * every pass -- so it drives anything that has to move in time with the loop.
+   *
+   * An Animated.Value rather than a number: it changes 16 times a second, and
+   * this provider wraps the whole app, so as state it would re-render every
+   * screen for a value one row draws. Interpolate it; don't read it in render.
+   *
+   * Only the engine can know this. A bundled loop's region is found inside the
+   * WebView (silence trim, then a snap to whole beats), so its length exists
+   * nowhere in JS, and anything timed here instead would drift against the
+   * audio.
+   */
+  loopPhase: Animated.Value;
   setSelectedLoopKey: (key: string | undefined) => void;
   startLoop: () => void;
   stopLoop: () => void;
@@ -148,6 +166,18 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
 
   const webViewRef = useRef<WebView>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
+  // Position reporting is off in the engine by default because it posts a
+  // message every 60ms. It's switched on with playback and off again on stop,
+  // so the traffic only exists while something can actually be drawn from it.
+  //
+  // Deliberately an Animated.Value and NOT React state. This provider wraps the
+  // whole app, so 16 setState calls a second would re-render every tab and both
+  // navigators for a value only one row draws -- enough jank to make the thing
+  // it drives stutter. Writing to an Animated.Value re-renders nothing.
+  const loopPhase = useRef(new Animated.Value(0)).current;
+  // Last reported phase, to tell a wrap (which snaps) from normal progress
+  // (which tweens).
+  const lastPhaseRef = useRef(0);
   // Bumping this remounts the WebView, which is how a dead engine is
   // recovered (see restartEngine).
   const [engineGeneration, setEngineGeneration] = useState(0);
@@ -338,6 +368,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     isPlayingRef.current = false;
     setIsPlaying(false);
     postToEngine({ type: "stop" });
+    postToEngine({ type: "positionUpdates", enabled: false });
+    loopPhase.setValue(0);
+    lastPhaseRef.current = 0;
     release("loop");
   };
 
@@ -410,6 +443,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const beginPlayback = () => {
     isPlayingRef.current = true;
     setIsPlaying(true);
+    postToEngine({ type: "positionUpdates", enabled: true });
     postToEngine({ type: "play", rate: getPlaybackRate() });
   };
 
@@ -440,6 +474,39 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         loadClickSound(prefs.beatSound);
         postClickConfig();
         postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
+      } else if (data.type === "position") {
+        // phase is 0–1 through the current pass, or null when the engine stops
+        // and takes the playhead away.
+        const phase = typeof data.phase === "number" ? data.phase : null;
+        if (phase === null) {
+          loopPhase.setValue(0);
+          lastPhaseRef.current = 0;
+        } else if (phase < lastPhaseRef.current) {
+          // The pass wrapped. Snap: tweening down to a smaller value would run
+          // anything driven by this backwards, which reads as a rewind rather
+          // than a repeat.
+          loopPhase.setValue(phase);
+          lastPhaseRef.current = phase;
+        } else {
+          // Reports land every 60ms; stepping straight to each one visibly
+          // stair-steps, so each is tweened over exactly that interval.
+          //
+          // Tweened one step AHEAD of the reported value, not to it. The wrap
+          // happens between reports, so the last phase before a pass ends is
+          // short of 1 by however far the loop travels in 60ms -- anything
+          // driven by this then stopped visibly short of full and jumped back,
+          // never looking like it completed. Leading by the last observed
+          // increment means it arrives at 1 exactly as the wrap lands.
+          const step = phase - lastPhaseRef.current;
+          lastPhaseRef.current = phase;
+          Animated.timing(loopPhase, {
+            toValue: Math.min(1, phase + step),
+            duration: POSITION_REPORT_MS,
+            easing: Easing.linear,
+            // Interpolated into a width, which isn't a transform.
+            useNativeDriver: false,
+          }).start();
+        }
       } else if (data.type === "loaded") {
         if (data.key !== currentKeyRef.current) return; // stale select
         loopReadyRef.current = true;
@@ -619,6 +686,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         setFeelIndex,
         speedMultiplier,
         resetBpm,
+        loopPhase,
         setSelectedLoopKey,
         startLoop,
         stopLoop,

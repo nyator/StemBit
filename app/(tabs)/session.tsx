@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -8,6 +8,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  BottomSheetModal,
+  BottomSheetView,
+  BottomSheetBackdrop,
+  BottomSheetTextInput,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 
 import { useSessions } from "../../context/SessionsContext";
@@ -17,7 +24,7 @@ import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { BrandInput } from "../../components/ui/brandInput";
 import { BrandButton } from "../../components/ui/brandButton";
 import { COLORS, SHADOWS } from "../../constants/theme";
-import { Add, Musicnote } from "../../components/icons";
+import { Add, Folder, Musicnote } from "../../components/icons";
 
 // Sessions: what's been set up in advance so nothing is hunted for on stage.
 //
@@ -28,18 +35,53 @@ import { Add, Musicnote } from "../../components/icons";
 export default function SessionsScreen() {
   const router = useRouter();
   const { sessions, addSession, removeSession } = useSessions();
-  const [creating, setCreating] = useState(false);
+  const sheetRef = useRef<BottomSheetModal>(null);
   const [title, setTitle] = useState("");
   // Nothing made yet and not in the middle of making one -- the state the screen
   // is in the very first time it's opened, which is the one worth designing for.
-  const isEmpty = sessions.length === 0 && !creating;
+  // The new-session form used to be an inline panel that pushed the list down,
+  // so this also excluded it -- the empty-state invitation had to get out of its
+  // way. The sheet covers the list instead, and keeping that guard only made the
+  // invitation flicker away and back as the sheet opened and closed.
+  const isEmpty = sessions.length === 0;
+
+  const close = () => {
+    sheetRef.current?.dismiss();
+    setTitle("");
+  };
 
   const create = () => {
-    const session = addSession(title);
-    setTitle("");
-    setCreating(false);
+    if (!title.trim()) return;
+    const session = addSession(title.trim());
+    close();
     router.push({ pathname: "/setlist", params: { id: session.id } });
   };
+
+  // Same backdrop as the info sheets and the loop picker, so every sheet in the
+  // app dims the screen by the same amount and closes the same way.
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+        pressBehavior="close"
+      />
+    ),
+    []
+  );
+
+  // Placeholder for bringing a whole project in -- stems, cues and running
+  // order in one file, rather than building a set a cue at a time. It's here
+  // rather than hidden until it's built because this is where someone will look
+  // for it, and being told it's coming is more use than finding nothing.
+  const importProject = () =>
+    Alert.alert(
+      "Import project",
+      "Bringing in stems and running orders from a project file isn't ready yet. For now, make a session and add cues to it by hand.",
+      [{ text: "OK" }]
+    );
 
   const confirmRemove = (id: string, name: string) =>
     Alert.alert(
@@ -64,20 +106,81 @@ export default function SessionsScreen() {
       <HeaderComponent />
 
 
-      {creating && (
-        <View className="px-5 mb-2">
+      {/* The same sheet the subdivision hints and the loop picker use, so
+          everything that comes up from the bottom of this app looks and
+          behaves the same way.
+
+          enableDynamicSizing rather than a fixed snap point: this is a short
+          form, and a fixed height would leave it floating in empty space. */}
+      <BottomSheetModal
+        ref={sheetRef}
+        enableDynamicSizing
+        // The name field lives in here, so the sheet has to ride the keyboard
+        // rather than sit under it.
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        // Without this Android pans the whole window instead of resizing it,
+        // and the sheet has no room to move into -- the field stays under the
+        // keyboard however the sheet is configured.
+        android_keyboardInputMode="adjustResize"
+        backdropComponent={renderBackdrop}
+        backgroundStyle={{
+          backgroundColor: "#090B10",
+          borderTopLeftRadius: 30,
+          borderTopRightRadius: 30,
+        }}
+        handleIndicatorStyle={{
+          backgroundColor: "rgba(255,255,255,0.4)",
+          width: 48,
+        }}
+      >
+        <BottomSheetView
+          style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 44 }}
+        >
+          <Text className="mb-4 text-white text-2xl font-spaceBold">
+            New session
+          </Text>
+
           <BrandInput
+            // Gorhom's input, not React Native's: the sheet only lifts itself
+            // clear of the keyboard for fields it can see the focus of, so a
+            // plain TextInput here would end up underneath it.
+            InputComponent={BottomSheetTextInput}
             label="Session name"
             value={title}
             onChangeText={setTitle}
             placeholder="Summer tour, Sunday services…"
             maxLength={40}
-            autoFocus
             onSubmitEditing={create}
           />
           <BrandButton label="Create session" onPress={create} />
-        </View>
-      )}
+
+          <View className="flex-row items-center my-5">
+            <View className="flex-1 h-px bg-hairline" />
+            <Text className="mx-3 text-[11px] text-ink-muted font-satoshiRegular">
+              OR
+            </Text>
+            <View className="flex-1 h-px bg-hairline" />
+          </View>
+
+          <TouchableOpacity
+            onPress={importProject}
+            accessibilityLabel="Import project"
+            activeOpacity={0.8}
+            className="flex-row items-center p-4 border rounded-lg border-hairline"
+          >
+            <Folder size={22} color={COLORS.textMuted} />
+            <View className="flex-1 ml-3">
+              <Text className="text-white font-satoshiMedium">
+                Import project
+              </Text>
+              <Text className="text-ink-muted text-[12px] font-satoshiRegular mt-[2px]">
+                Stems and running order from a file — coming soon
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </BottomSheetView>
+      </BottomSheetModal>
 
       <ScrollView
         className="flex-1 px-5"
@@ -140,8 +243,8 @@ export default function SessionsScreen() {
           pill is 228pt wide and centred, so the right-hand corner is empty, and
           a thumb reaches it without crossing the screen. */}
       <TouchableOpacity
-        onPress={() => setCreating((open) => !open)}
-        accessibilityLabel={creating ? "Close the new session form" : "New session"}
+        onPress={() => sheetRef.current?.present()}
+        accessibilityLabel="New session"
         activeOpacity={0.85}
         className="absolute items-center justify-center rounded-full bg-brand"
         style={{
@@ -152,12 +255,9 @@ export default function SessionsScreen() {
           ...SHADOWS.float,
         }}
       >
-        <Add
-          size={26}
-          color={COLORS.white}
-          // A quarter turn makes the same glyph read as a close.
-          style={creating ? { transform: [{ rotate: "45deg" }] } : undefined}
-        />
+        {/* No longer rotates to a close: the sheet owns its own dismissal, so
+            the button only ever means "new". */}
+        <Add size={26} color={COLORS.white} />
       </TouchableOpacity>
     </SafeAreaView>
   );
