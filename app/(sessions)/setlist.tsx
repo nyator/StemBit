@@ -36,7 +36,8 @@ import { Add, PlayFilled, SortPad, Stop } from "../../components/icons";
 
 export default function SetlistScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { findSession, addItem, removeItem, reorderItems } = useSessions();
+  const { findSession, addItem, updateItem, removeItem, reorderItems } =
+    useSessions();
   const { prefs } = usePreferences();
   const { play, stop, endSession, liveItemId, loopPhase } = useSessionCue();
 
@@ -55,6 +56,9 @@ export default function SetlistScreen() {
   const session = findSession(id);
 
   const [adding, setAdding] = useState(false);
+  // Id of the cue being edited, or null when the form is making a new one. The
+  // draft fields below serve both: an edit is the same form, seeded.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [loopKey, setLoopKey] = useState<string | undefined>();
   const [padPack, setPadPack] = useState<string | undefined>();
@@ -150,14 +154,26 @@ export default function SetlistScreen() {
     setPadPack(undefined);
     setPadKey(undefined);
     setAdding(false);
+    setEditingId(null);
+  };
+
+  // Open the same form over an existing cue. Nothing is written until save, so
+  // backing out with CANCEL leaves the cue as it was.
+  const startEdit = (item: SessionItem) => {
+    setEditingId(item.id);
+    setTitle(item.title);
+    setLoopKey(item.loopKey);
+    setPadPack(item.padPack);
+    setPadKey(item.padKey);
+    setAdding(true);
   };
 
   const canAdd = !!title.trim() && (!!loopKey || (!!padPack && !!padKey));
 
-  const create = () => {
+  const save = () => {
     if (!id || !canAdd) return;
     const loop = loopKey ? findLoopByKey(loopKey) : null;
-    addItem(id, {
+    const draft = {
       title: title.trim(),
       loopKey,
       // The loop's own tempo unless it's changed later: a cue that says nothing
@@ -165,8 +181,12 @@ export default function SetlistScreen() {
       bpm: loop?.bpm,
       padPack,
       padKey,
-      padMode: "major",
-    });
+      padMode: "major" as const,
+    };
+
+    if (editingId) updateItem(id, editingId, draft);
+    else addItem(id, draft);
+
     resetDraft();
   };
 
@@ -195,6 +215,26 @@ export default function SetlistScreen() {
       { cancelable: true }
     );
 
+  // Editing and removing both live behind the long press rather than on the row
+  // itself. The row is the stage surface -- one tap fires the cue, and every
+  // extra control on it is something to hit by mistake in the dark. Changing a
+  // setlist is something you do beforehand, and it can afford a second step.
+  const openCueActions = (item: SessionItem) =>
+    Alert.alert(
+      item.title,
+      undefined,
+      [
+        { text: "Edit cue", onPress: () => startEdit(item) },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => confirmRemove(item),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+      { cancelable: true }
+    );
+
   return (
     <SafeAreaView className="flex-1 bg-canvas">
       <StatusBar barStyle="light-content" />
@@ -204,7 +244,11 @@ export default function SetlistScreen() {
         title={session?.title ?? "Session"}
         action={
           <TouchableOpacity
-            onPress={() => setAdding((open) => !open)}
+            // Always resets to a blank new cue rather than toggling. Toggling
+            // left editingId set when the form was open over an existing cue,
+            // so the next save would quietly overwrite that one instead of
+            // adding.
+            onPress={() => (adding ? resetDraft() : setAdding(true))}
             accessibilityLabel="Add a cue"
             className="p-2 rounded-full bg-brand"
           >
@@ -228,6 +272,9 @@ export default function SetlistScreen() {
         >
           {adding && (
             <View className="p-4 mb-4 border rounded-lg bg-surface border-hairline">
+              <Text className="mb-3 text-white font-satoshiBold text-title">
+                {editingId ? "Edit cue" : "New cue"}
+              </Text>
               <BrandInput
                 label="Cue name"
                 value={title}
@@ -296,8 +343,8 @@ export default function SetlistScreen() {
               )}
 
               <BrandButton
-                label="Add to setlist"
-                onPress={create}
+                label={editingId ? "Save changes" : "Add to setlist"}
+                onPress={save}
                 disabled={!canAdd}
                 style={{ marginTop: 20 }}
               />
@@ -388,7 +435,7 @@ export default function SetlistScreen() {
                     behind a deliberate gesture rather than a tap. */}
                 <TouchableOpacity
                   onPress={fire}
-                  onLongPress={() => confirmRemove(item)}
+                  onLongPress={() => openCueActions(item)}
                   delayLongPress={400}
                   accessibilityLabel={live ? `Stop ${item.title}` : `Play ${item.title}`}
                   style={{ flex: 1, justifyContent: "center", minHeight: 68 }}
