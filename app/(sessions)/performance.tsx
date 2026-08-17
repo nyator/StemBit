@@ -1,0 +1,2186 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  Modal,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  BottomSheetModal,
+  BottomSheetScrollView,
+} from "@gorhom/bottom-sheet";
+
+import {
+  useSessions,
+  UNTITLED_CUE,
+  type CueSection,
+  type CueTrack,
+  type SessionItem,
+} from "../../context/SessionsContext";
+import {
+  importStems,
+  readStemSections,
+  removeStems,
+} from "../../utils/importStems";
+import {
+  useSessionPlayback,
+  type PlaySpan,
+  type TrackMix,
+} from "../../context/SessionPlaybackContext";
+import { usePreferences } from "../../context/PreferencesContext";
+import { useSessionCue } from "../../context/SessionCueContext";
+import { useLoopPlayback } from "../../context/LoopPlaybackContext";
+import { KEYS, usePadPlayback } from "../../context/PadPlaybackContext";
+import { useLiveSections } from "../../hooks/useLiveSections";
+import { PAD_PACKS } from "../../constants/pads";
+import { findLoopByKey } from "../../constants/loops";
+import { hapticImpact } from "../../utils/haptics";
+import { describeCue } from "../../utils/describeCue";
+
+import ScreenHeader from "../../components/ui/screenHeader";
+import TrackTimeline from "../../components/ui/trackTimeline";
+import { BrandInput } from "../../components/ui/brandInput";
+import MixerStrip from "../../components/ui/mixerStrip";
+import TrackTile, { trackColor } from "../../components/ui/trackTile";
+import TransportReadout from "../../components/ui/transportReadout";
+import CueReadout from "../../components/ui/cueReadout";
+import CueElements, {
+  CueSummary,
+  TempoStepper,
+  clampBpm,
+} from "../../components/ui/cueElements";
+import SectionPad from "../../components/ui/sectionPad";
+import AmbientGlow from "../../components/ui/ambientGlow";
+import {
+  MAX_SHEET_HEIGHT,
+  SHEET_BACKGROUND,
+  SHEET_HANDLE_INDICATOR,
+  useSheetBackdrop,
+} from "../../components/ui/sheet";
+import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import { COLORS, SHADOWS } from "../../constants/theme";
+import {
+  Musicnote,
+  Play,
+  PlayFilled,
+  SortPad,
+  Stop,
+} from "../../components/icons";
+
+// Playing one stem song.
+//
+// A song's worth of stems can't be performed from a row in a list, which is
+// what it had before this: start, stop, and no way to touch a track. This is
+// the surface you stand in front of for the length of the song, so everything
+// on it is sized for a hand that is already busy, in the dark, with no time.
+//
+// The layout follows from that. Two columns rather than a list, because the
+// tiles have to be big enough to hit without aiming and a list of full-width
+// rows would put the last stem off the bottom of the screen. Mute state is
+// carried by the whole tile -- fill and border, not a small control inside it
+// -- so which parts are sounding reads from arm's length.
+//
+// That is the PERFORM view, and it is one of two, because a stem song is worked
+// on in two completely different postures. On stage you are hitting things you
+// cannot look at. Beforehand -- at a table, with time -- you are finding where
+// the bridge starts, deciding how far under the band the guide keys sit, and
+// checking the drums actually drop where you think they do. Those wants are not
+// a compromise away from each other: one needs the biggest possible targets and
+// no detail, the other needs detail and no targets at all. So STUDIO is the
+// picture every DAW draws (stems stacked in time, one ruler, one playhead, a
+// mixer under it) and PERFORM is section pads and track tiles, one tap away.
+//
+// Once the two exist, PERFORM stops needing a waveform at all. A waveform is
+// for placing things precisely, which is a studio job and now has a studio
+// surface with zoom on it; on stage it is a picture you cannot act on holding
+// space that the pads and the emergency solo want. So the split is not just
+// where the controls live, it is what each view is allowed to contain.
+//
+// What PERFORM does need is the header every stage rig ends up with -- MainStage
+// and the Studio One show page both open with the same block, and they open with
+// it because the questions it answers are the ones asked between songs: what is
+// running, how far in, how long left, what is next. Nothing above it is worth
+// the vertical space it would cost. Below that the surface is targets: section
+// pads, then one tile per stem, then a transport whose buttons never move.
+//
+// Every cue opens here, not only the ones with stems in them.
+//
+// It started as the stem song's screen, which left the running order split in
+// two: a song had somewhere to stand in front of and a loop cue did not, so
+// PREV and NEXT went dead every time the set reached one. A set is played
+// straight through -- the walk-in loop, the song, the altar-call pad -- and a
+// way through it that skips two of those three is not a way through it.
+//
+// So both views take a loop cue too, and they mean the same thing they mean for
+// a song. STUDIO is what the cue is made of, which for a song is stems in time
+// and for a loop cue is the choices it holds: which loop, how fast, which pad,
+// what key. PERFORM is that made ready to fire. What is deliberately identical
+// across the two kinds is the frame -- the header, the block at the top, the
+// two buttons that step through the set, the transport at the bottom -- because
+// between songs you are not asking what kind of cue you opened.
+
+/** What a stem sits at before anyone touches it, and what an old cue implies. */
+const DEFAULT_MIX: TrackMix = { level: 1, pan: 0, muted: false };
+
+/**
+ * The shortest a section is allowed to get while an edge is dragged.
+ *
+ * Not a musical length -- it isn't there to say what a sensible section is, it
+ * is there so the two edges can't cross. Small enough that a drag never feels
+ * like it's being fought.
+ */
+const MIN_SECTION_SECONDS = 0.25;
+
+/**
+ * The cue's name, at the top of both STUDIO views.
+ *
+ * First because it is the first thing a new cue needs, and because the running
+ * order is read by it. Its own component only so the two views can't drift
+ * apart on where it sits or what it says.
+ */
+function CueNameField({
+  value,
+  onChangeText,
+  onCommit,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <BrandInput
+      label="Cue name"
+      value={value}
+      onChangeText={onChangeText}
+      // Saved on the way out of the field rather than per keystroke, which is
+      // also when the name is finished being typed.
+      onBlur={onCommit}
+      onSubmitEditing={onCommit}
+      placeholder="Opener, Altar call…"
+      maxLength={40}
+      returnKeyType="done"
+    />
+  );
+}
+
+/** One imported stem, with the way to take it back out. */
+function StemRow({
+  name,
+  onRemove,
+}: {
+  name: string;
+  onRemove: () => void;
+}) {
+  return (
+    <View className="flex-row items-center px-3 py-2 mb-2 border rounded-lg bg-surface border-hairline">
+      <Musicnote size={16} color={COLORS.textMuted} />
+      <Text
+        className="flex-1 ml-2 text-white font-satoshiMedium text-[13px]"
+        numberOfLines={1}
+      >
+        {name}
+      </Text>
+      <TouchableOpacity
+        onPress={onRemove}
+        accessibilityLabel={`Remove ${name}`}
+        hitSlop={10}
+      >
+        <Text className="text-[11px] text-ink-muted font-spaceBold">REMOVE</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/** Picks stems, and says so while the copy is happening. */
+function ImportStemsButton({
+  hasStems,
+  importing,
+  onPress,
+}: {
+  hasStems: boolean;
+  importing: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={importing}
+      accessibilityLabel="Import stems"
+      className="items-center py-3 border rounded-lg border-hairline"
+      style={importing ? { opacity: 0.5 } : undefined}
+    >
+      <Text className="text-xs text-white font-spaceBold">
+        {importing
+          ? "IMPORTING…"
+          : hasStems
+            ? "ADD MORE STEMS"
+            : "IMPORT STEMS"}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+const clock = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+
+export default function PerformanceScreen() {
+  const { sessionId, itemId, view: viewParam } = useLocalSearchParams<{
+    sessionId?: string;
+    itemId?: string;
+    /** Which view to land on -- see the note on `view` below. */
+    view?: string;
+  }>();
+  const router = useRouter();
+  const { findSession, updateItem, removeItem } = useSessions();
+  const { prefs } = usePreferences();
+  const session = useSessionPlayback();
+  // A loop or pad cue is fired the same way the setlist row fires it -- through
+  // the cue context, which loads the loop, sets the tempo and arms the pad in
+  // the order those have to happen in. This screen doesn't reimplement that; it
+  // just gives it somewhere bigger to be pressed from.
+  const {
+    armPad,
+    releasePad,
+    play: fireCue,
+    stop: stopCue,
+    stopTransport: stopCueTransport,
+    liveItemId,
+    loopPhase,
+  } = useSessionCue();
+  // Only for a tempo nudge landing on a loop that is already sounding. Everything
+  // else about the loop engine is the cue context's business.
+  const { setBpm: setEngineBpm } = useLoopPlayback();
+  const pad = usePadPlayback();
+
+  const setlist = findSession(sessionId);
+  const cueIndex = setlist?.items.findIndex((item) => item.id === itemId) ?? -1;
+  const cue = cueIndex >= 0 ? setlist?.items[cueIndex] : undefined;
+  // What sits either side of this song in the running order. Only a stem cue
+  // can be opened here -- a loop or pad cue has no per-track surface to stand
+  // in front of and is fired from the setlist row itself -- so anything else is
+  // shown as a name and nothing more.
+  //
+  // The immediate neighbour, not the nearest one with stems in it. Skipping the
+  // loop cue between two songs would make NEXT point past something the set
+  // says is coming, and a running order that quietly omits parts of itself is
+  // worse than a button that says why it can't move.
+  const prevCue = cueIndex > 0 ? setlist?.items[cueIndex - 1] : undefined;
+  const nextCue = cueIndex >= 0 ? setlist?.items[cueIndex + 1] : undefined;
+  const tracks = cue?.tracks ?? [];
+  const sections = cue?.sections ?? [];
+  const bpm = cue?.bpm ?? 120;
+
+  // Which kind of cue this is, which decides what both views contain.
+  //
+  // A stem song is audio laid out in time, so STUDIO is a timeline and a mixer
+  // and PERFORM is section pads. A loop cue has no such picture -- it is a
+  // handful of choices about what to put in the room -- so STUDIO is those
+  // choices and PERFORM is what they add up to. What does not change is the
+  // frame: the same header, the same block at the top, the same two buttons for
+  // moving through the set, the transport in the same place. Between songs you
+  // are not asking which kind of cue you opened.
+  const isStemCue = tracks.length > 0;
+  const loop = cue?.loopKey ? findLoopByKey(cue.loopKey) : undefined;
+  // A loop cue's transport lives in the cue context rather than in this screen,
+  // so "is this one sounding" is a question about the set, not about an engine.
+  const cueIsLive = !!cue && liveItemId === cue.id;
+  /** Anything audible from this cue, whichever engine is producing it. */
+  const isSounding = isStemCue ? session.isPlaying : cueIsLive;
+
+  // Which posture the screen opens in, chosen by whoever opened it.
+  //
+  // The two views are now two different jobs rather than two levels of detail:
+  // STUDIO is where a cue is built and named, PERFORM is where it is fired. So
+  // the way in decides -- adding a cue or editing one lands in STUDIO, the
+  // PERFORM buttons on the setlist land in PERFORM -- rather than everything
+  // arriving at the same place and needing a tap to correct it.
+  //
+  // Read once, on the way in. Stepping to another cue doesn't remount this
+  // screen, so whichever view you are working in is the one you stay in.
+  const [view, setView] = useState<"studio" | "perform">(
+    viewParam === "perform" ? "perform" : "studio"
+  );
+
+  // The mix, held here rather than read straight off the cue.
+  //
+  // Levels and pans are saved to the cue (they're a decision about the song,
+  // made once and wanted again next time), but mute is not: dropping the vocal
+  // because the singer is talking is a decision about tonight, and persisting
+  // it would write to disk on every tap and bring last night's mutes back to
+  // the next gig. So this starts from what was saved, with everything unmuted.
+  const [mix, setMix] = useState<Record<string, TrackMix>>({});
+  // Solo is separate from mute rather than derived from it. Dropping the vocal
+  // and soloing the drums are different intents, and collapsing them means
+  // clearing a solo has to guess which tracks you had muted beforehand.
+  const [soloed, setSoloed] = useState<string | null>(null);
+  // Everything down at once, without disturbing which tracks were muted.
+  //
+  // The one control on this screen that exists for a specific bad moment: the
+  // wrong song is playing, or someone starts talking, and the whole thing has to
+  // stop being audible immediately. Stop would do it too, but stop loses where
+  // you were and the song can't be resumed from it; this is reversible.
+  const [masterMuted, setMasterMuted] = useState(false);
+
+  // Which section is sounding, and which has been hit but hasn't landed yet --
+  // a launch is quantised to the next bar, so there is a real gap between the
+  // press and the change, and a pad that lights instantly is lying about it.
+  //
+  // From a hook because the setlist's expanded row draws these same pads, and
+  // two surfaces disagreeing about which section is live would be worse than
+  // either answer on its own. It owns the playhead too, since a pad's fill is
+  // interpolated straight off it.
+  const {
+    playheadSeconds: playheadValue,
+    liveSectionId,
+    armedSectionId,
+    arm: armSection,
+  } = useLiveSections(sections);
+
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  // The running order, over the top of the performance screen.
+  //
+  // The rail down the left of every desktop show page, which a phone has no
+  // room for -- so it is a sheet you pull up instead. Same job: getting to
+  // another song in the set without walking back out to the setlist and in
+  // again, which is a lot of navigation for something you do between every song.
+  const [browsingSet, setBrowsingSet] = useState(false);
+  const setlistSheetRef = useRef<BottomSheetModal>(null);
+  const renderBackdrop = useSheetBackdrop();
+
+  // The sheet is driven imperatively and this screen thinks in state, so the
+  // two are bridged here. Dismissing an already-dismissed sheet is a no-op.
+  useEffect(() => {
+    if (browsingSet) setlistSheetRef.current?.present();
+    else setlistSheetRef.current?.dismiss();
+  }, [browsingSet]);
+
+  // Where the transport will start from. Distinct from where the audio is: with
+  // the transport stopped only this one exists, and it is the thing a drag on
+  // the timeline moves.
+  const [cursorSeconds, setCursorSeconds] = useState(0);
+  const [loopEnabled, setLoopEnabled] = useState(false);
+
+  // Held stable across renders, because dragging the playhead re-renders this
+  // screen at the frame rate and the timeline only skips redrawing its
+  // waveforms if the list it was handed is the same list it saw last time.
+  const timelineTracks = useMemo(
+    () => tracks.map((track) => ({ id: track.id, name: track.name })),
+    [tracks]
+  );
+
+  // The song's shape, one measurement per stem. All of them, rather than one
+  // picture of the song: seeing the drums drop out under the bridge while the
+  // keys hold is the entire reason to have a timeline, and a single combined
+  // waveform cannot show it.
+  const [peaks, setPeaks] = useState<Record<string, number[]>>({});
+  const [duration, setDuration] = useState(0);
+  const [timelineWidth, setTimelineWidth] = useState(0);
+
+  // Driven straight from the engine's reports rather than through state: the
+  // playhead and the meters move sixteen times a second, and as state that is
+  // sixteen renders of this whole screen per second to shift a 2px line.
+  const metersRef = useRef<Map<string, Animated.Value>>(new Map());
+  const meterFor = (trackId: string) => {
+    let value = metersRef.current.get(trackId);
+    if (!value) {
+      value = new Animated.Value(0);
+      metersRef.current.set(trackId, value);
+    }
+    return value;
+  };
+
+  // Subscribed rather than read off the context: the transport reports 16 times
+  // a second, and this keeps that traffic to this screen instead of the app.
+  //
+  // Nothing here reaches state. Every moving thing on this screen -- the
+  // playhead, each meter -- is an Animated.Value, so the transport running does
+  // not re-render anything at all. That is only possible because the bar/beat
+  // counter is gone: a number on screen is the one thing that has to go through
+  // React, and it was costing a render of the whole screen per beat.
+  useEffect(
+    () =>
+      session.subscribePosition((next) => {
+        metersRef.current.forEach((value, trackId) => {
+          value.setValue(next.levels[trackId] ?? 0);
+        });
+      }),
+    [session]
+  );
+
+  // Stopped, the playhead sits on the cursor -- that is where play would start,
+  // and a playhead left where the audio stopped would be pointing at the past.
+  useEffect(() => {
+    if (!session.isPlaying) playheadValue.setValue(cursorSeconds);
+  }, [cursorSeconds, session.isPlaying, playheadValue]);
+
+  // A different cue: forget everything measured or decided about the last one.
+  //
+  // This screen is never remounted between cues -- PREV, NEXT and the setlist
+  // sheet all rewrite its params rather than navigating, see openCue -- so
+  // nothing here is cleared for us. Every piece of state that describes the cue
+  // rather than the session has to be dropped by hand.
+  //
+  // Duration especially: it is accumulated with Math.max across the stems, so a
+  // longer previous song's value would leave the progress bar and the remaining
+  // time measuring against a song that isn't playing.
+  useEffect(() => {
+    setPeaks({});
+    setDuration(0);
+    setCursorSeconds(0);
+    setSoloed(null);
+    setMasterMuted(false);
+    // A section id belonging to the cue we just left, which would otherwise sit
+    // there arming RENAME and DELETE against a section that isn't on screen.
+    setSelectedSectionId(null);
+  }, [cue?.id]);
+
+  // The stems are decoded on arrival so the first press starts immediately
+  // rather than after a wait. Between soundcheck and the downbeat there is
+  // time for this; between two songs there isn't.
+  useEffect(() => {
+    if (!cue?.id || tracks.length === 0) return;
+    session.loadCue(cue.id, tracks).catch((error) => {
+      console.error("Failed to load stems", error);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cue?.id]);
+
+  // Seeded from the cue once the stems are in, then pushed to the engine, so a
+  // level set last week is in place before a note sounds rather than snapping
+  // in after the first fader touch.
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    const seeded: Record<string, TrackMix> = {};
+    tracks.forEach((track) => {
+      seeded[track.id] = {
+        level: typeof track.level === "number" ? track.level : 1,
+        pan: typeof track.pan === "number" ? track.pan : 0,
+        muted: false,
+      };
+    });
+    setMix(seeded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cue?.id, tracks.length]);
+
+  useEffect(() => {
+    if (!session.isReady) return;
+    Object.entries(mix).forEach(([trackId, track]) => {
+      session.setTrack(trackId, {
+        level: track.level,
+        pan: track.pan,
+        muted: masterMuted || (soloed ? trackId !== soloed : track.muted),
+      });
+    });
+    // Runs on readiness rather than on every mix change: the handlers below
+    // already push their own change to the engine the moment it is made, and
+    // repeating the whole mix on each of them would ramp every other track's
+    // gain for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.isReady, cue?.id]);
+
+  // Measured one stem at a time. Each of these walks a whole decoded buffer
+  // inside the WebView, and asking for four at once holds the page long enough
+  // to be seen as a stall.
+  useEffect(() => {
+    // Readiness alone isn't enough to ask for a waveform: it is the engine's
+    // answer about whatever cue it is holding, which during a swap is still the
+    // last one. Measuring then asks for tracks it has never been given, and
+    // every one of those waits out its timeout before admitting it.
+    if (
+      !session.isReady ||
+      session.loadedCueId !== cue?.id ||
+      tracks.length === 0
+    ) {
+      return;
+    }
+    let cancelled = false;
+
+    (async () => {
+      for (const track of tracks) {
+        try {
+          const measured = await session.getPeaks(track.id);
+          if (cancelled) return;
+          setPeaks((previous) => ({ ...previous, [track.id]: measured.peaks }));
+          setDuration((previous) => Math.max(previous, measured.duration));
+        } catch {
+          // No shape for one stem is survivable -- its lane draws empty and
+          // everything else on the screen still works.
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.isReady, session.loadedCueId, cue?.id, tracks.length]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Mix                                                                     */
+  /* ---------------------------------------------------------------------- */
+
+  const mixOf = (trackId: string) => mix[trackId] ?? DEFAULT_MIX;
+
+  /**
+   * Whether a track is audible, from all three things that can silence it.
+   *
+   * One function because the answer has to be the same everywhere: the tile, the
+   * channel strip, the timeline lane and the engine all have to agree, and three
+   * of those are only showing what the fourth is doing.
+   */
+  const isSilent = (
+    trackId: string,
+    solo: string | null = soloed,
+    master: boolean = masterMuted
+  ) => master || (solo ? trackId !== solo : mixOf(trackId).muted);
+
+  /** Pushes one track to the engine, with the master and any solo winning. */
+  const pushTrack = (
+    trackId: string,
+    next: TrackMix,
+    solo: string | null,
+    master: boolean
+  ) => {
+    session.setTrack(trackId, {
+      level: next.level,
+      pan: next.pan,
+      muted: master || (solo ? trackId !== solo : next.muted),
+    });
+  };
+
+  const changeMix = (trackId: string, changes: Partial<TrackMix>) => {
+    const next = { ...mixOf(trackId), ...changes };
+    setMix((previous) => ({ ...previous, [trackId]: next }));
+    pushTrack(trackId, next, soloed, masterMuted);
+  };
+
+  /**
+   * Writes levels and pans back to the cue.
+   *
+   * Called on release rather than on every frame of a fader move: this
+   * serialises the whole setlist to disk, and doing it per frame would write a
+   * few hundred times per gesture.
+   */
+  const saveMix = () => {
+    if (!sessionId || !itemId || tracks.length === 0) return;
+    updateItem(sessionId, itemId, {
+      tracks: tracks.map<CueTrack>((track) => ({
+        ...track,
+        level: mixOf(track.id).level,
+        pan: mixOf(track.id).pan,
+      })),
+    });
+  };
+
+  const toggleMute = (trackId: string) => {
+    hapticImpact(prefs.haptics, "medium");
+    changeMix(trackId, { muted: !mixOf(trackId).muted });
+  };
+
+  const toggleSolo = (trackId: string) => {
+    hapticImpact(prefs.haptics, "heavy");
+    // Soloing the track already soloed clears it, which is the fastest way back
+    // to the full mix and the thing you want when the moment has passed.
+    const next = soloed === trackId ? null : trackId;
+    setSoloed(next);
+    // Solo changes what every track hears, not just this one, so the whole mix
+    // goes to the engine rather than one line of it.
+    tracks.forEach((track) =>
+      pushTrack(track.id, mixOf(track.id), next, masterMuted)
+    );
+  };
+
+  const toggleMasterMute = () => {
+    hapticImpact(prefs.haptics, "heavy");
+    const next = !masterMuted;
+    setMasterMuted(next);
+    tracks.forEach((track) => pushTrack(track.id, mixOf(track.id), soloed, next));
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* Transport                                                               */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * The section a moment falls inside.
+   *
+   * The last one that has started and not yet ended. Both edges are checked
+   * because sections no longer have to be contiguous -- a moment in the gap
+   * between two of them is inside neither, and looping it against the section
+   * before would loop a span nobody marked.
+   */
+  const containingSection = (seconds: number) =>
+    [...sections]
+      .reverse()
+      .find(
+        (section) =>
+          seconds >= section.startSeconds - 0.001 &&
+          (section.endSeconds === undefined || seconds < section.endSeconds)
+      );
+
+  /**
+   * What STUDIO's play button launches: the song from the cursor.
+   *
+   * With LOOP on it launches the section the cursor is sitting in instead,
+   * from that section's start. Looping an arbitrary cursor-to-section-end span
+   * would be a length nobody chose; looping the section is the thing the button
+   * is actually for.
+   */
+  const spanFromCursor = (): PlaySpan => {
+    const containing = loopEnabled ? containingSection(cursorSeconds) : undefined;
+    if (containing) {
+      return {
+        id: containing.id,
+        startSeconds: containing.startSeconds,
+        endSeconds: containing.endSeconds,
+        loop: true,
+      };
+    }
+    return { id: "cursor", startSeconds: cursorSeconds, loop: loopEnabled };
+  };
+
+  const toggleStudioTransport = () => {
+    hapticImpact(prefs.haptics, "heavy");
+    if (session.isPlaying) {
+      session.stop();
+      return;
+    }
+    // Immediately, not on the next bar: in the studio view you have pointed at
+    // a spot and asked to hear it, and waiting a bar first is just a delay.
+    session.play(tracks, bpm, 0, spanFromCursor());
+  };
+
+  /**
+   * PERFORM's two transport buttons, which do one thing each.
+   *
+   * Deliberately not one button that changes meaning. A toggle is fine on a
+   * screen you are looking at; hit blind, halfway through a song, it is a coin
+   * toss on what the app thinks the state is -- and getting it wrong either
+   * kills the song or restarts it. Two fixed buttons can be found by position
+   * and pressed without checking.
+   */
+  const playFromTop = () => {
+    if (session.isPlaying || tracks.length === 0) return;
+    hapticImpact(prefs.haptics, "heavy");
+    // From the top, or from the first section if the song has them -- and then
+    // straight on through the song.
+    //
+    // The span is spelled out rather than handing the section over as-is. A
+    // section carries the end of itself and the engine loops a span by default,
+    // which is what a section pad wants (hold on the chorus and it comes round
+    // again) and the exact opposite of what PLAY means: passing the first
+    // section here left the song repeating its intro instead of playing.
+    session.play(tracks, bpm, 0, {
+      id: "song",
+      startSeconds: sections[0]?.startSeconds ?? 0,
+      loop: false,
+    });
+  };
+
+  const stopTransport = () => {
+    hapticImpact(prefs.haptics, "heavy");
+    session.stop();
+  };
+
+  // Sections launch on the next bar rather than under the finger. That's the
+  // whole point: you hit "Chorus" somewhere in the verse and the change lands
+  // where the band expects it, not where your thumb happened to be.
+  const launchSection = (section: CueSection) => {
+    hapticImpact(prefs.haptics, "heavy");
+    session.play(tracks, bpm, 4, section);
+    // Pending until the playhead reaches it.
+    armSection(section.id);
+  };
+
+  /**
+   * Hand this screen another cue from the running order.
+   *
+   * setParams, not a push or a replace. Moving along a setlist is not
+   * navigation -- it is the same surface pointed at the next thing -- and both
+   * of the navigating options say otherwise. A push stacks every cue played
+   * tonight behind the back button; a replace looks right but isn't, because
+   * expo-router gives the incoming route a fresh key, so the screen tears down
+   * and rebuilds with the stack's slide animation over it. Which is exactly
+   * what it looks like: pressing NEXT appeared to open a new screen.
+   *
+   * Rewriting the params instead re-renders this screen in place. Nothing
+   * animates, nothing unmounts, and everything the screen was holding -- which
+   * view you were in, the sheet, the mix in progress -- is still there. The
+   * effects keyed on the cue's id still fire, which is what swaps the audio.
+   *
+   * It loads and stops there rather than playing. The stems take a moment to
+   * decode, so a tap that meant "line this up next" would start the song some
+   * unpredictable number of seconds later -- which on stage is the one thing
+   * that must never happen. PLAY is a 76pt button directly below.
+   */
+  const openCue = (item: SessionItem) => {
+    setBrowsingSet(false);
+    if (item.id === cue?.id) return;
+    hapticImpact(prefs.haptics, "medium");
+    // Both transports, since the cue being left could have been running on
+    // either. The pad is left sounding on purpose -- see stopTransport.
+    stopCueTransport();
+    // Dropped here rather than in an effect: clearing it after the next render
+    // would orphan the values the tiles are already holding, and their meters
+    // would freeze. Cleared now, the render that follows builds fresh ones.
+    // Without this the map keeps a value per stem of every song played tonight.
+    metersRef.current.clear();
+    // The screen doesn't unmount on the way to another cue, so the tidying the
+    // unmount would have done has to happen here instead.
+    leaveCue(cue);
+    router.setParams({ itemId: item.id });
+  };
+
+  /**
+   * A neighbouring cue, as the readout's PREV/NEXT buttons want it.
+   *
+   * The press is withheld -- leaving the name showing but the button dead --
+   * while anything from this cue is sounding: moving means loading the next
+   * one, and loading it would stop what the room is listening to.
+   */
+  const neighbour = (item: SessionItem | undefined) =>
+    item
+      ? {
+          title: item.title,
+          onPress: isSounding ? undefined : () => openCue(item),
+        }
+      : undefined;
+
+  /* ---------------------------------------------------------------------- */
+  /* Loop and pad cues                                                       */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * A loop cue's transport, which is one button in both views.
+   *
+   * Unlike a stem song there is nothing to be partway through: a loop is
+   * running or it isn't, and pressing again starts it from the top of a pass.
+   * So a toggle carries no risk of the ambiguity that made PERFORM split the
+   * stem transport into two fixed buttons.
+   */
+  const toggleCueTransport = () => {
+    if (!cue) return;
+    hapticImpact(prefs.haptics, "heavy");
+    if (cueIsLive) {
+      stopCue();
+      return;
+    }
+    fireCue(cue);
+  };
+
+  /** Whether this cue has anything to sound at all. */
+  const cueIsEmpty = !isStemCue && !cue?.loopKey && !(cue?.padPack && cue?.padKey);
+
+  /* ---------------------------------------------------------------------- */
+  /* Building the cue                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  // The name, held here while it's being typed.
+  //
+  // Not written per keystroke: updateItem serialises the whole setlist to disk,
+  // so a forty-character name would be forty writes. Committed when the field
+  // is left, which is also when the name is finished.
+  const [draftTitle, setDraftTitle] = useState(cue?.title ?? "");
+  useEffect(() => {
+    setDraftTitle(cue?.title ?? "");
+  }, [cue?.id, cue?.title]);
+
+  const commitTitle = () => {
+    if (!sessionId || !itemId || !cue) return;
+    const next = draftTitle.trim();
+    // A nameless cue can't be found in a running order, so an emptied field
+    // goes back to what it was rather than saving nothing.
+    if (!next) {
+      setDraftTitle(cue.title);
+      return;
+    }
+    if (next === cue.title) return;
+    updateItem(sessionId, itemId, { title: next });
+  };
+
+  /**
+   * A cue that was created and then left untouched.
+   *
+   * + makes the cue before you fill it in -- that is what lets STUDIO be the
+   * only cue editor -- and the cost is that backing straight out would leave a
+   * "Nothing set" row in the running order to find and delete by hand.
+   *
+   * Every condition, not any: naming a cue is intent to keep it even with
+   * nothing in it yet, and a cue carrying a loop is obviously wanted whatever
+   * it ended up called. Only the cue nobody touched at all is disposable.
+   */
+  const isAbandoned = (item: SessionItem) =>
+    item.title === UNTITLED_CUE &&
+    !item.tracks?.length &&
+    !item.sections?.length &&
+    !item.loopKey &&
+    !item.padPack &&
+    !item.padKey;
+
+  /**
+   * What becomes of a cue when you leave it -- for another cue, or off the
+   * screen entirely.
+   *
+   * Two things, and only one can apply. A name typed but never committed is
+   * saved, because leaving the screen is not a reason to lose it and the field
+   * only commits on blur. Failing that, an untouched cue is dropped.
+   *
+   * The name is read from the draft rather than the cue, so a cue named in the
+   * field and abandoned in the same breath is kept: what the user typed is what
+   * they meant, whether or not the field lost focus first.
+   */
+  const leaveCue = (item: SessionItem | undefined) => {
+    if (!sessionId || !item) return;
+
+    const typed = draftTitle.trim();
+    if (typed && typed !== item.title) {
+      updateItem(sessionId, item.id, { title: typed });
+      return;
+    }
+
+    if (isAbandoned(item)) removeItem(sessionId, item.id);
+  };
+
+  // Held in a ref and depended on with [], because it closes over the cue and
+  // the draft name -- both new every render. As a dependency, React would run
+  // the cleanup on each of those and delete the cue out from under the edit.
+  const leaveRef = useRef(() => {});
+  leaveRef.current = () => leaveCue(cue);
+  useEffect(() => () => leaveRef.current(), []);
+
+  const [importing, setImporting] = useState(false);
+
+  /**
+   * Add stems to this cue, which is also how a cue becomes a song.
+   *
+   * Copies the files into app storage before returning, so what lands in the
+   * cue is already permanent -- the picker's URIs are cache handles the OS may
+   * delete, and a setlist that loses its audio between soundcheck and the gig
+   * is the worst failure this could have.
+   */
+  const pickStems = async () => {
+    if (!sessionId || !itemId || !cue) return;
+    setImporting(true);
+    try {
+      const picked = await importStems();
+      if (picked.length === 0) return; // cancelled, or nothing readable
+
+      // Added to what's there, so a song can be built up in more than one pass
+      // -- stems often live in more than one folder.
+      const nextTracks = [...tracks, ...picked];
+      const changes: Partial<SessionItem> = { tracks: nextTracks };
+
+      // A cue is stems OR a loop: two different transports, and one cue meaning
+      // both would only be confusing on stage. Importing into a loop cue is a
+      // decision about which of the two it is.
+      if (cue.loopKey) changes.loopKey = undefined;
+
+      // Still called what it was created as, so the first stem names it -- the
+      // same thing the cue editor used to do on import.
+      if (!cue.title.trim() || cue.title === UNTITLED_CUE) {
+        changes.title = picked[0].name;
+      }
+
+      // Free sections, when the export happened to carry them. Only for a cue
+      // that has none: a later batch's markers would renumber sections the user
+      // may already have named and launched.
+      if (sections.length === 0) {
+        const found = await readStemSections(picked);
+        if (found.length > 0) changes.sections = found;
+      }
+
+      // The engine first, then the cue. Both land in one render, and the order
+      // decides what that render sees: reloading marks the engine not-ready, so
+      // the render that brings the new stems in already knows they haven't
+      // decoded. The other way round, React renders once with the new tracks
+      // and the *old* cue's readiness still true -- and the effect that
+      // measures waveforms fires against stems the engine has never been given,
+      // where every one of them hangs for five seconds and then gives up.
+      reloadStems(nextTracks);
+      updateItem(sessionId, itemId, changes);
+    } catch (error) {
+      console.error("Stem import failed", error);
+      Alert.alert("Import failed", "Those files couldn't be read.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const removeTrack = (trackId: string) => {
+    if (!sessionId || !itemId) return;
+    hapticImpact(prefs.haptics, "light");
+    const removed = tracks.find((track) => track.id === trackId);
+    const nextTracks = tracks.filter((track) => track.id !== trackId);
+    // Engine before cue, for the reason spelled out in pickStems.
+    reloadStems(nextTracks);
+    updateItem(sessionId, itemId, { tracks: nextTracks });
+    // Its copied file goes with it. Nothing else can reach it once the cue
+    // stops naming it, so leaving it behind would quietly fill the device with
+    // audio the user can't see or delete.
+    if (removed) removeStems([removed]);
+  };
+
+  /**
+   * Hand the engine a changed set of stems for the cue it already has loaded.
+   *
+   * Forced, because the engine skips a load for the cue it is already holding
+   * -- which is right for re-cueing the live song and wrong here, where the cue
+   * is the same cue but its stems are not. Everything measured off the old set
+   * is dropped with it: peaks are accumulated per track and the duration is a
+   * running maximum, so a removed stem's length would otherwise keep the
+   * progress bar measuring against audio that is gone.
+   */
+  const reloadStems = (nextTracks: CueTrack[]) => {
+    if (!cue) return;
+    setPeaks({});
+    setDuration(0);
+    // Both engines, not just the stem one: importing into a loop cue drops its
+    // loop, and a loop left running under a song that has just replaced it is
+    // two cues sounding at once.
+    stopCueTransport();
+    if (nextTracks.length === 0) return;
+    session.loadCue(cue.id, nextTracks, true).catch((error) => {
+      console.error("Failed to load stems", error);
+    });
+  };
+
+  const setCueLoop = (key: string | undefined) => {
+    if (!sessionId || !itemId || !cue) return;
+    const picked = key ? findLoopByKey(key) : undefined;
+    // The loop's own tempo comes with it, the way it does in the cue editor.
+    // Keeping the old one would leave the new loop warped by however far the
+    // last one's tempo had been pushed, which is never what picking meant.
+    const changes = { loopKey: key, bpm: picked?.bpm ?? cue.bpm };
+    updateItem(sessionId, itemId, changes);
+
+    // A cue that is sounding follows the change, rather than carrying on with
+    // the loop you just replaced -- the point of choosing one from here rather
+    // than from the cue editor is hearing it against the room.
+    //
+    // Re-fired from the merged item because the write above hasn't come back
+    // through the context yet, so `cue` still names the old loop.
+    if (!cueIsLive) return;
+    if (key) fireCue({ ...cue, ...changes });
+    else stopCueTransport();
+  };
+
+  const setCueBpm = (next: number) => {
+    if (!sessionId || !itemId) return;
+    const clamped = clampBpm(next);
+    updateItem(sessionId, itemId, { bpm: clamped });
+    // Straight to the engine when this cue is the one sounding, so a tempo
+    // found by ear against a band lands while you can still hear whether it's
+    // right. Stopped, the cue carries it to the next time it fires.
+    if (cueIsLive) setEngineBpm(clamped);
+  };
+
+  const setCuePadPack = (packKey: string | undefined) => {
+    if (!sessionId || !itemId) return;
+    updateItem(sessionId, itemId, { padPack: packKey });
+
+    // Only a pad already sounding follows the change. Choosing a pack while
+    // silent is a decision about the cue, not an instruction to play one.
+    if (!pad.isPlaying) return;
+    if (packKey && cue?.padKey) armPad(packKey, cue.padKey, songMode);
+    else if (!packKey) releasePad();
+  };
+
+  /** Moves the cursor under the finger. No audio -- that waits for release. */
+  const scrub = (seconds: number) => setCursorSeconds(seconds);
+
+  const seek = (seconds: number) => {
+    setCursorSeconds(seconds);
+    // Only while running. Dropping the cursor somewhere with the transport
+    // stopped is a decision about where to start, not an instruction to start.
+    if (!session.isPlaying) return;
+
+    // A seek keeps the point you dropped it on -- snapping to the section start
+    // the way the play button does would fight the drag. LOOP still bounds it
+    // by the section, so the repeat is a musical length rather than everything
+    // from here to the end of the file.
+    session.play(tracks, bpm, 0, {
+      id: "cursor",
+      startSeconds: seconds,
+      endSeconds: loopEnabled ? containingSection(seconds)?.endSeconds : undefined,
+      loop: loopEnabled,
+    });
+  };
+
+  const returnToZero = () => {
+    hapticImpact(prefs.haptics, "light");
+    setCursorSeconds(0);
+    if (session.isPlaying) seek(0);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* Key and pad                                                             */
+  /* ---------------------------------------------------------------------- */
+
+  // The song's key, and a pad tuned to it.
+  //
+  // The pad is deliberately not tied to the stem transport. It is a drone, not
+  // a part -- you bring it in over the last chord and leave it running while
+  // you talk, which is the whole reason to have one. So it starts and stops on
+  // its own button and survives the song stopping.
+  const songKey = cue?.padKey;
+  const songMode = cue?.padMode ?? "major";
+  // Falls back to the first pack rather than refusing to sound. Every pack
+  // currently renders from the same master anyway (see constants/pads), so a
+  // key with no pack chosen is an unset preference, not an unanswerable
+  // question.
+  const padPack = cue?.padPack ?? PAD_PACKS[0]?.key;
+
+  // Voicing counts as well as root: a pad droning in C major under a song in C
+  // minor is wrong in the way that matters, and a button claiming to be lit for
+  // this song's key should not be lit for that.
+  const padIsLive =
+    pad.isPlaying &&
+    songKey !== undefined &&
+    pad.activeKeyIndex === KEYS.indexOf(songKey) &&
+    pad.mode === songMode;
+
+  const [editingKey, setEditingKey] = useState(false);
+
+  const togglePad = () => {
+    hapticImpact(prefs.haptics, "medium");
+    if (padIsLive) {
+      releasePad();
+      return;
+    }
+    if (!songKey || !padPack) {
+      setEditingKey(true);
+      return;
+    }
+    armPad(padPack, songKey, songMode);
+  };
+
+  /**
+   * Writes the key back to the cue, and retunes a sounding pad to it.
+   *
+   * Editable after the fact on purpose: the key is something you often work out
+   * by playing along, which happens well after the stems were imported, and
+   * having to go back to the cue editor to record it is how it ends up never
+   * being recorded.
+   */
+  const setSongKey = (key: string | undefined, nextMode: "major" | "minor") => {
+    if (!sessionId || !itemId) return;
+    updateItem(sessionId, itemId, { padKey: key, padMode: nextMode });
+
+    if (!key) {
+      if (pad.isPlaying) releasePad();
+      return;
+    }
+    // Only if it was already sounding: changing the key of a pad you can hear
+    // should move it, changing it while silent should not start anything.
+    if (padPack && pad.isPlaying) armPad(padPack, key, nextMode);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* Sections                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  // Marked live, against the transport, because that's when you know where a
+  // section starts -- you hear the chorus arrive. Typing timecodes into a form
+  // would mean knowing them in advance, which nobody does.
+  //
+  // Sorted by start, which is the order the pads are laid out in and the order
+  // the song plays them in. Ends are written exactly as authored.
+  //
+  // They used to be derived here -- each section's end overwritten with the
+  // next one's start -- and that is what made a launched section loop the wrong
+  // length. Mark four bars to loop out of a verse and the derived end pushed it
+  // all the way to the next marker; the last section of a song got no end at
+  // all, so holding on the outro looped it through whatever trailing silence
+  // the file had. Both edges belong to the section now.
+  const writeSections = (next: CueSection[]) => {
+    if (!sessionId || !itemId) return;
+    updateItem(sessionId, itemId, {
+      sections: [...next].sort((a, b) => a.startSeconds - b.startSeconds),
+    });
+  };
+
+  /**
+   * Where a section placed at `start` should end, before anyone trims it.
+   *
+   * The next marker, or the end of the song -- which is exactly what the old
+   * derived end would have given it. So placing a run of markers straight
+   * through a song behaves as it always did; the difference is that the answer
+   * is now written down and can be dragged.
+   */
+  const defaultEndFor = (start: number) => {
+    const following = sections.find(
+      (section) => section.startSeconds > start + 0.001
+    );
+    if (following) return following.startSeconds;
+    // Unmeasured stems mean no known end, which stays unset and plays to the
+    // end of the file -- see CueSection.
+    return duration > 0 ? duration : undefined;
+  };
+
+  // Naming happens at the moment of placing, not afterwards.
+  //
+  // "Section 3" is no use on a pad you are about to hit in the dark -- the
+  // whole value of a section is that it says "Chorus". Naming it later means a
+  // second pass over a song you have already moved on from, so the marker is
+  // placed and named in one gesture, with the timecode shown to confirm you are
+  // marking the spot you meant.
+  //
+  // The same sheet renames an existing one, since "what is this section called"
+  // is one question however you arrived at it -- `id` set means rename, unset
+  // means place a new one.
+  const [naming, setNaming] = useState<{
+    id?: string;
+    startSeconds: number;
+    endSeconds?: number;
+    name: string;
+  } | null>(null);
+
+  const beginSectionAt = (seconds: number) => {
+    hapticImpact(prefs.haptics, "medium");
+    setNaming({
+      startSeconds: seconds,
+      endSeconds: defaultEndFor(seconds),
+      name: "",
+    });
+  };
+
+  const beginRename = (section: CueSection) => {
+    hapticImpact(prefs.haptics, "light");
+    setNaming({
+      id: section.id,
+      startSeconds: section.startSeconds,
+      endSeconds: section.endSeconds,
+      name: section.name,
+    });
+  };
+
+  const commitSection = () => {
+    if (!naming) return;
+    // Falls back rather than refusing: a marker in the right place with a dull
+    // name beats losing the placement to a validation message.
+    const name = naming.name.trim() || `Section ${sections.length + 1}`;
+
+    if (naming.id) {
+      const id = naming.id;
+      setNaming(null);
+      writeSections(
+        sections.map((section) =>
+          section.id === id ? { ...section, name } : section
+        )
+      );
+      return;
+    }
+
+    const next: CueSection = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      startSeconds: naming.startSeconds,
+      endSeconds: naming.endSeconds,
+    };
+    setNaming(null);
+    setSelectedSectionId(next.id);
+    writeSections([...sections, next]);
+  };
+
+  /**
+   * Drag one edge of a section along the ruler.
+   *
+   * Each edge is clamped by the other rather than allowed to cross it. A
+   * section whose end sits before its start is a span of negative length, and
+   * the engine reads that the same way it reads no end at all -- so the loop
+   * you were trying to tighten would silently become "play to the end of the
+   * file", which is the exact bug this whole change is about.
+   */
+  const moveSectionEdge = (
+    sectionId: string,
+    seconds: number,
+    edge: "start" | "end"
+  ) => {
+    writeSections(
+      sections.map((section) => {
+        if (section.id !== sectionId) return section;
+
+        if (edge === "start") {
+          const limit =
+            section.endSeconds !== undefined
+              ? section.endSeconds - MIN_SECTION_SECONDS
+              : undefined;
+          return {
+            ...section,
+            startSeconds:
+              limit !== undefined ? Math.min(seconds, limit) : seconds,
+          };
+        }
+
+        return {
+          ...section,
+          endSeconds: Math.max(
+            seconds,
+            section.startSeconds + MIN_SECTION_SECONDS
+          ),
+        };
+      })
+    );
+  };
+
+  /** Snaps an edge of the selected section to wherever the cursor is sitting. */
+  const setEdgeAtCursor = (edge: "start" | "end") => {
+    if (!selectedSectionId) return;
+    hapticImpact(prefs.haptics, "light");
+    moveSectionEdge(selectedSectionId, cursorSeconds, edge);
+  };
+
+  const removeSection = (sectionId: string) => {
+    hapticImpact(prefs.haptics, "light");
+    setSelectedSectionId(null);
+    writeSections(sections.filter((section) => section.id !== sectionId));
+  };
+
+  if (!cue) {
+    return (
+      <SafeAreaView className="flex-1 bg-canvas">
+        <ScreenHeader title="Song" />
+        <Text className="mt-10 text-center text-white/50 font-satoshiMedium">
+          This cue is no longer in the setlist.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  const selectedSection = sections.find(
+    (section) => section.id === selectedSectionId
+  );
+
+  return (
+    <SafeAreaView className="flex-1 bg-canvas">
+      <StatusBar barStyle="light-content" />
+      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+
+      {/* The setlist's name up here in PERFORM, because the song's own name is
+          about to be set six times larger directly underneath -- printing it
+          twice would waste the one line that says where in the night you are.
+          STUDIO has no such block, so it keeps the song. */}
+      <ScreenHeader
+        title={view === "perform" ? (setlist?.title ?? cue.title) : cue.title}
+        action={
+          view === "perform" && (setlist?.items.length ?? 0) > 1 ? (
+            <TouchableOpacity
+              onPress={() => {
+                hapticImpact(prefs.haptics, "light");
+                setBrowsingSet(true);
+              }}
+              accessibilityLabel="Open the setlist"
+              className="p-2 rounded-full bg-white/10"
+            >
+              {/* The SET tab's own glyph, which is what makes it legible here:
+                  the icon that means "setlist" in the tab bar means the same
+                  thing on this button. */}
+              <SortPad size={20} color={COLORS.white} />
+            </TouchableOpacity>
+          ) : undefined
+        }
+      />
+
+      {/* Which posture you're in. Two words rather than an icon: the difference
+          between these views is not something a glyph can carry. */}
+      <View className="flex-row px-5 mb-3">
+        {(["studio", "perform"] as const).map((option) => (
+          <TouchableOpacity
+            key={option}
+            onPress={() => {
+              hapticImpact(prefs.haptics, "light");
+              setView(option);
+            }}
+            accessibilityLabel={`${option} view`}
+            accessibilityState={{ selected: view === option }}
+            activeOpacity={0.8}
+            className="items-center flex-1 py-2 mr-2 border rounded-lg"
+            style={{
+              backgroundColor:
+                view === option ? COLORS.brand : COLORS.surfaceMuted,
+              borderColor: view === option ? COLORS.brand : COLORS.borderSegment,
+            }}
+          >
+            <Text
+              className="text-[11px] font-spaceBold"
+              style={{ color: view === option ? COLORS.white : COLORS.textMuted }}
+            >
+              {option.toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Four bodies: two views over two kinds of cue. Flat rather than nested
+          so each one can be read on its own -- they share the frame around
+          them, not their contents. */}
+      {view === "studio" && isStemCue ? (
+        <ScrollView
+          className="flex-1 px-5"
+          contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <CueNameField
+            value={draftTitle}
+            onChangeText={setDraftTitle}
+            onCommit={commitTitle}
+          />
+
+          <View onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}>
+            {timelineWidth > 0 && tracks.length > 0 && (
+              <TrackTimeline
+                tracks={timelineTracks}
+                peaks={peaks}
+                duration={duration}
+                bpm={bpm}
+                sections={sections}
+                mix={mix}
+                soloed={soloed}
+                masterMuted={masterMuted}
+                onToggleMute={toggleMute}
+                onToggleSolo={toggleSolo}
+                playheadSeconds={playheadValue}
+                isPlaying={session.isPlaying}
+                cursorSeconds={cursorSeconds}
+                onScrub={scrub}
+                onSeek={seek}
+                onMoveSection={moveSectionEdge}
+                selectedSectionId={selectedSectionId}
+                onSelectSection={setSelectedSectionId}
+                width={timelineWidth}
+              />
+            )}
+          </View>
+
+          {/* Section editing sits with the timeline because that is where you
+              can see what you are marking. */}
+          <View className="flex-row items-center justify-between mt-3">
+            <TouchableOpacity
+              onPress={() => beginSectionAt(cursorSeconds)}
+              hitSlop={10}
+              accessibilityLabel="Add a section at the cursor"
+            >
+              <Text className="text-[11px] text-brand font-spaceBold">
+                + SECTION AT {clock(cursorSeconds)}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedSection && (
+              <View className="flex-row">
+                <TouchableOpacity
+                  onPress={() => beginRename(selectedSection)}
+                  hitSlop={10}
+                  accessibilityLabel={`Rename ${selectedSection.name}`}
+                >
+                  <Text className="text-[11px] text-white font-spaceBold">
+                    RENAME
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => removeSection(selectedSection.id)}
+                  hitSlop={10}
+                  className="ml-4"
+                >
+                  <Text className="text-[11px] text-danger font-spaceBold">
+                    DELETE
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* The selected section's span, and the exact way to set it.
+              Dragging an edge on the ruler is the fast way and is right most of
+              the time; this is for when it has to land on a specific beat --
+              park the cursor where you can see it should go, then say which
+              edge belongs there. */}
+          {selectedSection ? (
+            <View
+              className="flex-row items-center px-3 py-2 mt-3 mb-4 border rounded-lg"
+              style={{ borderColor: COLORS.border }}
+            >
+              <View className="flex-1">
+                <Text
+                  className="text-[11px] text-white font-satoshiBold"
+                  numberOfLines={1}
+                >
+                  {selectedSection.name}
+                </Text>
+                <Text
+                  className="mt-[2px] text-[10px] text-ink-muted font-spaceBold"
+                  style={{ fontVariant: ["tabular-nums"] }}
+                >
+                  {clock(selectedSection.startSeconds)} →{" "}
+                  {selectedSection.endSeconds !== undefined
+                    ? `${clock(selectedSection.endSeconds)}   ·   ${(
+                        selectedSection.endSeconds -
+                        selectedSection.startSeconds
+                      ).toFixed(1)}s`
+                    : "END OF SONG"}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setEdgeAtCursor("start")}
+                hitSlop={8}
+                accessibilityLabel="Start this section at the cursor"
+                className="px-2 py-1 ml-2 border rounded"
+                style={{ borderColor: COLORS.border }}
+              >
+                <Text className="text-[10px] text-white font-spaceBold">
+                  START HERE
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setEdgeAtCursor("end")}
+                hitSlop={8}
+                accessibilityLabel="End this section at the cursor"
+                className="px-2 py-1 ml-2 border rounded"
+                style={{ borderColor: COLORS.border }}
+              >
+                <Text className="text-[10px] text-white font-spaceBold">
+                  END HERE
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="mb-4" />
+          )}
+
+          <Text className="mb-2 text-ink font-spaceMedium text-label">Mixer</Text>
+
+          {/* Horizontal, like a console. Four stems fit; a set of twelve
+              scrolls, which is what a console does too. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 4 }}
+          >
+            {tracks.map((track) => (
+              <MixerStrip
+                key={track.id}
+                name={track.name}
+                mix={mixOf(track.id)}
+                isSilent={isSilent(track.id)}
+                isSolo={soloed === track.id}
+                meter={meterFor(track.id)}
+                onLevel={(level) => changeMix(track.id, { level })}
+                onLevelCommit={saveMix}
+                onPan={(pan) => changeMix(track.id, { pan })}
+                onPanCommit={saveMix}
+                onToggleMute={() => toggleMute(track.id)}
+                onToggleSolo={() => toggleSolo(track.id)}
+              />
+            ))}
+          </ScrollView>
+
+          {/* The song's files, below the two surfaces that draw them. Building
+              the song is something you do once, and looking at it is something
+              you do every time, so the picture goes above the paperwork. */}
+          <Text className="mt-6 mb-2 text-ink font-spaceMedium text-label">
+            Stems
+          </Text>
+
+          {tracks.map((track) => (
+            <StemRow
+              key={track.id}
+              name={track.name}
+              onRemove={() => removeTrack(track.id)}
+            />
+          ))}
+
+          <ImportStemsButton
+            hasStems={tracks.length > 0}
+            importing={importing}
+            onPress={pickStems}
+          />
+
+          {/* Not optional the way it is for a loop cue, which can fall back to
+              the tempo its loop was recorded at. A song has no such number, and
+              everything on the grid -- where a launch lands, when a section
+              changes -- is measured in beats from this one. */}
+          <TempoStepper
+            bpm={cue.bpm}
+            onChange={setCueBpm}
+            hint="Set the tempo — every quantised launch is measured from it."
+          />
+        </ScrollView>
+      ) : isStemCue ? (
+        <>
+          {/* Outside the scroll view, because what is playing and how long is
+              left are not things you should have to scroll back up to. */}
+          <View className="px-5 pb-4">
+            <TransportReadout
+              title={cue.title}
+              duration={duration}
+              isPlaying={session.isPlaying}
+              playheadSeconds={playheadValue}
+              position={{
+                index: cueIndex + 1,
+                total: setlist?.items.length ?? 1,
+              }}
+              prev={neighbour(prevCue)}
+              next={neighbour(nextCue)}
+            />
+          </View>
+
+          <View
+            className="mx-5 mb-3"
+            style={{ height: 1, backgroundColor: COLORS.border }}
+          />
+
+          <ScrollView
+            className="flex-1 px-5"
+            contentContainerStyle={{ paddingBottom: 16 }}
+          >
+            {/* Section pads. No waveform here: it is a tool for placing things
+                precisely, which is what STUDIO is for -- on stage it would be a
+                picture you cannot act on, taking the space the pads want.
+
+                Wide and short: a name has to be readable at a glance, and you
+                hit these with a thumb while looking at the band. */}
+            <Text className="mb-2 text-ink font-spaceMedium text-label">
+              Sections
+            </Text>
+
+            {sections.length === 0 ? (
+              <Text className="mb-4 text-[11px] text-ink-muted font-satoshiRegular">
+                No sections yet — mark them on the timeline in STUDIO.
+              </Text>
+            ) : (
+              <View className="flex-row flex-wrap justify-between mb-4">
+                {sections.map((section, index) => (
+                  <SectionPad
+                    key={section.id}
+                    name={section.name}
+                    index={index}
+                    startSeconds={section.startSeconds}
+                    // The last section has no next one to end at, so it runs to
+                    // the end of the song -- which is only known once the stems
+                    // have been measured.
+                    endSeconds={section.endSeconds ?? (duration || undefined)}
+                    isLive={liveSectionId === section.id}
+                    isArmed={armedSectionId === section.id}
+                    playheadSeconds={playheadValue}
+                    onPress={() => launchSection(section)}
+                  />
+                ))}
+              </View>
+            )}
+
+            <Text className="mb-2 text-ink font-spaceMedium text-label">
+              Tracks
+            </Text>
+
+            <View className="flex-row flex-wrap justify-between">
+              {tracks.map((track, index) => (
+                <TrackTile
+                  key={track.id}
+                  name={track.name}
+                  color={trackColor(index)}
+                  meter={meterFor(track.id)}
+                  isSilent={isSilent(track.id)}
+                  isSolo={soloed === track.id}
+                  onToggleMute={() => toggleMute(track.id)}
+                  onToggleSolo={() => toggleSolo(track.id)}
+                />
+              ))}
+            </View>
+
+          </ScrollView>
+        </>
+      ) : view === "studio" ? (
+        /* A loop cue's STUDIO: what the cue is made of, editable.
+           No timeline, because there is nothing laid out in time to draw --
+           the choices below are the whole of what this cue is. */
+        <ScrollView
+          className="flex-1 px-5"
+          contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <CueNameField
+            value={draftTitle}
+            onChangeText={setDraftTitle}
+            onCommit={commitTitle}
+          />
+
+          <CueElements
+            loopKey={cue.loopKey}
+            bpm={cue.bpm}
+            padPack={cue.padPack}
+            padKey={cue.padKey}
+            padMode={songMode}
+            isLive={cueIsLive}
+            onChangeLoop={setCueLoop}
+            onChangeBpm={setCueBpm}
+            onChangePadPack={setCuePadPack}
+            onEditKey={() => setEditingKey(true)}
+          />
+
+          {/* The other kind of cue this could be.
+              Last, because it is a decision about what this cue is rather than
+              a setting on it -- importing here replaces the loop above with a
+              song, since a cue is one or the other. */}
+          <Text className="mt-6 mb-2 text-ink font-spaceMedium text-label">
+            Stems
+          </Text>
+          <ImportStemsButton
+            hasStems={false}
+            importing={importing}
+            onPress={pickStems}
+          />
+          <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+            Open the folder and select every stem — they&apos;ll play locked
+            together, and this becomes a song rather than a loop cue.
+          </Text>
+        </ScrollView>
+      ) : (
+        /* A loop cue's PERFORM: the same block a song gets, then the elements
+           at a size you can check across a stage. */
+        <>
+          <View className="px-5 pb-4">
+            <CueReadout
+              title={cue.title}
+              subtitle={describeCue(cue)}
+              isPlaying={cueIsLive}
+              phase={loopPhase}
+              bpm={cue.bpm ?? loop?.bpm}
+              keyLabel={
+                songKey
+                  ? `${songKey} ${songMode === "minor" ? "min" : "maj"}`
+                  : undefined
+              }
+              position={{
+                index: cueIndex + 1,
+                total: setlist?.items.length ?? 1,
+              }}
+              prev={neighbour(prevCue)}
+              next={neighbour(nextCue)}
+            />
+          </View>
+
+          <View
+            className="mx-5 mb-3"
+            style={{ height: 1, backgroundColor: COLORS.border }}
+          />
+
+          <ScrollView
+            className="flex-1 px-5"
+            contentContainerStyle={{ paddingBottom: 16 }}
+          >
+            <CueSummary
+              loopKey={cue.loopKey}
+              bpm={cue.bpm}
+              padPack={cue.padPack}
+              padKey={cue.padKey}
+              padMode={songMode}
+              loopIsLive={cueIsLive}
+              padIsLive={padIsLive}
+            />
+          </ScrollView>
+        </>
+      )}
+
+      {/* Key and pad, above the transport and in both views. The pad is a stage
+          control (bring it in under the outro) and a studio one (hear the key
+          while you place markers), so it does not belong to either view. */}
+      <View className="flex-row items-center px-5 mb-2">
+        <TouchableOpacity
+          onPress={togglePad}
+          disabled={!padPack}
+          accessibilityLabel={
+            padIsLive
+              ? "Stop the pad"
+              : songKey
+                ? `Play a ${songKey} ${songMode} pad`
+                : "Set the song key"
+          }
+          activeOpacity={0.85}
+          className="flex-row items-center justify-center flex-1 py-3 mr-2 border-2 rounded-lg"
+          style={{
+            backgroundColor: padIsLive ? COLORS.brand : "transparent",
+            borderColor: padIsLive ? COLORS.brand : COLORS.border,
+          }}
+        >
+          <Text
+            className="text-[11px] font-spaceBold"
+            style={{ color: padIsLive ? COLORS.white : COLORS.textMuted }}
+          >
+            {songKey
+              ? `PAD · ${songKey} ${songMode === "minor" ? "MIN" : "MAJ"}`
+              : "SET KEY"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            hapticImpact(prefs.haptics, "light");
+            setEditingKey(true);
+          }}
+          accessibilityLabel="Change the song key"
+          activeOpacity={0.8}
+          className="items-center justify-center px-4 py-3 border rounded-lg"
+          style={{ borderColor: COLORS.border }}
+        >
+          <Text className="text-[11px] text-ink-muted font-spaceBold">KEY</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* The transport spans the screen. It's the control most likely to be
+          hit in a hurry, and the one where a miss is heard by the room. */}
+      <View className="px-5 pb-4">
+        {/* Return-to-zero and loop only mean anything against a timeline. */}
+        {view === "studio" && isStemCue && (
+          <View className="flex-row mb-2">
+            <TouchableOpacity
+              onPress={returnToZero}
+              accessibilityLabel="Return to the start"
+              activeOpacity={0.8}
+              className="items-center justify-center flex-1 py-2 mr-2 border rounded-lg"
+              style={{ borderColor: COLORS.border }}
+            >
+              <Text className="text-[11px] text-ink-muted font-spaceBold">
+                RTZ
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                hapticImpact(prefs.haptics, "light");
+                setLoopEnabled((previous) => !previous);
+              }}
+              accessibilityLabel={loopEnabled ? "Turn looping off" : "Loop the section"}
+              accessibilityState={{ selected: loopEnabled }}
+              activeOpacity={0.8}
+              className="items-center justify-center flex-1 py-2 border rounded-lg"
+              style={{
+                backgroundColor: loopEnabled ? COLORS.brand : "transparent",
+                borderColor: loopEnabled ? COLORS.brand : COLORS.border,
+              }}
+            >
+              <Text
+                className="text-[11px] font-spaceBold"
+                style={{ color: loopEnabled ? COLORS.white : COLORS.textMuted }}
+              >
+                LOOP
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!isStemCue ? (
+          // A loop cue's transport, and the same button in both views.
+          //
+          // A toggle, where a stem song's PERFORM bar splits into two fixed
+          // buttons. That split exists because a stem song has a position to
+          // lose: press the wrong thing blind and you either kill the song or
+          // restart it from the top. A loop has neither -- it is running or it
+          // isn't, and either way the next press does the obvious thing.
+          <TouchableOpacity
+            onPress={toggleCueTransport}
+            disabled={cueIsEmpty}
+            accessibilityLabel={cueIsLive ? "Stop this cue" : "Play this cue"}
+            activeOpacity={0.85}
+            className="flex-row items-center justify-center rounded-lg"
+            style={{
+              height: view === "perform" ? 84 : 60,
+              backgroundColor: cueIsLive ? COLORS.danger : COLORS.brand,
+              opacity: cueIsEmpty ? 0.4 : 1,
+              ...SHADOWS.float,
+            }}
+          >
+            {cueIsLive ? <Stop size={40} /> : <PlayFilled size={40} />}
+            <Text className="ml-3 text-2xl text-white font-spaceBold">
+              {cueIsLive ? "STOP" : "PLAY"}
+            </Text>
+          </TouchableOpacity>
+        ) : view === "studio" ? (
+          // One button that toggles, which is fine here: you are looking at the
+          // screen, and the thing you are working on is the timeline above it.
+          <TouchableOpacity
+            onPress={toggleStudioTransport}
+            disabled={tracks.length === 0}
+            accessibilityLabel={session.isPlaying ? "Stop" : "Play"}
+            activeOpacity={0.85}
+            className="flex-row items-center justify-center rounded-lg"
+            style={{
+              height: 60,
+              backgroundColor: session.isPlaying ? COLORS.danger : COLORS.brand,
+              opacity: tracks.length === 0 ? 0.4 : 1,
+              ...SHADOWS.float,
+            }}
+          >
+            {session.isPlaying ? <Stop size={40} /> : <PlayFilled size={40} />}
+            <Text className="ml-3 text-2xl text-white font-spaceBold">
+              {session.isPlaying ? "STOP" : "PLAY"}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          /* PERFORM's bar: stop, play, mute, each in a fixed place.
+             Stop on the left and mute on the right the way every show-page
+             transport arranges them -- the two things you reach for without
+             looking are also the two that live at the screen's edges, where a
+             thumb finds them by feel. Play keeps the middle and the size,
+             because it is the press with a downbeat attached to it. */
+          <View className="flex-row" style={{ height: 84 }}>
+            <TouchableOpacity
+              onPress={stopTransport}
+              disabled={tracks.length === 0}
+              accessibilityLabel="Stop"
+              activeOpacity={0.85}
+              className="items-center justify-center border-2 rounded-lg"
+              style={{
+                width: 76,
+                borderColor: session.isPlaying ? COLORS.danger : COLORS.border,
+                opacity: tracks.length === 0 ? 0.4 : 1,
+              }}
+            >
+              <Stop size={34} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={playFromTop}
+              disabled={tracks.length === 0 || session.isPlaying}
+              accessibilityLabel="Play from the top"
+              activeOpacity={0.85}
+              className="flex-row items-center justify-center flex-1 mx-2 rounded-lg"
+              style={{
+                backgroundColor: session.isPlaying
+                  ? COLORS.surface
+                  : COLORS.brand,
+                borderWidth: 2,
+                borderColor: COLORS.brand,
+                opacity: tracks.length === 0 ? 0.4 : 1,
+                ...SHADOWS.float,
+              }}
+            >
+              {session.isPlaying ? (
+                <View
+                  className="mr-2 rounded-full"
+                  style={{ width: 10, height: 10, backgroundColor: COLORS.brand }}
+                />
+              ) : (
+                <Play size={30} color={COLORS.white} />
+              )}
+              <Text
+                className="ml-2 text-xl text-white font-spaceBold"
+                style={{ color: session.isPlaying ? COLORS.brand : COLORS.white }}
+              >
+                {session.isPlaying ? "PLAYING" : "PLAY"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={toggleMasterMute}
+              disabled={tracks.length === 0}
+              accessibilityLabel={
+                masterMuted ? "Unmute everything" : "Mute everything"
+              }
+              accessibilityState={{ selected: masterMuted }}
+              activeOpacity={0.85}
+              className="items-center justify-center border-2 rounded-lg"
+              style={{
+                width: 76,
+                backgroundColor: masterMuted ? COLORS.danger : "transparent",
+                borderColor: masterMuted ? COLORS.danger : COLORS.border,
+                opacity: tracks.length === 0 ? 0.4 : 1,
+              }}
+            >
+              <Text
+                className="text-[12px] font-spaceBold"
+                style={{ color: masterMuted ? COLORS.white : COLORS.textMuted }}
+              >
+                MUTE
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!session.isReady && tracks.length > 0 && (
+          <Text className="mt-2 text-center text-[11px] text-ink-muted font-satoshiRegular">
+            Loading stems — play will start as soon as they&apos;re ready.
+          </Text>
+        )}
+      </View>
+
+      {/* The running order. A sheet rather than a screen, so getting to another
+          song is one gesture out and one back rather than a navigation.
+
+          Sized to its content up to most of the screen: a set of three should
+          not open a sheet three quarters of the way up a phone. */}
+      <BottomSheetModal
+        ref={setlistSheetRef}
+        enableDynamicSizing
+        maxDynamicContentSize={MAX_SHEET_HEIGHT}
+        onDismiss={() => setBrowsingSet(false)}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={SHEET_BACKGROUND}
+        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
+      >
+        {/* Gorhom's scroll view, not React Native's: the sheet and the list
+            both read the same vertical drag, and only this one hands it back at
+            the top of its content so the sheet can be pulled shut. */}
+        <BottomSheetScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingTop: 4,
+            paddingBottom: 40,
+          }}
+        >
+          <Text className="mb-3 text-white font-satoshiBold text-title">
+            {setlist?.title ?? "Setlist"}
+          </Text>
+
+          {setlist?.items.map((item, index) => {
+                const isCurrent = item.id === cue.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => openCue(item)}
+                    // Every cue opens here, whatever it holds. A loop cue gets
+                    // its elements where a song gets its stems, which is what
+                    // makes this a way through the whole night rather than
+                    // through the songs with stems in them.
+                    disabled={isCurrent}
+                    activeOpacity={0.8}
+                    accessibilityLabel={`Load ${item.title}`}
+                    className="flex-row items-center px-3 py-3 mb-2 border rounded-lg"
+                    style={{
+                      backgroundColor: isCurrent
+                        ? COLORS.surface
+                        : "transparent",
+                      borderColor: isCurrent ? COLORS.brand : COLORS.border,
+                    }}
+                  >
+                    <Text
+                      className="w-6 text-[13px] text-ink-muted font-spaceBold"
+                      style={{ fontVariant: ["tabular-nums"] }}
+                    >
+                      {index + 1}
+                    </Text>
+                    <View className="flex-1 ml-1">
+                      <Text
+                        className="text-white font-satoshiBold text-[15px]"
+                        numberOfLines={1}
+                      >
+                        {item.title}
+                      </Text>
+                      <Text className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular">
+                        {describeCue(item)}
+                      </Text>
+                    </View>
+                    {isCurrent && (
+                      <Text className="text-[10px] text-brand font-spaceBold tracking-widest">
+                        HERE
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+            );
+          })}
+
+          <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+            Tapping a cue loads it and stops there — press PLAY when
+            you&apos;re ready.
+          </Text>
+        </BottomSheetScrollView>
+      </BottomSheetModal>
+
+      {/* The song's key. A grid rather than a picker: twelve roots fit on one
+          screen, and choosing from what you can see beats scrolling a wheel
+          past eleven wrong answers. */}
+      <Modal
+        visible={editingKey}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingKey(false)}
+      >
+        <View
+          className="items-center justify-center flex-1 px-8"
+          style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
+        >
+          <View
+            className="w-full p-5 border rounded-lg bg-canvas"
+            style={{ borderColor: COLORS.border }}
+          >
+            <Text className="mb-1 text-white font-satoshiBold text-title">
+              Song key
+            </Text>
+            <Text className="mb-4 text-[11px] text-ink-muted font-satoshiRegular">
+              What a pad plays underneath this song.
+            </Text>
+
+            <View className="flex-row flex-wrap gap-2">
+              {KEYS.map((key) => (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setSongKey(key, songMode)}
+                  accessibilityLabel={`Key of ${key}`}
+                  accessibilityState={{ selected: songKey === key }}
+                  activeOpacity={0.8}
+                  className="items-center justify-center border rounded-lg"
+                  style={{
+                    width: 52,
+                    height: 40,
+                    backgroundColor:
+                      songKey === key ? COLORS.brand : "transparent",
+                    borderColor: songKey === key ? COLORS.brand : COLORS.border,
+                  }}
+                >
+                  <Text
+                    className="text-xs font-spaceBold"
+                    style={{
+                      color: songKey === key ? COLORS.white : COLORS.textMuted,
+                    }}
+                  >
+                    {key}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View className="flex-row gap-2 mt-4">
+              {(["major", "minor"] as const).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => setSongKey(songKey, option)}
+                  accessibilityLabel={option}
+                  accessibilityState={{ selected: songMode === option }}
+                  activeOpacity={0.8}
+                  className="items-center flex-1 py-3 border rounded-lg"
+                  style={{
+                    backgroundColor:
+                      songMode === option ? COLORS.brand : "transparent",
+                    borderColor:
+                      songMode === option ? COLORS.brand : COLORS.border,
+                  }}
+                >
+                  <Text
+                    className="text-[11px] font-spaceBold"
+                    style={{
+                      color:
+                        songMode === option ? COLORS.white : COLORS.textMuted,
+                    }}
+                  >
+                    {option.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View className="flex-row mt-4">
+              {songKey && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSongKey(undefined, songMode);
+                    setEditingKey(false);
+                  }}
+                  accessibilityLabel="Clear the key"
+                  activeOpacity={0.8}
+                  className="items-center justify-center flex-1 py-3 mr-2 border rounded-lg"
+                  style={{ borderColor: COLORS.border }}
+                >
+                  <Text className="text-xs text-ink-muted font-spaceBold">
+                    CLEAR
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setEditingKey(false)}
+                accessibilityLabel="Done"
+                activeOpacity={0.8}
+                className="items-center justify-center flex-1 py-3 rounded-lg"
+                style={{ backgroundColor: COLORS.brand }}
+              >
+                <Text className="text-xs text-white font-spaceBold">DONE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Naming a section. A sheet rather than an inline field because the
+          timecode has to be visible while you type -- it is the confirmation
+          that you are naming the spot you meant, and an inline field would sit
+          under the keyboard with the timeline hidden behind it. */}
+      <Modal
+        visible={naming !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNaming(null)}
+      >
+        <View
+          className="items-center justify-center flex-1 px-8"
+          style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
+        >
+          <View
+            className="w-full p-5 border rounded-lg bg-canvas border-hairline"
+            style={{ borderColor: COLORS.border }}
+          >
+            <Text className="mb-1 text-white font-satoshiBold text-title">
+              {naming?.id ? "Rename section" : "New section"}
+            </Text>
+            {/* The span, not just the start. It is what the section will loop
+                when you hit its pad, so it is the thing to confirm before
+                naming it -- and seeing it here is what tells you whether the
+                default end needs dragging afterwards. */}
+            <Text
+              className="mb-1 text-[11px] text-ink-muted font-spaceBold"
+              style={{ fontVariant: ["tabular-nums"] }}
+            >
+              {clock(naming?.startSeconds ?? 0)} →{" "}
+              {naming?.endSeconds !== undefined
+                ? clock(naming.endSeconds)
+                : "END OF SONG"}
+            </Text>
+            <Text className="mb-4 text-[11px] text-ink-muted font-satoshiRegular">
+              Drag either edge on the timeline to trim it.
+            </Text>
+
+            <BrandInput
+              value={naming?.name ?? ""}
+              onChangeText={(name) =>
+                setNaming((current) => (current ? { ...current, name } : current))
+              }
+              placeholder="Chorus, Bridge, Last verse…"
+              maxLength={24}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={commitSection}
+            />
+
+            <View className="flex-row mt-2">
+              <TouchableOpacity
+                onPress={() => setNaming(null)}
+                accessibilityLabel="Cancel"
+                activeOpacity={0.8}
+                className="items-center justify-center flex-1 py-3 mr-2 border rounded-lg"
+                style={{ borderColor: COLORS.border }}
+              >
+                <Text className="text-xs text-ink-muted font-spaceBold">
+                  CANCEL
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={commitSection}
+                accessibilityLabel={naming?.id ? "Save the name" : "Add the section"}
+                activeOpacity={0.8}
+                className="items-center justify-center flex-1 py-3 rounded-lg"
+                style={{ backgroundColor: COLORS.brand }}
+              >
+                <Text className="text-xs text-white font-spaceBold">
+                  {naming?.id ? "SAVE" : "ADD"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}

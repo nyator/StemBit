@@ -1,7 +1,8 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 
-import type { CueTrack } from "../context/SessionsContext";
+import type { CueSection, CueTrack } from "../context/SessionsContext";
+import { base64ToArrayBuffer, readWavMarkers } from "./wavMarkers";
 
 // Bringing a song's stems into the app.
 //
@@ -84,6 +85,48 @@ export async function importStems(): Promise<CueTrack[]> {
   // Alphabetical, so the mixer's running order matches the file names the user
   // chose -- which is usually already the order they think of the parts in.
   return tracks.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Sections a stem carries in its own metadata, if any.
+ *
+ * Reads the first file that has markers and stops -- stems of one song are
+ * exported together and carry the same ones, so the rest would be duplicates.
+ *
+ * An empty result is the normal case, not a failure: plenty of DAWs write no
+ * cue chunks when exporting stems, and nothing but WAV carries them at all.
+ * Marking sections by hand stays the reliable path; this only saves the work
+ * when the file happens to have done it already.
+ */
+export async function readStemSections(
+  tracks: CueTrack[]
+): Promise<CueSection[]> {
+  for (const track of tracks) {
+    if (!/\.wav$/i.test(track.uri)) continue;
+
+    try {
+      const base64 = await FileSystem.readAsStringAsync(track.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const markers = readWavMarkers(base64ToArrayBuffer(base64));
+      if (markers.length === 0) continue;
+
+      return markers.map((marker, index) => ({
+        id: `${Date.now()}-${index}`,
+        name: marker.name ?? `Section ${index + 1}`,
+        startSeconds: marker.seconds,
+        // Each section runs to the next one. The last runs to the end of the
+        // file, which is what an absent end means to the engine.
+        endSeconds: markers[index + 1]?.seconds,
+      }));
+    } catch (error) {
+      // A file that can't be read for markers can still be played, so this is
+      // never fatal to the import.
+      console.error("Failed to read markers", track.name, error);
+    }
+  }
+
+  return [];
 }
 
 /** Deletes a cue's copied stems. Called when the cue itself goes. */

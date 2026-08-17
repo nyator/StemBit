@@ -211,6 +211,34 @@ export function SortPadFill({ size = 24, color = DEFAULT_COLOR, style }: IconPro
   );
 }
 
+
+export function DragHandle({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path
+        d="M8.5 4.5 12 1.5l3.5 3"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle cx={9} cy={8.5} r={1.5} fill={color} />
+      <Circle cx={15} cy={8.5} r={1.5} fill={color} />
+      <Circle cx={9} cy={12} r={1.5} fill={color} />
+      <Circle cx={15} cy={12} r={1.5} fill={color} />
+      <Circle cx={9} cy={15.5} r={1.5} fill={color} />
+      <Circle cx={15} cy={15.5} r={1.5} fill={color} />
+      <Path
+        d="M8.5 19.5 12 22.5l3.5-3"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export function PauseCircle({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>

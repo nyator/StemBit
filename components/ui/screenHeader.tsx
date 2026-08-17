@@ -34,7 +34,13 @@ export default function ScreenHeader({
       ) : (
         <View style={{ width: 38 }} />
       )}
-      <Text className="text-2xl text-white font-spaceBold">{title}</Text>
+      <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        className="flex-1 mx-2 text-2xl text-center text-white font-spaceBold"
+      >
+        {title}
+      </Text>
       <View style={{ minWidth: 38, alignItems: "flex-end" }}>{action}</View>
     </View>
   );

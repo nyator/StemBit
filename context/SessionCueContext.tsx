@@ -10,6 +10,7 @@ import { Animated } from "react-native";
 
 import { KEYS, usePadPlayback } from "./PadPlaybackContext";
 import { useLoopPlayback } from "./LoopPlaybackContext";
+import { useSessionPlayback } from "./SessionPlaybackContext";
 import { usePreferences, type PadLayer } from "./PreferencesContext";
 import { findPadPackByKey } from "../constants/pads";
 import { findLoopByKey } from "../constants/loops";
@@ -41,6 +42,12 @@ type TabState = {
   padLayers: PadLayer[];
   loopKey: string | null;
   bpm: number;
+  /**
+   * Major/minor is engine state rather than a preference, so it survives a
+   * session without this -- but a cue in a minor key would leave the Pad tab
+   * voiced minor after the set ended, which the user never asked for.
+   */
+  padMode: "major" | "minor";
 };
 
 type SessionCueContextValue = {
@@ -54,8 +61,30 @@ type SessionCueContextValue = {
    */
   loopPhase: Animated.Value;
   play: (item: SessionItem) => void;
+  /**
+   * Sound a pad at a given key, under whatever else is playing.
+   *
+   * Exposed rather than left to callers to do through the pad context directly,
+   * because arming a pad means overwriting `padLayers` -- a *persisted*
+   * preference holding whatever the user built in the pad mixer. Everything
+   * that does that has to snapshot it first, and having one place that does is
+   * the only way that stays true. See tabStateRef.
+   */
+  armPad: (packKey: string, key: string, mode: "major" | "minor") => void;
+  /** Silence the pad, leaving anything else playing alone. */
+  releasePad: () => void;
   /** Silence the live cue. Fast, and leaves the engine ready to fire another. */
   stop: () => void;
+  /**
+   * Silence the cue's transports, leaving any pad sounding.
+   *
+   * For stepping between cues rather than for stopping. The pad is a drone, not
+   * a part -- it is brought in over the last chord and left running while you
+   * talk, which is exactly the moment you are moving to the next cue -- so it
+   * holds across the move while the loop and the stems go quiet. stop() is the
+   * one that means silence, and it takes the pad down too.
+   */
+  stopTransport: () => void;
   /**
    * Finish the set: silence everything and give the Loop and Pad tabs back
    * exactly as the session found them. Separate from stop() because restoring
@@ -79,7 +108,8 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     bpm,
     loopPhase,
   } = useLoopPlayback();
-  const { togglePad, stopPad, activeKeyIndex } = usePadPlayback();
+  const { togglePad, stopPad, activeKeyIndex, mode, setMode } = usePadPlayback();
+  const session = useSessionPlayback();
 
   const [liveItemId, setLiveItemId] = useState<string | null>(null);
   // What the Loop and Pad tabs held before this session started, captured on
@@ -104,37 +134,90 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.padLayers]);
 
-  const play = (item: SessionItem) => {
-    // Only on the first cue of a session: later cues are overwriting the
-    // session's own work, not the user's, so re-snapshotting there would record
-    // the previous song and lose what we came in with.
-    if (tabStateRef.current === null) {
-      tabStateRef.current = {
-        padLayers: prefs.padLayers,
-        loopKey: selectedKey,
-        bpm,
-      };
+  // Only on the first cue of a session: later cues are overwriting the
+  // session's own work, not the user's, so re-snapshotting there would record
+  // the previous song and lose what we came in with.
+  const captureTabState = () => {
+    if (tabStateRef.current !== null) return;
+    tabStateRef.current = {
+      padLayers: prefs.padLayers,
+      loopKey: selectedKey,
+      bpm,
+      padMode: mode,
+    };
+  };
+
+  const armPad = (packKey: string, key: string, padMode: "major" | "minor") => {
+    const pack = findPadPackByKey(packKey);
+    const index = KEYS.indexOf(key);
+    if (!pack || index < 0) return;
+
+    captureTabState();
+
+    // Voicing first. setMode stops whatever is sounding, so a pad started
+    // before it would be silenced by the thing meant to tune it -- and it
+    // writes its own ref synchronously, so the toggle below already sees the
+    // new voicing.
+    const revoiced = mode !== padMode;
+    if (revoiced) setMode(padMode);
+
+    const already =
+      prefs.padLayers.length === 1 && prefs.padLayers[0].pack === pack.key;
+
+    // A cue names one pad, so it plays exactly that one -- the mixer's stack
+    // from the last song would otherwise sound underneath it.
+    if (!already) {
+      setPref("padLayers", [{ pack: pack.key, level: 1, muted: false }]);
+      pendingPadRef.current = { index };
+    } else if (revoiced || activeKeyIndex !== index) {
+      // Re-toggled unconditionally after a voicing change: setMode cleared the
+      // active key, so "it is already on that key" is no longer true however
+      // this render's state reads.
+      togglePad(index);
     }
+  };
+
+  const releasePad = () => {
+    pendingPadRef.current = null;
+    stopPad();
+  };
+
+  const play = (item: SessionItem) => {
+    // A stem cue is a different instrument: its tracks are multi-track audio
+    // that has to stay locked to itself, so it runs on the session engine and
+    // the loop engine is silenced rather than driven.
+    //
+    // The pad is the exception. It is a drone rather than a transport -- it
+    // does not have to line up with anything, so nothing stops it sitting under
+    // a stem song in that song's key, which is the one combination worth
+    // having.
+    if (item.tracks?.length) {
+      setLiveItemId(item.id);
+      stopLoop();
+
+      if (item.padPack && item.padKey) {
+        armPad(item.padPack, item.padKey, item.padMode ?? "major");
+      } else {
+        stopPad();
+      }
+
+      const tracks = item.tracks;
+      // loadCue returns as soon as the files are handed over; the engine
+      // reports back when they've decoded. play() is safe to call now -- it
+      // holds the launch until then rather than firing into an empty engine.
+      session.loadCue(item.id, tracks).catch((error) => {
+        console.error("Failed to cue stems", error);
+      });
+      session.play(tracks, item.bpm ?? 120);
+      return;
+    }
+
+    captureTabState();
 
     setLiveItemId(item.id);
 
     if (item.padPack && item.padKey) {
-      const pack = findPadPackByKey(item.padPack);
-      const index = KEYS.indexOf(item.padKey);
-
-      if (pack && index >= 0) {
-        const already = prefs.padLayers.length === 1 &&
-          prefs.padLayers[0].pack === pack.key;
-
-        // A cue names one pad, so it plays exactly that one -- the mixer's
-        // stack from the last song would otherwise sound underneath it.
-        if (!already) {
-          setPref("padLayers", [{ pack: pack.key, level: 1, muted: false }]);
-          pendingPadRef.current = { index };
-        } else if (activeKeyIndex !== index) {
-          togglePad(index);
-        }
-      }
+      armPad(item.padPack, item.padKey, item.padMode ?? "major");
     } else {
       stopPad();
     }
@@ -155,10 +238,18 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
   // swap the loaded loop a second time and wait on its decode before it would
   // sound. Between songs that read as the transport hanging. The loaded loop is
   // left where it is; the restore happens once, when the set ends.
-  const stop = () => {
+  const stopTransport = () => {
     setLiveItemId(null);
     pendingPadRef.current = null;
     stopLoop();
+    // Unconditional: which engine a cue used isn't worth tracking, and stopping
+    // one that isn't running costs nothing. Missing one would leave a song
+    // playing with the UI insisting it had stopped.
+    session.stop();
+  };
+
+  const stop = () => {
+    stopTransport();
     stopPad();
   };
 
@@ -170,6 +261,7 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     tabStateRef.current = null;
 
     setPref("padLayers", before.padLayers);
+    setMode(before.padMode);
     // Same ordering the cue itself relies on: selecting a loop resets the tempo
     // to that loop's own, so the remembered tempo has to be written after it.
     setSelectedLoopKey(before.loopKey ?? undefined);
@@ -178,7 +270,16 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
 
   return (
     <SessionCueContext.Provider
-      value={{ liveItemId, loopPhase, play, stop, endSession }}
+      value={{
+        liveItemId,
+        loopPhase,
+        play,
+        armPad,
+        releasePad,
+        stop,
+        stopTransport,
+        endSession,
+      }}
     >
       {children}
     </SessionCueContext.Provider>

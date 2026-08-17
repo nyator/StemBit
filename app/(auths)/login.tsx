@@ -6,15 +6,9 @@ import Screen from "../../components/ui/screen";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
 
-// This screen captures only the email address ("Continue with email"); the
-// password / verification step it hands off to is still to be wired up. The
-// Figma node this is built from is named `continue-with-email` (124:842).
-
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-// DEV BYPASS: skips authentication and jumps straight into the app. Set to
-// false once the email hand-off / password step is in place.
 const DEV_SKIP_AUTH = true;
 
 const LoginScreen = () => {
@@ -32,7 +26,6 @@ const LoginScreen = () => {
       return;
     }
     setError("");
-    // TODO: hand `email` off to the password / verification step.
     router.push("/(tabs)/loop");
   };
 
@@ -47,7 +40,7 @@ const LoginScreen = () => {
         </View>
 
         {/* Form area */}
-        <View className="justify-center flex-1 w-full gap-5">
+        <View className="justify-center flex-1 w-full gap-1">
           <BrandInput
             label="Email Address"
             placeholder="Enter your email"
@@ -67,7 +60,7 @@ const LoginScreen = () => {
 
           <BrandButton label="Continue" onPress={submit} />
 
-          <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5">
+          <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5 mt-3">
             By continuing, I agree to the{" "}
             <Text
               className="text-white underline"

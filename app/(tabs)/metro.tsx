@@ -1,19 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  StatusBar,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  Pressable,
-} from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View, Text, StatusBar, TouchableOpacity, TextInput } from "react-native";
 import NativeSlider from "@react-native-community/slider";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
+  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { Picker } from "@react-native-picker/picker";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -49,6 +40,11 @@ import {
   Musicnote,
 } from "../../components/icons";
 import InfoButton from "../../components/ui/infoButton";
+import {
+  SHEET_BACKGROUND,
+  SHEET_HANDLE_INDICATOR,
+  useSheetBackdrop,
+} from "../../components/ui/sheet";
 
 // Human label for a sound id, from the METRONOME_SOUNDS registry.
 const soundLabel = (id: string) =>
@@ -88,10 +84,19 @@ export default function MetroScreen() {
   const openSheet = () => sheetRef.current?.present();
   const closeSheet = () => sheetRef.current?.dismiss();
 
-  // Which voice's sound picker is currently open (in a plain modal), if any.
+  // Which voice's sound picker is open, if any.
   const [editingSound, setEditingSound] = useState<"accent" | "beat" | null>(
     null
   );
+  const soundSheetRef = useRef<BottomSheetModal>(null);
+
+  // The sheet is driven imperatively and this screen thinks in state, so the
+  // two are bridged here. Dismissing an already-dismissed sheet is a no-op,
+  // which is what makes this safe to run on any change.
+  useEffect(() => {
+    if (editingSound) soundSheetRef.current?.present();
+    else soundSheetRef.current?.dismiss();
+  }, [editingSound]);
 
   // Local mirrors of the persisted volumes. The slider drives these live so its
   // thumb stays put across the re-renders the metronome triggers every beat;
@@ -103,19 +108,9 @@ export default function MetroScreen() {
   useEffect(() => setBeatVol(beatVolume), [beatVolume]);
 
   // Backdrop that fades in as the sheet opens and out as it closes; tapping it
-  // dismisses the sheet.
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
+  // dismisses the sheet. Shared, so every sheet in the app dims by the same
+  // amount and closes the same way.
+  const renderBackdrop = useSheetBackdrop();
 
   const {
     bpmText,
@@ -173,62 +168,67 @@ export default function MetroScreen() {
     </View>
   );
 
-  // A voice's sound picker, presented as a small bottom modal. Reused for both
-  // the accent and beat voices depending on `editingSound`.
+  // A voice's sound picker. Reused for both the accent and beat voices
+  // depending on `editingSound`, and on the same sheet as everything else that
+  // comes up from the bottom of this app.
+  //
+  // The voice is held past the point it is cleared, so the sheet still knows
+  // what it is showing while it slides away. Read straight off `editingSound`
+  // the content would blank the instant dismissal starts and the sheet would
+  // animate out empty.
+  const lastVoiceRef = useRef<"accent" | "beat">("accent");
+  if (editingSound) lastVoiceRef.current = editingSound;
+
   const renderSoundPickerModal = () => {
-    const voice = editingSound;
+    const voice = editingSound ?? lastVoiceRef.current;
     const currentId = voice === "accent" ? accentSound : beatSound;
     const setSound = voice === "accent" ? setAccentSound : setBeatSound;
     return (
-      <Modal
-        visible={voice !== null}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setEditingSound(null)}
+      <BottomSheetModal
+        ref={soundSheetRef}
+        // Sized to the picker rather than to a snap point: the wheel has an
+        // intrinsic height on iOS and collapses to a dropdown button on
+        // Android, so any fixed fraction of the screen is wrong on one of them.
+        enableDynamicSizing
+        // The wheel scrolls vertically and so does the sheet. Without this they
+        // read the same drag and spinning the picker pulls the sheet shut; the
+        // handle still drags it.
+        enableContentPanningGesture={false}
+        onDismiss={() => setEditingSound(null)}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={SHEET_BACKGROUND}
+        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
       >
-        <Pressable
-          style={{
-            flex: 1,
-            justifyContent: "flex-end",
-            backgroundColor: "rgba(0,0,0,0.5)",
-          }}
-          onPress={() => setEditingSound(null)}
-        >
-          <Pressable
-            onPress={() => {}}
-            className="w-full pt-2 pb-8 bg-surface-field rounded-t-[20px]"
-          >
-            <View className="flex-row items-center justify-between px-5 py-2">
-              <Text
-                className="uppercase text-overline font-spaceBold text-white/70"
-                style={{ letterSpacing: 0.72 }}
-              >
-                {voice === "accent" ? "Accent sound" : "Beat sound"}
-              </Text>
-              <TouchableOpacity onPress={() => setEditingSound(null)}>
-                <Text className="text-brand text-body font-spaceBold">Done</Text>
-              </TouchableOpacity>
-            </View>
-            <Picker
-              selectedValue={currentId}
-              onValueChange={(id) => setSound(id)}
-              itemStyle={{ color: "#fff" }}
-              dropdownIconColor="#fff"
-              style={{ width: "100%", color: "#fff" }}
+        <BottomSheetView style={{ paddingBottom: 40 }}>
+          <View className="flex-row items-center justify-between px-5 py-2">
+            <Text
+              className="uppercase text-overline font-spaceBold text-white/70"
+              style={{ letterSpacing: 0.72 }}
             >
-              {METRONOME_SOUNDS.map((s) => (
-                <Picker.Item
-                  key={s.id}
-                  label={s.label}
-                  value={s.id}
-                  color="#fff"
-                />
-              ))}
-            </Picker>
-          </Pressable>
-        </Pressable>
-      </Modal>
+              {voice === "accent" ? "Accent sound" : "Beat sound"}
+            </Text>
+            <TouchableOpacity onPress={() => setEditingSound(null)}>
+              <Text className="text-brand text-body font-spaceBold">Done</Text>
+            </TouchableOpacity>
+          </View>
+          <Picker
+            selectedValue={currentId}
+            onValueChange={(id) => setSound(id)}
+            itemStyle={{ color: "#fff" }}
+            dropdownIconColor="#fff"
+            style={{ width: "100%", color: "#fff" }}
+          >
+            {METRONOME_SOUNDS.map((s) => (
+              <Picker.Item
+                key={s.id}
+                label={s.label}
+                value={s.id}
+                color="#fff"
+              />
+            ))}
+          </Picker>
+        </BottomSheetView>
+      </BottomSheetModal>
     );
   };
 
@@ -242,15 +242,8 @@ export default function MetroScreen() {
       snapPoints={SHEET_SNAP_POINTS}
       enableDynamicSizing={false}
       backdropComponent={renderBackdrop}
-      backgroundStyle={{
-        backgroundColor: "#090B10",
-        borderTopLeftRadius: 30,
-        borderTopRightRadius: 30,
-      }}
-      handleIndicatorStyle={{
-        backgroundColor: "rgba(255,255,255,0.4)",
-        width: 48,
-      }}
+      backgroundStyle={SHEET_BACKGROUND}
+      handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
     >
       <BottomSheetScrollView
         showsVerticalScrollIndicator={false}

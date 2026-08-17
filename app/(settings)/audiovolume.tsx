@@ -68,6 +68,7 @@ const AudioVolume = () => {
                         value={volumes.loop}
                         onValueChange={setVolume("loop")}
                         onComplete={(v) => setPref("loopVolume", v)}
+                        border={true}
                     />
                     <SettingSlider
                         icon={Pad}
@@ -83,7 +84,7 @@ const AudioVolume = () => {
                         value={volumes.metronome}
                         onValueChange={setVolume("metronome")}
                         onComplete={(v) => setPref("metronomeVolume", v)}
-                        border={true}
+                        // border={true}
                     />
                 </SettingSection>
 

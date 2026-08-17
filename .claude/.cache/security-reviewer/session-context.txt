@@ -1,0 +1,37 @@
+## SECURITY CONTEXT (injected by .claude/hooks/session-start.sh)
+
+Project root: `C:/Users/hnyator/Desktop/StemBit`
+Detected ecosystems: nodejs
+Generated at: 2026-08-17T13:09:02Z
+
+### Manifests present
+
+- `package.json`
+- `package-lock.json`
+
+### Lockfile sanity
+
+- ✅ nodejs: lockfile present
+
+### Secrets hygiene (.gitignore)
+
+- ✅ `.env` ignored
+- ⚠️ `.env.local` not in .gitignore
+- ✅ `*.pem` ignored
+- ✅ `*.key` ignored
+
+### Dependency audit (best-effort, fast)
+
+Tool: `npm audit` (nodejs)
+
+```
+
+```
+
+### Guidance for agents in this session
+
+- The `security-reviewer` skill at `.claude/skills/security-reviewer/SKILL.md` defines the 8-point review and per-language references.
+- Trust this context block over re-discovery for ecosystem and lockfile state.
+- The `pre-bash-package-guard.sh` hook will block typosquatted, brand-new, or known-malicious package installs — do not try to bypass it; surface the issue to the user instead.
+- The `post-edit-quickscan.sh` hook will scan files written by Edit/Write/MultiEdit and may emit findings to consume.
+

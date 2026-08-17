@@ -37,6 +37,43 @@ export type CueTrack = {
   uri: string;
   level: number;
   muted: boolean;
+  /**
+   * Placement in the stereo field, -1 (hard left) to 1 (hard right).
+   *
+   * Optional because cues written before the mixer existed don't carry one, and
+   * an absent pan means centre -- which is where every one of them was.
+   */
+  pan?: number;
+};
+
+/**
+ * A named span of a stem song -- verse, chorus, bridge.
+ *
+ * Times, not bars. The engine launches by seeking every track to the same
+ * second, and storing bars would mean the stored song silently moved if its
+ * tempo were ever corrected. Bars are derived for display where they're wanted.
+ *
+ * A section owns both of its edges. `endSeconds` is what a launched section
+ * loops back from, so holding on a chorus repeats the chorus rather than
+ * running on into whatever follows.
+ *
+ * The end used to be derived -- every section ran to wherever the next one
+ * began -- which is only right when the sections happen to be contiguous. Mark
+ * the four bars you want to loop and the derived end put it at the next marker
+ * instead, and the last section of a song had no end at all, so holding on the
+ * outro looped it through whatever trailing silence the file carried. Both
+ * edges are placed and dragged on purpose now.
+ *
+ * Unset still means "to the end of the file", because cues written before this
+ * carry it that way and because it is the honest answer for a section imported
+ * from WAV cue markers, which are points rather than regions.
+ */
+export type CueSection = {
+  id: string;
+  /** "Verse 1", "Chorus", "Outro". */
+  name: string;
+  startSeconds: number;
+  endSeconds?: number;
 };
 
 export type SessionItem = {
@@ -47,7 +84,16 @@ export type SessionItem = {
   loopKey?: string;
   /** Tempo for this cue. Falls back to the loop's own when unset. */
   bpm?: number;
-  /** Pad pack to arm, and the root to sound it at. */
+  /**
+   * Pad pack to arm, and the root to sound it at.
+   *
+   * Set on a stem cue as well as a loop/pad one, and it means the same thing in
+   * both: the key the song is in. For a stem cue that is a detail of the song
+   * itself -- worth recording even before anyone decides to play a pad under it
+   * -- and it is what the pad is tuned to when they do. A song does not change
+   * key because you imported it, so this is editable afterwards from the
+   * performance screen as well as from the cue editor.
+   */
   padPack?: string;
   padKey?: string;
   padMode?: "major" | "minor";
@@ -61,7 +107,21 @@ export type SessionItem = {
    * first.
    */
   tracks?: CueTrack[];
+  /**
+   * Named spans within the stems, in the order they occur. Empty or absent
+   * means the song is played from the top as one piece.
+   */
+  sections?: CueSection[];
 };
+
+/**
+ * What a cue is called before anyone names it.
+ *
+ * A cue is created empty and named in STUDIO, so it exists for a moment with
+ * nothing in it -- and a blank row in a running order is unreadable. Also what
+ * a stem import checks against before taking the first file's name.
+ */
+export const UNTITLED_CUE = "Untitled cue";
 
 export type Session = {
   id: string;
@@ -76,7 +136,8 @@ type SessionsContextValue = {
   addSession: (title: string) => Session;
   renameSession: (id: string, title: string) => void;
   removeSession: (id: string) => void;
-  addItem: (sessionId: string, item: Omit<SessionItem, "id">) => void;
+  /** Returns the cue it created, so the caller can open it. */
+  addItem: (sessionId: string, item: Omit<SessionItem, "id">) => SessionItem;
   updateItem: (
     sessionId: string,
     itemId: string,
@@ -213,11 +274,17 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
   const removeSession = (id: string) =>
     commit(sessionsRef.current.filter((session) => session.id !== id));
 
-  const addItem = (sessionId: string, item: Omit<SessionItem, "id">) =>
+  const addItem = (sessionId: string, item: Omit<SessionItem, "id">) => {
+    // Minted here rather than inside the update, so the caller gets it back.
+    // Adding a cue now means opening it -- there is no form to fill in first --
+    // and the screen it opens is addressed by id.
+    const created: SessionItem = { ...item, id: newId() };
     replaceSession(sessionId, (session) => ({
       ...session,
-      items: [...session.items, { ...item, id: newId() }],
+      items: [...session.items, created],
     }));
+    return created;
+  };
 
   const updateItem = (
     sessionId: string,

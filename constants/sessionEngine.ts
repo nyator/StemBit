@@ -21,6 +21,13 @@
 // every ~25ms and schedules anything falling due inside the next 100ms against
 // ctx.currentTime. JS timers are far too jittery to start audio on directly;
 // they only ever decide what to hand the audio clock.
+//
+// The third job is the mix. Each track keeps a gain, a panner and an analyser
+// that outlive any one launch, so a level set during the verse is still set in
+// the chorus, and the mixer's meters have something to read. Alongside them the
+// engine reports where we are IN THE SONG rather than only how long the
+// transport has run -- the two stop agreeing the instant a section seeks into
+// the middle of the files, and a timeline can only draw the first one.
 
 export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 <html>
@@ -37,13 +44,38 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // section would waste both time and memory.
         var buffers = {};
 
-        // Per-track output gain, kept between launches so a level set during
-        // one section survives into the next.
+        // Per-track signal chain, kept between launches so a level set during
+        // one section survives into the next:
+        //
+        //   source -> gain -> panner -> master
+        //               \
+        //                -> analyser        (a tap, for the mixer's meters)
+        //
+        // The analyser hangs off the gain rather than the panner: a meter should
+        // show what the channel is contributing, and reading it after the pan
+        // would make a hard-left track look silent on a mono read of channel 0.
         var trackGains = {};
+        var trackPanners = {};
+        var trackAnalysers = {};
         var trackLevels = {};
+        var trackPans = {};
+        var trackMutes = {};
 
         // Sounding sources, by track id: { source, gain }.
         var playing = {};
+
+        // What is currently sounding, in the song's own time:
+        // { at, offset, loopStart, loopEnd, looping }.
+        //
+        // Needed because a section launch seeks every track into the middle of
+        // the files, so "how long the transport has been running" and "where we
+        // are in the song" stop being the same number the moment anyone hits a
+        // section pad. The timeline draws the second one.
+        var live = null;
+
+        // Bumped on every launch and on stop, so a source's onended can tell
+        // "the song ran out" from "something else took over and stopped me".
+        var launchGeneration = 0;
 
         // --- Transport ------------------------------------------------------
         // The musical grid. startedAt is the audio-clock time beat 0 fell on, so
@@ -95,15 +127,65 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           return audioContext;
         }
 
+        // The head of a track's chain -- what a source connects to. Building the
+        // whole chain here rather than at each launch means a level, a pan and a
+        // mute all survive a section change, which is the behaviour you want:
+        // the mix is a property of the song, not of the section playing.
         function gainForTrack(id) {
           var ctx = ensureContext();
           if (!trackGains[id]) {
             var g = ctx.createGain();
             g.gain.value = trackLevels[id] === undefined ? 1 : trackLevels[id];
-            g.connect(master);
+
+            // StereoPannerNode is missing on some older WebViews. Panning is
+            // worth having and worth doing without -- the chain just skips it.
+            var tail = g;
+            if (ctx.createStereoPanner) {
+              var p = ctx.createStereoPanner();
+              p.pan.value = trackPans[id] === undefined ? 0 : trackPans[id];
+              g.connect(p);
+              trackPanners[id] = p;
+              tail = p;
+            }
+            tail.connect(master);
+
+            var a = ctx.createAnalyser();
+            // Small window: the meter wants the level over the last few
+            // milliseconds, not a spectrum. Smoothing is the analyser's own, so
+            // the needle settles without the app having to filter it.
+            a.fftSize = 256;
+            a.smoothingTimeConstant = 0.5;
+            g.connect(a);
+            trackAnalysers[id] = a;
+
             trackGains[id] = g;
           }
           return trackGains[id];
+        }
+
+        // Post-fader RMS per sounding track, for the mixer's meters. Only
+        // tracks that are actually playing: a meter on a stopped track should
+        // read nothing rather than hold its last value.
+        var meterWindow = null;
+        function meterLevels() {
+          var levels = {};
+          for (var id in playing) {
+            if (!Object.prototype.hasOwnProperty.call(playing, id)) continue;
+            var a = trackAnalysers[id];
+            if (!a || !a.getFloatTimeDomainData) continue;
+
+            if (!meterWindow || meterWindow.length !== a.fftSize) {
+              meterWindow = new Float32Array(a.fftSize);
+            }
+            a.getFloatTimeDomainData(meterWindow);
+
+            var sum = 0;
+            for (var i = 0; i < meterWindow.length; i++) {
+              sum += meterWindow[i] * meterWindow[i];
+            }
+            levels[id] = Math.sqrt(sum / meterWindow.length);
+          }
+          return levels;
         }
 
         // --- Grid maths -----------------------------------------------------
@@ -121,6 +203,29 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         /** Audio-clock time a given beat number falls on. */
         function timeOfBeat(beat) {
           return startedAt + beat * secondsPerBeat();
+        }
+
+        // Where we are IN THE SONG, in seconds, or null when nothing is
+        // sounding. Distinct from the transport, which counts from wherever it
+        // was started: launch a chorus 90 seconds in and the transport says bar
+        // 1 while the audio is at 1:30. The timeline needs the second number,
+        // and so does the bar counter above it, or the two disagree on screen.
+        function songSeconds(atTime) {
+          if (!live) return null;
+
+          var position = live.offset + (atTime - live.at);
+          // Scheduled but not yet reached: the launch is a moment in the future,
+          // so the playhead sits where it is about to start rather than before it.
+          if (position < live.offset) return live.offset;
+
+          if (live.looping) {
+            var span = live.loopEnd - live.loopStart;
+            if (span > 0 && position >= live.loopEnd) {
+              position =
+                live.loopStart + ((position - live.loopStart) % span);
+            }
+          }
+          return position;
         }
 
         // The next grid line at or after fromBeat, on a grid of "quantum"
@@ -164,7 +269,27 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // point of the engine: one shared start means the stems are locked to
         // each other by construction, not by being started close together.
         function launch(section, atTime) {
+          // Bumped before anything is stopped, so the sources torn down by the
+          // stopAll below see a stale generation in their onended and stay
+          // quiet about it.
+          launchGeneration += 1;
+          var generation = launchGeneration;
           stopAll(atTime);
+
+          // Where in the stems this section begins, and how far it runs. A
+          // section is a span of the same files rather than a file of its own,
+          // so launching one is an offset into every track at once -- which is
+          // also why they stay locked to each other across a jump.
+          var offset = section.offset || 0;
+          var end = section.endSeconds || 0;
+          // Looping is the section pads' behaviour -- hold on a chorus and it
+          // repeats. The timeline asks for it off, because playing from a point
+          // and having the song silently jump backwards is not what a playhead
+          // dragged onto bar 40 promises.
+          var looping = section.loop !== false;
+
+          var boundary = 0;
+          var last = null;
 
           for (var i = 0; i < section.tracks.length; i++) {
             var id = section.tracks[i];
@@ -174,10 +299,48 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             var ctx = audioContext;
             var source = ctx.createBufferSource();
             source.buffer = buffer;
-            source.loop = true;
-            source.connect(gainForTrack(id));
-            source.start(atTime);
+            boundary = end > offset ? end : buffer.duration;
+
+            if (looping) {
+              source.loop = true;
+              // Looping inside the section, so holding on a chorus repeats the
+              // chorus rather than running on into whatever follows it. Without
+              // an end the section runs to the end of the file.
+              source.loopStart = offset;
+              source.loopEnd = boundary;
+              source.connect(gainForTrack(id));
+              source.start(atTime, offset);
+            } else {
+              source.loop = false;
+              source.connect(gainForTrack(id));
+              // Given a duration rather than left to run: a section played
+              // straight has to stop where the next one starts, not run on
+              // through it to the end of the file.
+              source.start(atTime, offset, Math.max(0, boundary - offset));
+            }
+
             playing[id] = { source: source, gain: gainForTrack(id) };
+            last = source;
+          }
+
+          live = {
+            at: atTime,
+            offset: offset,
+            loopStart: offset,
+            loopEnd: boundary,
+            looping: looping,
+          };
+
+          // Played straight, the transport stops when the audio runs out --
+          // otherwise the counter keeps climbing over silence and the screen
+          // insists the song is still going. One source carries this; they all
+          // end on the same sample.
+          if (!looping && last) {
+            last.onended = function () {
+              if (generation !== launchGeneration) return;
+              post({ type: "ended", sectionId: section.sectionId });
+              stopTransport();
+            };
           }
 
           currentSectionId = section.sectionId;
@@ -206,9 +369,18 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           stopPositionUpdates();
           positionTimer = setInterval(function () {
             if (!transportRunning || !audioContext) return;
-            var beats = beatsElapsed(audioContext.currentTime);
+            var now = audioContext.currentTime;
+
+            // Bars are counted off the song where there is one, so the counter
+            // and the timeline's ruler are reading the same clock. With nothing
+            // sounding there is no song position, and the transport's own count
+            // is the only thing left to show.
+            var seconds = songSeconds(now);
+            var beats =
+              seconds === null ? beatsElapsed(now) : seconds / secondsPerBeat();
             var bar = Math.floor(beats / beatsPerBar);
             var beatInBar = beats - bar * beatsPerBar;
+
             post({
               type: "position",
               bar: bar,
@@ -216,6 +388,11 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               // Fraction through the current beat, for anything that has to
               // move smoothly rather than tick.
               phase: beatInBar - Math.floor(beatInBar),
+              seconds: seconds,
+              // Piggybacked rather than sent on a timer of their own: the
+              // bridge is the expensive part, and one message a tick carrying
+              // both costs the same as one carrying the position alone.
+              levels: meterLevels(),
               armedForBeat: armed ? armed.atBeat : null,
             });
           }, POSITION_INTERVAL_MS);
@@ -247,7 +424,12 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             schedulerTimer = null;
           }
           stopPositionUpdates();
+          // Bumped before the sources are stopped so a straight-played section
+          // being cut short doesn't come back through onended and stop a
+          // transport that is already stopping.
+          launchGeneration += 1;
           if (audioContext) stopAll(audioContext.currentTime);
+          live = null;
           armed = null;
           currentSectionId = null;
           post({ type: "transport", running: false });
@@ -257,15 +439,23 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // launch that hasn't fired is deliberate: on stage, hitting a second
         // pad before the first lands means you changed your mind, and the last
         // thing pressed is what should play.
-        function armSection(sectionId, tracks, quantum) {
+        function armSection(sectionId, tracks, quantum, offset, endSeconds, loop) {
           var ctx = ensureContext();
           if (!transportRunning) startTransport();
 
           var fromBeat = beatsElapsed(ctx.currentTime);
+          // A quantum of 0 means now -- used for the first launch of a song,
+          // where waiting a bar for silence to end would just be a delay, and
+          // for a seek from the timeline, where the point of dragging the
+          // playhead is to hear that spot rather than the next downbeat.
+          var q = quantum === 0 ? 0 : (quantum || beatsPerBar);
           armed = {
             sectionId: sectionId,
             tracks: tracks || [],
-            atBeat: nextBoundary(fromBeat, quantum || beatsPerBar),
+            offset: offset || 0,
+            endSeconds: endSeconds || 0,
+            loop: loop !== false,
+            atBeat: nextBoundary(fromBeat, q),
             scheduled: false,
           };
           post({ type: "armed", sectionId: sectionId, atBeat: armed.atBeat });
@@ -274,14 +464,33 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // The emergency control: drop or bring back one track without touching
         // the rest of the section. Level is kept even while muted so unmuting
         // returns it to where it was.
-        function setTrack(id, level, muted) {
+        // Each field is optional and sticky: sending only a pan moves the pan
+        // and leaves the level and the mute where they were. Without that, a
+        // finger on the pan control would silently unmute a muted stem, which
+        // is the sort of thing you find out about from the front of house.
+        function setTrack(id, level, muted, pan) {
           if (typeof level === "number") trackLevels[id] = level;
+          if (typeof muted === "boolean") trackMutes[id] = muted;
+
           var g = gainForTrack(id);
-          var target = muted ? 0 : (trackLevels[id] === undefined ? 1 : trackLevels[id]);
+          var target = trackMutes[id]
+            ? 0
+            : (trackLevels[id] === undefined ? 1 : trackLevels[id]);
           var ctx = ensureContext();
           // Ramped, not set: a hard gain change on sounding audio clicks.
           g.gain.cancelScheduledValues(ctx.currentTime);
           g.gain.setTargetAtTime(target, ctx.currentTime, 0.01);
+
+          if (typeof pan === "number") {
+            trackPans[id] = pan;
+            var p = trackPanners[id];
+            if (p) {
+              // Ramped for the same reason, and a touch slower: a pan swept by
+              // a finger sounds like a move rather than a jump.
+              p.pan.cancelScheduledValues(ctx.currentTime);
+              p.pan.setTargetAtTime(pan, ctx.currentTime, 0.02);
+            }
+          }
         }
 
         // Free decoded audio. Decisive for stems in a way it never was for
@@ -305,19 +514,61 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             if (keep[id]) continue;
 
             if (playing[id] && ctx) stopTrack(id, ctx.currentTime);
-            if (trackGains[id]) {
+            // The whole chain, not just the gain: a panner and an analyser left
+            // connected to the master are a leak that a set's worth of songs
+            // would accumulate one stem at a time.
+            var chain = [trackGains[id], trackPanners[id], trackAnalysers[id]];
+            for (var n = 0; n < chain.length; n++) {
+              if (!chain[n]) continue;
               try {
-                trackGains[id].disconnect();
+                chain[n].disconnect();
               } catch (e) {
                 // Already disconnected.
               }
-              delete trackGains[id];
             }
+            delete trackGains[id];
+            delete trackPanners[id];
+            delete trackAnalysers[id];
             delete buffers[id];
             delete trackLevels[id];
+            delete trackPans[id];
+            delete trackMutes[id];
           }
 
           post({ type: "cleared" });
+        }
+
+        // A track's shape, for drawing. One value per bucket, each the loudest
+        // sample in it, so transients survive being reduced to a few hundred
+        // points -- averaging would flatten exactly the drum hits that tell you
+        // where you are in a song.
+        //
+        // Sampled rather than exhaustive: a five-minute stem is thirteen
+        // million frames and reading every one would lock the page for seconds.
+        // A few hundred per bucket is more than enough to find its peak.
+        function peaksFor(id, buckets) {
+          var buffer = buffers[id];
+          if (!buffer) return null;
+
+          var count = buckets || 400;
+          var data = buffer.getChannelData(0);
+          var perBucket = Math.max(1, Math.floor(data.length / count));
+          var step = Math.max(1, Math.floor(perBucket / 256));
+          var peaks = [];
+
+          for (var b = 0; b < count; b++) {
+            var start = b * perBucket;
+            var end = Math.min(data.length, start + perBucket);
+            var max = 0;
+            for (var i = start; i < end; i += step) {
+              var value = data[i];
+              if (value < 0) value = -value;
+              if (value > max) max = value;
+            }
+            peaks.push(max);
+          }
+
+          return { peaks: peaks, duration: buffer.duration };
         }
 
         function loadTrack(id, base64) {
@@ -349,6 +600,17 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             case "clearTracks":
               clearTracks(data.keep);
               break;
+            case "getPeaks":
+              var shape = peaksFor(data.id, data.buckets);
+              if (shape) {
+                post({
+                  type: "peaks",
+                  id: data.id,
+                  peaks: shape.peaks,
+                  duration: shape.duration,
+                });
+              }
+              break;
             case "setTempo":
               // Changing tempo mid-transport would move every future grid line
               // out from under an armed launch, so the grid is re-anchored to
@@ -371,10 +633,17 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               stopTransport();
               break;
             case "arm":
-              armSection(data.sectionId, data.tracks, data.quantum);
+              armSection(
+                data.sectionId,
+                data.tracks,
+                data.quantum,
+                data.offset,
+                data.endSeconds,
+                data.loop
+              );
               break;
             case "setTrack":
-              setTrack(data.id, data.level, data.muted);
+              setTrack(data.id, data.level, data.muted, data.pan);
               break;
             case "ping":
               post({ type: "pong" });
