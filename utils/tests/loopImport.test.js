@@ -86,16 +86,34 @@ describe("the page the engine actually renders", () => {
     // via JSON.stringify. The engine's own code is inside the template literal, so
     // for it they're fatal.
     //
-    // One interpolation is deliberate and named below: the silent-mode keep-alive,
-    // shared verbatim with the metronome engine. Naming it rather than loosening
-    // the pattern means a stray ${...} anywhere else still fails here, and the
-    // injected source is held to the same rule by the test after this one.
+    // Two interpolations are deliberate and named below: the silent-mode
+    // keep-alive, shared verbatim with the metronome engine, and the tempo
+    // detector, shared with the session engine. Naming them rather than
+    // loosening the pattern means a stray ${...} anywhere else still fails
+    // here, and each injected source is held to the same rule by the tests
+    // after this one.
     const engineSource = fs
       .readFileSync(ENGINE_PATH, "utf8")
       .match(/<script id="engine">([\s\S]*?)<\/script>/)[1]
-      .replace("${SILENT_MODE_KEEP_ALIVE_SOURCE}", "");
+      .replace("${SILENT_MODE_KEEP_ALIVE_SOURCE}", "")
+      .replace("${TEMPO_DETECT_SOURCE}", "");
     expect(engineSource).not.toMatch(/`/);
     expect(engineSource).not.toMatch(/\$\{/);
+  });
+
+  it("keeps the injected tempo detector free of backticks and ${...} too", () => {
+    // Same hazard as the keep-alive: it lands inside this engine's template
+    // literal, and it lives in another file, which is exactly how it would get
+    // edited by someone who isn't thinking about this one.
+    const { TEMPO_DETECT_SOURCE } = require("../../constants/tempoDetect");
+    expect(TEMPO_DETECT_SOURCE).not.toMatch(/`/);
+    expect(TEMPO_DETECT_SOURCE).not.toMatch(/\$\{/);
+    // And it has to actually reach the page. detect() calls detectTempo, so a
+    // missing definition is a ReferenceError on every import rather than a
+    // tempo that merely reads wrong.
+    expect(scripts[1]).toContain("function detectTempo");
+    expect(scripts[1]).toContain("function describeTempo");
+    expect(scripts[1]).toContain("function sliceRegion");
   });
 
   it("keeps the injected keep-alive source free of backticks and ${...} too", () => {

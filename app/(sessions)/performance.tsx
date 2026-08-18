@@ -45,11 +45,6 @@ import { PAD_PACKS } from "../../constants/pads";
 import { findLoopByKey } from "../../constants/loops";
 import { hapticImpact } from "../../utils/haptics";
 import { describeCue } from "../../utils/describeCue";
-import { loadAudioBase64 } from "../../utils/loadAssetBase64";
-import {
-  LoopPreviewEngine,
-  type LoopPreviewHandle,
-} from "../../components/loopPreviewEngine";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import TrackTimeline from "../../components/ui/trackTimeline";
@@ -465,7 +460,6 @@ export default function PerformanceScreen() {
     setDetecting(false);
     setSuggestion(null);
     detectKeyRef.current = null;
-    pendingAnalysisRef.current = null;
   }, [cue?.id]);
 
   // The stems are decoded on arrival so the first press starts immediately
@@ -902,49 +896,36 @@ export default function PerformanceScreen() {
     confidence: number;
     alternatives: number[];
   } | null>(null);
-  const detectRef = useRef<LoopPreviewHandle>(null);
-  // Which import the analysis in flight belongs to, so a reply for stems that
+  // Which import the reading in flight belongs to, so an answer for stems that
   // have since been replaced is dropped rather than applied to the wrong song.
   const detectKeyRef = useRef<string | null>(null);
 
   /**
    * Read the tempo off one of the stems just imported.
    *
-   * Through the loop preview engine rather than the stem engine: it is the one
-   * that carries the BPM analyser, and it exists precisely to measure a file
-   * without disturbing whatever is loaded for playback. One stem is enough --
-   * they are the same performance, and a bass part carries the pulse as well as
-   * a full mix does.
+   * Asked of the stem engine, which has already decoded the audio for playback.
+   * The alternative was a second engine mounted to read a second copy of the
+   * same file -- at the one moment a whole multitrack song is already in
+   * memory, which is the worst moment to hold another.
+   *
+   * One stem is enough: they are the same performance, and a bass part carries
+   * the pulse as well as a full mix does.
    */
-  // The audio waiting to be handed over, and a tick to hand it over on. Held in
-  // a ref rather than state because it is tens of megabytes of base64, and
-  // announced by a counter because the detector has to be on screen before it
-  // can be called -- an effect runs after that render, a bare call would not.
-  const pendingAnalysisRef = useRef<{ cueId: string; base64: string } | null>(
-    null
-  );
-  const [analysisTick, setAnalysisTick] = useState(0);
-
   const detectTempoFrom = async (track: CueTrack, cueId: string) => {
     detectKeyRef.current = cueId;
     setDetecting(true);
     try {
-      const base64 = await loadAudioBase64(track.uri);
+      const tempo = await session.detectTempo(track.id);
+      // Moved on while it was reading: this answer describes a song that is no
+      // longer on screen.
       if (detectKeyRef.current !== cueId) return;
-      pendingAnalysisRef.current = { cueId, base64 };
-      setAnalysisTick((tick) => tick + 1);
+      setDetecting(false);
+      if (tempo) setSuggestion(tempo);
     } catch (error) {
-      console.error("Couldn't read the stem for tempo detection", error);
+      console.error("Tempo detection failed", error);
       if (detectKeyRef.current === cueId) setDetecting(false);
     }
   };
-
-  useEffect(() => {
-    const pending = pendingAnalysisRef.current;
-    if (!pending) return;
-    pendingAnalysisRef.current = null;
-    detectRef.current?.analyze(pending.cueId, pending.base64);
-  }, [analysisTick]);
 
   const applySuggestedTempo = () => {
     if (suggestion) setCueBpm(suggestion.bpm);
@@ -2107,35 +2088,6 @@ export default function PerformanceScreen() {
           </Text>
         )}
       </View>
-
-      {/* The tempo detector, mounted only while a reading is in flight.
-          A second audio engine is not something to keep around: it is here for
-          the seconds after an import and gone again. The loop engine rather
-          than the stem one because it is the engine that carries the BPM
-          analyser, and it is built to measure a file without disturbing
-          whatever is loaded for playback. */}
-      {detecting && (
-        <LoopPreviewEngine
-          ref={detectRef}
-          clickEnabled={false}
-          onAnalyzed={(analysis) => {
-            // A reply for stems that have since been replaced belongs to a song
-            // that is no longer on screen.
-            if (detectKeyRef.current !== analysis.key) return;
-            setDetecting(false);
-            if (analysis.tempo) setSuggestion(analysis.tempo);
-          }}
-          onDetected={() => {}}
-          onRegionPeaks={() => {}}
-          onPosition={() => {}}
-          onError={(message) => {
-            // Never fatal: the tempo is typed in if it can't be read, which is
-            // how every stem cue got one before this existed.
-            console.error("Tempo detection failed", message);
-            setDetecting(false);
-          }}
-        />
-      )}
 
       {/* The running order. A sheet rather than a screen, so getting to another
           song is one gesture out and one back rather than a navigation.

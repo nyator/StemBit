@@ -29,10 +29,31 @@
 // transport has run -- the two stop agreeing the instant a section seeks into
 // the middle of the files, and a timeline can only draw the first one.
 
+// The fourth job is reading a tempo off the stems. A song imported here has no
+// declared tempo the way a catalog loop does, and everything on the grid --
+// where a launch lands, when a section changes -- is measured in beats from it.
+// The detector runs on the buffers this engine has already decoded, rather than
+// on a second copy in a second engine: the moment after an import is when a
+// whole multitrack song is in memory, and it is the worst possible moment to
+// hold another one.
+import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
+import { TEMPO_DETECT_SOURCE } from "./tempoDetect";
+
 export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 <html>
   <head><meta charset="utf-8" /></head>
   <body>
+    <script>
+      // realtime-bpm-analyzer's CommonJS bundle, verbatim. It has no external
+      // requires, so a module/exports pair is all it needs to load anywhere.
+      // Must run before the engine, which looks for window.bpmAnalyzer.
+      (function () {
+        var module = { exports: {} };
+        var exports = module.exports;
+        ${BPM_ANALYZER_SOURCE}
+        window.bpmAnalyzer = module.exports;
+      })();
+    </script>
     <script id="engine">
       (function () {
         var AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -490,6 +511,25 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           clickScheduler();
         }
 
+        ${TEMPO_DETECT_SOURCE}
+
+        // Read the tempo off a stem this engine already holds.
+        //
+        // The whole track, not a region: a song has no trim, and the detector is
+        // happier with more audio than less. One stem is enough -- they are the
+        // same performance, and a bass part carries the pulse as well as a full
+        // mix does.
+        function detectTrackTempo(id) {
+          var buffer = buffers[id];
+          if (!buffer) {
+            post({ type: "tempo", id: id, tempo: null });
+            return;
+          }
+          detectTempo(buffer, 0, buffer.duration, function (tempo) {
+            post({ type: "tempo", id: id, tempo: tempo });
+          });
+        }
+
         function setClick(cfg) {
           if (typeof cfg.pan === "number") {
             clickPan = Math.max(-1, Math.min(1, cfg.pan));
@@ -802,6 +842,9 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               break;
             case "loadClick":
               loadClickSound(data.id, data.base64);
+              break;
+            case "detectTempo":
+              detectTrackTempo(data.id);
               break;
             case "setClick":
               setClick(data);

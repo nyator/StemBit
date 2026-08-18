@@ -10,7 +10,7 @@ import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
-import { METRONOME_SOUNDS } from "./MetronomeContext";
+import { METRONOME_SOUNDS, useMetronome } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
 import type { CueTrack } from "./SessionsContext";
 
@@ -36,6 +36,22 @@ const CLICK_PAN_VALUE: Record<string, number> = {
 // The stem click follows the metronome's chosen sounds, as the loop click does.
 const soundAsset = (id: string) =>
   METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
+
+/**
+ * What the detector read off a stem; null when it found no pulse to read.
+ *
+ * Same shape the loop import screen consumes, because it is the same detector
+ * (constants/tempoDetect.ts) embedded in both engines. `confidence` is not a
+ * probability: it is the winning tempo's share of all the candidate intervals,
+ * so material with a clear pulse puts half of them or more on one answer, and
+ * material without spreads them.
+ */
+export type DetectedTempo = {
+  bpm: number;
+  confidence: number;
+  /** Runner-up tempos, best first -- usually where the right answer is. */
+  alternatives: number[];
+};
 
 /** How a launch is lined up against the transport grid, in beats. */
 export type Quantum = 0 | 1 | 2 | 4 | 8;
@@ -126,6 +142,15 @@ type SessionPlaybackContextValue = {
    * it; rejects only if the track isn't loaded.
    */
   getPeaks: (trackId: string) => Promise<{ peaks: number[]; duration: number }>;
+  /**
+   * Read the tempo off a loaded stem. Resolves to null when the detector can't
+   * find a pulse, which is a normal answer rather than a failure.
+   *
+   * Measured on the buffer this engine already decoded. The alternative was a
+   * second engine mounted to read a second copy of the same audio, at the one
+   * moment a whole multitrack song is already in memory.
+   */
+  detectTempo: (trackId: string) => Promise<DetectedTempo | null>;
 };
 
 const SessionPlaybackContext =
@@ -133,6 +158,11 @@ const SessionPlaybackContext =
 
 export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   const { prefs } = usePreferences();
+  // Only to get out of the way -- see play(). Read through a ref because play()
+  // is called from handlers that captured an older render.
+  const { isPlaying: metroPlaying, stopMetronome } = useMetronome();
+  const metroPlayingRef = useRef(metroPlaying);
+  metroPlayingRef.current = metroPlaying;
   const webViewRef = useRef<WebView>(null);
   const [engineHtml] = useState(buildSessionEngineHtml);
   const [engineGeneration, setEngineGeneration] = useState(0);
@@ -200,6 +230,10 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
 
   // Click sound ids already handed to the engine to decode.
   const clickLoadedRef = useRef<Set<string>>(new Set());
+  // Outstanding detectTempo calls, by track id.
+  const tempoWaitersRef = useRef<
+    Map<string, (tempo: DetectedTempo | null) => void>
+  >(new Map());
 
   const loadClickSound = (id: string | undefined) => {
     if (!id || clickLoadedRef.current.has(id)) return;
@@ -322,6 +356,15 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     quantum: Quantum = 0,
     section?: PlaySpan
   ) => {
+    // Anything else still sounding is from before the set started.
+    //
+    // Here rather than at the call sites because there are several -- a setlist
+    // row, PERFORM's transport, STUDIO's, a section pad -- and every one of them
+    // means the same thing: this song is what the room hears now. The stem
+    // engine holds no playback lock of its own, so without this a click left
+    // running on the metronome tab simply plays over the song.
+    if (metroPlayingRef.current) stopMetronome();
+
     // Held until the stems have decoded. A stem cue is tens of megabytes and
     // decoding takes a moment; arming before then would launch a section whose
     // tracks have no buffers yet, which the engine skips -- silence, from a
@@ -350,6 +393,27 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       pan: mix.pan,
     });
   };
+
+  const detectTempo = (trackId: string) =>
+    new Promise<DetectedTempo | null>((resolve) => {
+      // Same request/response shape as getPeaks: the bridge has none of its own,
+      // so the reply is matched by track id.
+      tempoWaitersRef.current.set(trackId, resolve);
+      postToEngine({ type: "detectTempo", id: trackId });
+
+      // Detection renders a lowpass through an OfflineAudioContext and can take
+      // several passes over tens of seconds of audio. Generous, then -- but not
+      // unbounded: a stem that never answers must not leave a screen waiting on
+      // it forever. Resolving null rather than rejecting, because "couldn't read
+      // a tempo" is the same answer whether the detector said so or never
+      // finished, and the screen does the same thing with both.
+      setTimeout(() => {
+        const waiter = tempoWaitersRef.current.get(trackId);
+        if (!waiter) return;
+        tempoWaitersRef.current.delete(trackId);
+        waiter(null);
+      }, 30000);
+    });
 
   const getPeaks = (trackId: string) =>
     new Promise<{ peaks: number[]; duration: number }>((resolve, reject) => {
@@ -399,6 +463,12 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         if (waiter) {
           peaksWaitersRef.current.delete(data.id);
           waiter({ peaks: data.peaks, duration: data.duration });
+        }
+      } else if (data.type === "tempo") {
+        const waiter = tempoWaitersRef.current.get(data.id);
+        if (waiter) {
+          tempoWaitersRef.current.delete(data.id);
+          waiter(data.tempo ?? null);
         }
       } else if (data.type === "position") {
         positionListenersRef.current.forEach((listener) =>
@@ -462,6 +532,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         setTrack,
         subscribePosition,
         getPeaks,
+        detectTempo,
       }}
     >
       {children}

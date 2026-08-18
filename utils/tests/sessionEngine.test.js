@@ -48,12 +48,55 @@ function songSecondsWith(live) {
 }
 
 describe("session engine page", () => {
-  it("keeps its source free of backticks and ${...}", () => {
+  it("keeps its own source free of backticks and ${...}", () => {
     // The whole engine lives inside a template literal, so either one ends the
-    // string early and takes the page with it. There is no interpolation in
-    // this engine at all, which makes the rule simple: neither may appear.
-    expect(script).not.toMatch(/`/);
-    expect(script).not.toMatch(/\$\{/);
+    // string early and takes the page with it.
+    //
+    // One interpolation is deliberate and named here: the tempo detector,
+    // shared verbatim with the loop engine. Naming it rather than loosening the
+    // pattern means a stray ${...} anywhere else still fails, and the injected
+    // source is held to the same rule by the test below.
+    const own = script.replace("${TEMPO_DETECT_SOURCE}", "");
+    expect(own).not.toMatch(/`/);
+    expect(own).not.toMatch(/\$\{/);
+  });
+
+  it("keeps the injected tempo detector free of backticks and ${...} too", () => {
+    const { TEMPO_DETECT_SOURCE } = require("../../constants/tempoDetect");
+    expect(TEMPO_DETECT_SOURCE).not.toMatch(/`/);
+    expect(TEMPO_DETECT_SOURCE).not.toMatch(/\$\{/);
+  });
+
+  it("puts the analyser on the page before the engine looks for it", () => {
+    // Same silent failure the loop engine guards against: everything still
+    // compiles, and tempo detection just returns nothing for every song. The
+    // analyser has to be in an earlier script than the engine that calls it.
+    const { buildSessionEngineHtml } = require("../../constants/sessionEngine");
+    const html = buildSessionEngineHtml();
+    expect(html).toContain("window.bpmAnalyzer = module.exports");
+    expect(html.indexOf("window.bpmAnalyzer = module.exports")).toBeLessThan(
+      html.indexOf('<script id="engine">')
+    );
+    // And the detector itself has to have landed inside the engine.
+    expect(script).toContain("${TEMPO_DETECT_SOURCE}");
+    expect(html).toMatch(/function detectTempo/);
+    expect(html).toMatch(/analyzeFullBuffer\(\s*region/);
+  });
+
+  it("compiles the page it renders", () => {
+    // Compiled, not run. A syntax error anywhere in either script leaves the
+    // app with no session engine at all, and nothing else would catch it --
+    // TypeScript never looks inside a template literal.
+    const { buildSessionEngineHtml } = require("../../constants/sessionEngine");
+    const scripts = [
+      ...buildSessionEngineHtml().matchAll(
+        /<script[^>]*>([\s\S]*?)<\/script>/g
+      ),
+    ].map((match) => match[1]);
+    expect(scripts).toHaveLength(2);
+    scripts.forEach((each) => {
+      expect(() => new Function(each)).not.toThrow();
+    });
   });
 
   it("answers a ping, so the app can tell a dead engine from a quiet one", () => {

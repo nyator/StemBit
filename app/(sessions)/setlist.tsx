@@ -70,7 +70,7 @@ export default function SetlistScreen() {
   const router = useRouter();
   const { findSession, addItem, removeItem, reorderItems } = useSessions();
   const { prefs } = usePreferences();
-  const { play, stop, endSession, liveItemId } = useSessionCue();
+  const { play, stop, endSession, liveItemId, armedItemId } = useSessionCue();
   // Retained rather than read off the context: the row's fill bar is the only
   // thing here that draws it, so the engine reports its position for exactly as
   // long as this screen is up. See useLoopPhase.
@@ -413,6 +413,9 @@ export default function SetlistScreen() {
             const live = isStemCue
               ? isLoaded && stems.isPlaying
               : liveItemId === item.id;
+            // Pressed, and waiting on the next downbeat to take over from
+            // whatever is running.
+            const armed = armedItemId === item.id;
             const held = dragId === item.id;
             const expanded = expandedId === item.id;
             // Decoding. A song is tens of megabytes and the engine holds the
@@ -462,11 +465,16 @@ export default function SetlistScreen() {
                 }}
                 // overflow-hidden so the sweeping fill is clipped to the row's
                 // rounded corners instead of squaring them off.
+                // Armed sits between live and idle on purpose: it has been
+                // pressed and is coming, so it can't look untouched, but it is
+                // not what you are hearing either.
                 className={`mb-3 border-hairline border-2 rounded-lg overflow-hidden ${live
                   ? "bg-surface border-brand"
-                  : held
-                    ? "bg-surface border-white"
-                    : "bg-surface border-hairline"
+                  : armed
+                    ? "bg-surface border-brand-from"
+                    : held
+                      ? "bg-surface border-white"
+                      : "bg-surface border-hairline"
                   }`}
                 style={
                   held
@@ -500,7 +508,11 @@ export default function SetlistScreen() {
                   <TouchableOpacity
                     onPress={fire}
                     accessibilityLabel={
-                      live ? `Stop ${item.title}` : `Play ${item.title}`
+                      live
+                        ? `Stop ${item.title}`
+                        : armed
+                          ? `${item.title} starts on the next bar`
+                          : `Play ${item.title}`
                     }
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
                     className="items-center justify-center mr-3 rounded-full"
@@ -508,10 +520,14 @@ export default function SetlistScreen() {
                       width: 68,
                       height: 68,
                       // Filled while live so the thing you need to hit next --
-                      // stop -- is the brightest object on the row.
+                      // stop -- is the brightest object on the row. Armed gets
+                      // the paler fill: pressed and coming, but not the thing
+                      // making the sound.
                       backgroundColor: live
                         ? COLORS.brand
-                        : "rgba(255,255,255,0.08)",
+                        : armed
+                          ? COLORS.brandFrom
+                          : "rgba(255,255,255,0.08)",
                     }}
                   >
                     {live ? <Stop size={40} /> : <PlayFilled size={40} />}
@@ -544,10 +560,15 @@ export default function SetlistScreen() {
                         className="text-[13px] font-satoshiRegular mt-[3px]"
                         numberOfLines={1}
                         style={{
-                          color: isLoading ? COLORS.brand : COLORS.textMuted,
+                          color:
+                            isLoading || armed ? COLORS.brand : COLORS.textMuted,
                         }}
                       >
-                        {isLoading ? "Loading stems…" : describeCue(item)}
+                        {isLoading
+                          ? "Loading stems…"
+                          : armed
+                            ? "Starts on the next bar"
+                            : describeCue(item)}
                       </Text>
                     </View>
 

@@ -35,6 +35,7 @@
 // constants/vendor/bpmAnalyzerSource.ts for how it gets here.
 import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
+import { TEMPO_DETECT_SOURCE } from "./tempoDetect";
 
 export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 <html>
@@ -125,23 +126,8 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // long file's frames to draw right).
         var PEAK_BUCKETS = 480;
         var PEAK_SAMPLES_PER_BUCKET = 256;
-        // How much audio a repeated region is built up to, and the ceiling on it.
-        var ANALYSIS_MIN_SECONDS = 20;
-        var ANALYSIS_MAX_SECONDS = 40;
-        // Only regions shorter than this are worth repeating. Longer ones already
-        // hold the peaks the detector wants, and repeating them measurably makes
-        // things worse: a four-bar mix reads correctly as itself and a whole
-        // octave out when tiled, because every join adds an interval that isn't
-        // in the music.
-        var ANALYSIS_TILE_UNDER_SECONDS = 6;
-        // The detector lowpasses at 200Hz before looking for peaks, so it is deaf
-        // to anything whose pulse isn't carried by a kick or a bass note: a click
-        // track, a hi-hat loop, a shaker, a rimshot groove. When the first pass
-        // comes back with nothing, or next to nothing, the same audio is read
-        // again with the filter opened up this far.
-        var ANALYSIS_FALLBACK_HZ = 3000;
-        // A first pass under this is worth a second opinion.
-        var ANALYSIS_RETRY_CONFIDENCE = 0.15;
+        // The ANALYSIS_* constants that used to sit here moved with the detector
+        // into constants/tempoDetect.ts, which is embedded below.
         // Only snap to the beat grid if the trimmed length is within this
         // fraction of a whole number of beats; otherwise trust the trim.
         var BEAT_SNAP_TOLERANCE = 0.1;
@@ -501,19 +487,19 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         }
         // --- end time-stretch ---------------------------------------------
 
-        // Render (or fetch the cached render of) the active loop region
-        // stretched to the given rate. The stretched buffer contains ONLY
-        // the loop region, so it loops over its full length.
-        function getStretchedBuffer(rate) {
-          if (!active) return null;
-          if (stretched && Math.abs(stretched.rate - rate) < 0.0005) {
-            return stretched.buffer;
-          }
-
-          var src = active.buffer;
+        // Render one loop region stretched to a rate. The rendered buffer holds
+        // ONLY the region, so it loops over its full length.
+        //
+        // Takes the region explicitly rather than reading the active loop,
+        // because the
+        // quantised swap has to render the INCOMING loop while the outgoing one
+        // is still playing and still the active one. This blocks the JS thread
+        // for tens of milliseconds, which is exactly why it happens when a cue
+        // is armed rather than on the downbeat it lands on.
+        function renderStretch(src, loopStart, loopEnd, rate) {
           var sr = src.sampleRate;
-          var startFrame = Math.round(active.loopStart * sr);
-          var endFrame = Math.min(Math.round(active.loopEnd * sr), src.length);
+          var startFrame = Math.round(loopStart * sr);
+          var endFrame = Math.min(Math.round(loopEnd * sr), src.length);
 
           var channels = [];
           for (var c = 0; c < src.numberOfChannels; c++) {
@@ -526,7 +512,22 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           for (var c2 = 0; c2 < outs.length; c2++) {
             out.getChannelData(c2).set(outs[c2]);
           }
+          return out;
+        }
 
+        // The active loop's render at a rate, cached so a repeated rate change
+        // doesn't re-render what it already has.
+        function getStretchedBuffer(rate) {
+          if (!active) return null;
+          if (stretched && Math.abs(stretched.rate - rate) < 0.0005) {
+            return stretched.buffer;
+          }
+          var out = renderStretch(
+            active.buffer,
+            active.loopStart,
+            active.loopEnd,
+            rate
+          );
           stretched = { rate: rate, buffer: out };
           return out;
         }
@@ -622,194 +623,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           return { start: entry.loopStart, end: entry.loopEnd };
         }
 
-        // --- Tempo detection (realtime-bpm-analyzer) ----------------------
-        // The library's analyzeFullBuffer takes a whole AudioBuffer, so a region
-        // becomes a buffer of its own first. That isn't only plumbing: analysing
-        // the trim rather than the file is a cleaner read, with no count-in, tail
-        // or applause to drag the answer around.
-        //
-        // Optionally REPEATED to fill it, which is how a short loop gets read at
-        // all: the detector wants 15 peaks before it will answer, and below that
-        // returns nothing rather than a weak guess. Two bars at 120 BPM is four
-        // seconds and eight kick hits. Repeating is fair rather than a trick,
-        // since repeating is what a loop does -- the audio analysed is the audio
-        // the file will actually make.
-        //
-        // It is not free, though, which is why detectTempo asks for it rather
-        // than assuming it. Where the region isn't a whole number of beats -- a
-        // reverb tail past the last hit, say -- every join adds an interval that
-        // doesn't exist in the music, and enough joins can outvote the real
-        // tempo. See detectTempo for how that's kept honest.
-        function sliceRegion(buffer, startSeconds, endSeconds, repeat) {
-          var ctx = ensureContext();
-          var sampleRate = buffer.sampleRate;
-          var from = Math.max(0, Math.floor(startSeconds * sampleRate));
-          var to = Math.min(buffer.length, Math.ceil(endSeconds * sampleRate));
-          var length = to - from;
-          if (length < sampleRate) return null; // under a second: nothing to read
-
-          var copies = repeat ? analysisCopies(length / sampleRate) : 1;
-          var total = Math.min(
-            length * copies,
-            Math.ceil(ANALYSIS_MAX_SECONDS * sampleRate)
-          );
-          var region = ctx.createBuffer(buffer.numberOfChannels, total, sampleRate);
-
-          for (var c = 0; c < buffer.numberOfChannels; c++) {
-            var source = buffer.getChannelData(c).subarray(from, to);
-            var target = region.getChannelData(c);
-            for (var at = 0; at < total; at += length) {
-              // The last copy is trimmed to whatever room is left, which is fine:
-              // a partial pass still holds whole beats.
-              target.set(
-                at + length <= total ? source : source.subarray(0, total - at),
-                at
-              );
-            }
-          }
-          return region;
-        }
-
-        // How many times a region of this length is repeated before analysis.
-        function analysisCopies(seconds) {
-          if (!(seconds > 0)) return 1;
-          return Math.max(1, Math.ceil(ANALYSIS_MIN_SECONDS / seconds));
-        }
-
-        // Turn the library's candidate list into the one answer the app wants.
-        //
-        // Candidates come back sorted by "count" -- how many peak-to-peak
-        // intervals agree with that tempo -- and the library leaves its own
-        // confidence field at 0 in the offline path, so confidence here is the
-        // winner's share of all the candidates' counts. A loop with a clear pulse
-        // puts half the intervals or more on one tempo; on material with no pulse
-        // the top few come out level, which is exactly what a low share means.
-        function describeTempo(candidates) {
-          if (!candidates || !candidates.length) return null;
-
-          var total = 0;
-          for (var i = 0; i < candidates.length; i++) {
-            total += candidates[i].count || 0;
-          }
-          var top = candidates[0];
-          if (!top || !top.tempo) return null;
-
-          return {
-            bpm: top.tempo,
-            confidence: total > 0 ? (top.count || 0) / total : 0,
-            // The other readings, best first. The library folds every tempo into
-            // 90-180 BPM, so the reading a listener wanted is often one of these
-            // rather than the winner -- the screen offers them as one-tap chips,
-            // which beats making someone tap the tempo out.
-            alternatives: candidates.slice(1, 4).map(function (candidate) {
-              return candidate.tempo;
-            }),
-          };
-        }
-
-        // One pass of the detector over a prepared buffer, at a given filter.
-        function analyzePass(region, options, onDone) {
-          try {
-            window.bpmAnalyzer
-              .analyzeFullBuffer(region, options)
-              .then(function (candidates) {
-                onDone(describeTempo(candidates));
-              })
-              .catch(function () {
-                // A file it can't read isn't worth surfacing as an error: the
-                // screen falls back to working the tempo out from the loop's
-                // length, and says that's what it did.
-                onDone(null);
-              });
-          } catch (e) {
-            onDone(null);
-          }
-        }
-
-        // Read the tempo of a region. Asynchronous: the library renders its
-        // lowpass through an OfflineAudioContext, which is a promise.
-        // Up to three readings of the same region, each covering a way the one
-        // before it goes deaf, stopping as soon as one is convincing and otherwise
-        // keeping whichever put most of its evidence on a single tempo:
-        //
-        //   1. The region as it stands -- unless it's short, in which case the
-        //      repeated reading goes first. On a region too short to hold the
-        //      peaks the detector wants, this pass is the UNRELIABLE one: it
-        //      answers off a handful of intervals and can look confident doing it,
-        //      so leading with it means a two-bar loop settles for 117 when the
-        //      repeated reading would have said 120.
-        //   2. The region repeated. A one-bar loop returns NOTHING at all from the
-        //      pass above and reads exactly right from this one. Only for short
-        //      regions: a four-bar mix reads correctly as itself and an octave out
-        //      when tiled, because a region that isn't a whole number of beats
-        //      puts an interval at every join that isn't in the music.
-        //   3. The filter opened up. The detector lowpasses at 200Hz before
-        //      looking for peaks, so a click track -- nothing down there at all --
-        //      or a loop driven by hats comes back empty from both passes above.
-        //      Not the better default: on a full mix the low band is exactly what
-        //      makes the beat legible.
-        function detectTempo(buffer, startSeconds, endSeconds, onDone) {
-          if (!window.bpmAnalyzer) {
-            onDone(null);
-            return;
-          }
-
-          var plain = sliceRegion(buffer, startSeconds, endSeconds, false);
-          if (!plain) {
-            onDone(null);
-            return;
-          }
-
-          var seconds = plain.length / plain.sampleRate;
-          var repeated =
-            seconds < ANALYSIS_TILE_UNDER_SECONDS
-              ? sliceRegion(buffer, startSeconds, endSeconds, true)
-              : null;
-
-          var attempts = repeated
-            ? [
-                { region: repeated, options: undefined },
-                { region: plain, options: undefined },
-                {
-                  region: repeated,
-                  options: { frequencyValue: ANALYSIS_FALLBACK_HZ },
-                },
-              ]
-            : [
-                { region: plain, options: undefined },
-                {
-                  region: plain,
-                  options: { frequencyValue: ANALYSIS_FALLBACK_HZ },
-                },
-              ];
-
-          var best = null;
-          var index = 0;
-
-          function next() {
-            while (index < attempts.length && !attempts[index]) index += 1;
-            if (index >= attempts.length) {
-              onDone(best);
-              return;
-            }
-
-            var attempt = attempts[index];
-            index += 1;
-            analyzePass(attempt.region, attempt.options, function (result) {
-              if (result && (!best || result.confidence > best.confidence)) {
-                best = result;
-              }
-              // Convincing enough to stop asking.
-              if (best && best.confidence >= ANALYSIS_RETRY_CONFIDENCE) {
-                onDone(best);
-                return;
-              }
-              next();
-            });
-          }
-
-          next();
-        }
+        ${TEMPO_DETECT_SOURCE}
 
         // Re-read the tempo of one region of an already-decoded file. The import
         // screen calls this on the trim the user has settled on.
@@ -1025,22 +839,49 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // render blocks the JS thread, and scheduling after it with a stale
         // phase makes the loop audibly jump.
         function startSource(phase, fadeSeconds, atTime) {
+          if (!active) return null;
+          return startSourceFrom(
+            {
+              buffer: active.buffer,
+              loopStart: active.loopStart,
+              loopEnd: active.loopEnd,
+              // Rendered on demand and cached; in the swap path it is already
+              // in hand, which is what keeps the swap off the JS thread.
+              stretch:
+                Math.abs(currentRate - 1) > UNITY_RATE_EPSILON
+                  ? getStretchedBuffer(currentRate)
+                  : null,
+            },
+            phase,
+            fadeSeconds,
+            atTime
+          );
+        }
+
+        // Start a source from an explicit loop rather than from the active one.
+        //
+        // target is { buffer, loopStart, loopEnd, stretch } -- stretch being a
+        // pre-rendered warp of the region, or null to play the region as it is.
+        // Splitting this out is what lets a queued cue be started at an exact
+        // time without having been made active first: the swap needs the new
+        // audio scheduled BEFORE the old one is told to stop, and both have to
+        // land on the same sample.
+        function startSourceFrom(target, phase, fadeSeconds, atTime) {
           var ctx = ensureContext();
-          var useStretch = Math.abs(currentRate - 1) > UNITY_RATE_EPSILON;
 
           var buf;
           var ls;
           var le;
-          if (useStretch) {
-            buf = getStretchedBuffer(currentRate); // cached in the swap path
-            if (!buf) return null;
+          if (target.stretch) {
+            buf = target.stretch;
             ls = 0;
             le = buf.duration;
           } else {
-            buf = active.buffer;
-            ls = active.loopStart;
-            le = active.loopEnd;
+            buf = target.buffer;
+            ls = target.loopStart;
+            le = target.loopEnd;
           }
+          if (!buf) return null;
 
           var loopLength = le - ls;
           var offset = ls + phase * loopLength;
@@ -1306,6 +1147,20 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             if (clickEnabled) scheduleClick(gridBeatIndex, gridNextTime);
             advanceGrid(beatSec);
           }
+
+          // A queued cue whose boundary is now close enough to schedule. Done
+          // here rather than on a timer of its own because this is already the
+          // thing that wakes up in time to hand the audio clock what happens
+          // next -- and runQueuedSwap restarts the grid, so it must be the last
+          // word in this pass.
+          if (
+            pendingSwap &&
+            pendingSwap.at < audioContext.currentTime + CLICK_SCHEDULE_AHEAD
+          ) {
+            runQueuedSwap();
+            return;
+          }
+
           beatTimer = setTimeout(beatScheduler, CLICK_LOOKAHEAD_MS);
         }
 
@@ -1368,6 +1223,136 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           startBeatGrid(swapTime);
         }
 
+        // --- Quantised cue swap -------------------------------------------
+        // Firing a cue over a running loop should land on the next downbeat, and
+        // land on it exactly. The app can say WHEN cheaply enough -- it gets a
+        // message per beat -- but it cannot start audio on time: everything
+        // between the message and the call is JS, and JS is the one clock this
+        // engine exists to avoid. So the whole swap is handed over as an intent
+        // and executed here, against the audio clock.
+        //
+        // Two halves, deliberately far apart in time:
+        //
+        //   queueLoopSwap  runs when the cue is pressed. It decodes if it must
+        //                  and renders the warp, which blocks for tens of ms --
+        //                  fine, there is most of a bar to do it in.
+        //   runQueuedSwap  runs on the boundary. It only schedules: the new
+        //                  source starts at exactly T and the old one is faded
+        //                  out at exactly T, both already prepared.
+        var pendingSwap = null;
+
+        /** The audio-clock time of the next bar line, or null if there isn't one. */
+        function nextDownbeatTime() {
+          if (!playing || !active) return null;
+          var spb = beatSeconds();
+          if (spb <= 0) return null;
+          var bpb = barBeats();
+          // gridNextTime is the next beat the grid will fire and gridBeatIndex
+          // is which beat of the bar that is, so the next bar line is however
+          // many beats short of the top of the bar it currently stands.
+          var beatsToBar = (bpb - gridBeatIndex) % bpb;
+          var at = gridNextTime + beatsToBar * spb;
+          // Never a boundary that has already gone by while this was being
+          // worked out; take the following bar instead.
+          var floor = audioContext.currentTime + MIN_SCHEDULE_LEAD;
+          while (at < floor) at += bpb * spb;
+          return at;
+        }
+
+        function queueLoopSwap(key, nativeBpm, beatsPerBar, trimStart, trimEnd, rate) {
+          var entry = decodedByKey[key];
+          // Nothing decoded and nothing playing to wait for: not a swap at all.
+          // The app falls back to selecting and playing outright.
+          if (!entry || !playing || !active) {
+            post({ type: "swapFailed", key: key });
+            return;
+          }
+
+          var at = nextDownbeatTime();
+          if (at == null) {
+            post({ type: "swapFailed", key: key });
+            return;
+          }
+
+          var region = resolveRegion(entry, trimStart, trimEnd);
+          var bpm = nativeBpm > 0 ? nativeBpm : entry.nativeBpm;
+          var loopBeats =
+            bpm > 0 ? Math.round(((region.end - region.start) * bpm) / 60) : 0;
+          var useStretch = Math.abs(rate - 1) > UNITY_RATE_EPSILON;
+
+          pendingSwap = {
+            at: at,
+            key: key,
+            buffer: entry.buffer,
+            loopStart: region.start,
+            loopEnd: region.end,
+            nativeBpm: bpm,
+            loopBeats: loopBeats,
+            beatsPerBar: beatsPerBar > 0 ? beatsPerBar : loopBeats || 1,
+            rate: rate,
+            // Rendered NOW, while there is a bar to spare. Left until the
+            // boundary it would block straight through it.
+            stretch: useStretch
+              ? renderStretch(entry.buffer, region.start, region.end, rate)
+              : null,
+          };
+
+          post({ type: "swapQueued", key: key, at: at });
+        }
+
+        function cancelQueuedSwap() {
+          pendingSwap = null;
+        }
+
+        // Perform the swap. Called from the beat scheduler once the boundary is
+        // inside the lookahead, so both sources are scheduled ahead of time
+        // rather than started when JS happens to wake up.
+        function runQueuedSwap() {
+          var swap = pendingSwap;
+          pendingSwap = null;
+
+          var old = playing;
+          var next = startSourceFrom(
+            {
+              buffer: swap.buffer,
+              loopStart: swap.loopStart,
+              loopEnd: swap.loopEnd,
+              stretch: swap.stretch,
+            },
+            0,
+            SWAP_FADE_SECONDS,
+            swap.at
+          );
+          if (!next) {
+            post({ type: "swapFailed", key: swap.key });
+            return;
+          }
+          if (old) stopSource(old, SWAP_FADE_SECONDS, swap.at);
+
+          // Only now does the incoming loop become the active one -- everything
+          // that reads the active loop (the click's spacing, the bar length)
+          // was describing the outgoing loop right up to the boundary, which is
+          // what kept the click in time through the bar leading into it.
+          active = {
+            key: swap.key,
+            buffer: swap.buffer,
+            loopStart: swap.loopStart,
+            loopEnd: swap.loopEnd,
+            nativeBpm: swap.nativeBpm,
+            loopBeats: swap.loopBeats,
+            beatsPerBar: swap.beatsPerBar,
+          };
+          stretched = swap.stretch
+            ? { rate: swap.rate, buffer: swap.stretch }
+            : null;
+          currentRate = swap.rate;
+
+          // The new loop's downbeat is exactly swap.at, so the grid re-locks
+          // there and beat 0 lands on it.
+          startBeatGrid(swap.at);
+          post({ type: "swapped", key: swap.key, at: swap.at });
+        }
+
         function play(rate) {
           if (!active) {
             // Coded so the app can tell this apart from a decode failure and
@@ -1376,6 +1361,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             return;
           }
           if (rate) currentRate = rate;
+          // Starting outright supersedes anything queued for a boundary.
+          cancelQueuedSwap();
           startKeepAlive(); // see silentModeKeepAlive.ts
           if (playing) stopSource(playing, 0);
           playing = null;
@@ -1394,6 +1381,9 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           stopKeepAlive();
           stopBeatGrid();
           stopPositionUpdates();
+          // A cue queued for a boundary that is no longer coming. Without this
+          // it would swap into a stopped transport and start playing again.
+          cancelQueuedSwap();
           // The dots go dark with the sound rather than sticking on whichever
           // beat the loop happened to stop on.
           post({ type: "beat", beat: null, accent: false });
@@ -1506,6 +1496,19 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               break;
             case "play":
               play(data.rate);
+              break;
+            case "queueSwap":
+              queueLoopSwap(
+                data.key,
+                data.nativeBpm,
+                data.beatsPerBar,
+                data.trimStart,
+                data.trimEnd,
+                data.rate
+              );
+              break;
+            case "cancelSwap":
+              cancelQueuedSwap();
               break;
             case "stop":
               stop();

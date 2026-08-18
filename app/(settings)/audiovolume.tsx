@@ -38,10 +38,6 @@ const PAN_OPTIONS: readonly { value: Preferences["loopClickPan"]; label: string 
 
 const AudioVolume = () => {
     const { prefs, setPref } = usePreferences();
-
-    // Local mirrors of the persisted per-engine volumes. The slider drives
-    // these live for a smooth thumb; we persist to preferences (which pushes to
-    // the engine) only on release, avoiding a file write on every drag tick.
     const [volumes, setVolumes] = useState({
         metronome: prefs.metronomeVolume,
         pad: prefs.padVolume,
@@ -81,13 +77,7 @@ const AudioVolume = () => {
                         onComplete={(v) => setPref("padVolume", v)}
                         border={true}
                     />
-                    {/* Runs to 200%, where the other two stop at full scale.
-                        A click has to be heard over a band rather than sit in a
-                        mix with one, and on a loud stage the accent sample at
-                        full scale still isn't always enough. 100% is the click
-                        as recorded and the default; past that is deliberate
-                        overdrive, which is what the readout is there to make
-                        findable. */}
+                    
                     <SettingSlider
                         icon={Metromone}
                         label="Metro... Volume"
@@ -96,7 +86,6 @@ const AudioVolume = () => {
                         onValueChange={setVolume("metronome")}
                         onComplete={(v) => setPref("metronomeVolume", v)}
                         max={METRONOME_MAX_VOLUME}
-                        // border={true}
                     />
                 </SettingSection>
 

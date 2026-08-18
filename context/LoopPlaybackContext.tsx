@@ -144,6 +144,24 @@ type LoopPlaybackContextValue = {
     listener: (beat: number | null, accent: boolean) => void
   ) => () => void;
   setSelectedLoopKey: (key: string | undefined) => void;
+  /**
+   * Hand a loop to the engine to take over on the next bar line, sample
+   * accurately -- the whole swap happens in there, against the audio clock.
+   *
+   * Returns false when there is nothing to swap from or the loop isn't decoded
+   * yet, in which case the caller should simply select and start it.
+   */
+  queueLoopSwap: (loop: Loop, nextBpm: number) => boolean;
+  /** Drop a swap queued for a boundary that is no longer wanted. */
+  cancelLoopSwap: () => void;
+  /**
+   * Watch queued swaps land. The key that took over, or null when the engine
+   * couldn't do it and nothing changed. Returns an unsubscribe.
+   *
+   * A subscription because only the engine knows when the boundary actually
+   * arrived -- it is the one holding the clock the swap was scheduled against.
+   */
+  subscribeSwap: (listener: (key: string | null) => void) => () => void;
   startLoop: () => void;
   stopLoop: () => void;
 };
@@ -595,6 +613,12 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         loadClickSound(prefs.beatSound);
         postClickConfig();
         postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
+      } else if (data.type === "swapped") {
+        // The boundary arrived and the new loop is sounding. Only the engine
+        // could say when, so this is the moment the rest of the app learns it.
+        swapListenersRef.current.forEach((listener) => listener(data.key));
+      } else if (data.type === "swapFailed") {
+        swapListenersRef.current.forEach((listener) => listener(null));
       } else if (data.type === "beat") {
         // A beat is landing right now. One message per beat, sent by the grid
         // that schedules the click, at the moment the click sounds -- so what
@@ -769,8 +793,66 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     setBpm(nativeBpmRef.current);
   };
 
+  /**
+   * Hand a loop to the engine to take over on the next bar line.
+   *
+   * Everything the swap needs goes across in one message -- which loop, at what
+   * tempo, in what meter -- because the engine has to be able to do the whole
+   * thing itself. It decodes and renders the warp while the outgoing loop plays
+   * out its bar, then schedules both sources against the audio clock so the new
+   * one starts on the same sample the old one ends. Nothing about the timing
+   * comes back through here; a message arriving on a downbeat would already be
+   * late by however long the bridge took.
+   *
+   * Returns false when it can't be done -- nothing playing, or the loop isn't
+   * decoded yet -- and the caller falls back to starting it outright.
+   */
+  const queueLoopSwap = (loop: Loop, nextBpm: number) => {
+    if (!isPlayingRef.current || !loopReadyRef.current) return false;
+
+    preloadLoop(loop.key);
+    currentKeyRef.current = loop.key;
+    setSelectedKey(loop.key);
+    nativeBpmRef.current = loop.bpm;
+    beatsPerBarRef.current = getBeatsPerBar(loop);
+    setBeatsPerBar(beatsPerBarRef.current);
+    setNativeBpm(loop.bpm);
+    setSelectedTitle(loop.title);
+    setBpm(nextBpm);
+
+    postToEngine({
+      type: "queueSwap",
+      key: loop.key,
+      nativeBpm: loop.bpm,
+      beatsPerBar: getBeatsPerBar(loop),
+      trimStart: loop.trimStart,
+      trimEnd: loop.trimEnd,
+      // The warp the incoming loop will play at, worked out here because the
+      // engine is handed a rate rather than a tempo.
+      rate:
+        (loop.bpm ? nextBpm / loop.bpm : 1) * speedMultiplierRef.current,
+    });
+    return true;
+  };
+
+  const cancelLoopSwap = () => postToEngine({ type: "cancelSwap" });
+
+  const swapListenersRef = useRef<Set<(key: string | null) => void>>(new Set());
+  const subscribeSwap = useCallback((listener: (key: string | null) => void) => {
+    swapListenersRef.current.add(listener);
+    return () => {
+      swapListenersRef.current.delete(listener);
+    };
+  }, []);
+
   const startLoop = () => {
-    if (isPlaying) return;
+    // The ref, not the state. Firing one cue while another plays calls
+    // setSelectedLoopKey first, which stops the loop -- and the state saying so
+    // does not reach this closure, which was made in the render before any of
+    // that happened. Guarded on `isPlaying` this saw a loop that had already
+    // been stopped and declined to start the new one, so a cue pressed while
+    // another was playing simply went quiet.
+    if (isPlayingRef.current) return;
 
     if (nativeBpmRef.current === null) {
       Alert.alert("No loop selected", "Select a loop before pressing play.");
@@ -819,6 +901,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         retainPhase,
         subscribeBeat,
         setSelectedLoopKey,
+        queueLoopSwap,
+        cancelLoopSwap,
+        subscribeSwap,
         startLoop,
         stopLoop,
       }}

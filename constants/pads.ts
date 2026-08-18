@@ -18,9 +18,6 @@ export type PadPack = {
   sources: Record<string, number>;
 };
 
-// How many packs can sound together. Each layer costs two native AudioPlayers,
-// since every voice needs its own pair to crossfade its loop seamlessly -- so
-// this is 6 players held open while a drone sounds.
 export const MAX_PAD_LAYERS = 3;
 
 // The catalog shown on the "Select Pad" screen (Figma node 108:651).

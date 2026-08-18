@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { PAD_PACKS, type PadPack } from "../constants/pads";
@@ -62,7 +62,7 @@ const SelectPadView = ({
     );
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       if (soundRef.current) {
         playbackSubscriptionRef.current?.remove();
@@ -73,7 +73,7 @@ const SelectPadView = ({
 
   // Row indices shift when the filter changes, so stop any running preview
   // rather than letting it point at the wrong row.
-  React.useEffect(() => {
+  useEffect(() => {
     unloadCurrentSound();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packs]);

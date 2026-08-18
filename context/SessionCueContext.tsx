@@ -9,6 +9,7 @@ import {
 
 import { KEYS, usePadPlayback } from "./PadPlaybackContext";
 import { useLoopPlayback } from "./LoopPlaybackContext";
+import { useMetronome } from "./MetronomeContext";
 import { useSessionPlayback } from "./SessionPlaybackContext";
 import { usePreferences, type PadLayer } from "./PreferencesContext";
 import { findPadPackByKey } from "../constants/pads";
@@ -52,6 +53,13 @@ type TabState = {
 type SessionCueContextValue = {
   /** The cue currently live, so the list can mark it. */
   liveItemId: string | null;
+  /**
+   * A cue that has been pressed and is waiting for the next downbeat to start,
+   * or null. The running order shows it as armed so the press reads as having
+   * registered -- without that, a cue that will not sound for most of a bar
+   * looks like a button that did nothing.
+   */
+  armedItemId: string | null;
   // No loopPhase here any more. It used to be passed through so the setlist
   // could draw a fill bar without reaching into the Loop tab's context, and
   // that convenience is exactly what made it possible to hold the value without
@@ -92,6 +100,15 @@ type SessionCueContextValue = {
   endSession: () => void;
 };
 
+/**
+ * Longest an armed cue waits for a downbeat before starting anyway.
+ *
+ * A 4/4 bar at the slowest tempo the loop engine allows is six seconds, so a
+ * real downbeat always wins this. It is here for the cases where none is
+ * coming at all -- see armCueFallback.
+ */
+const ARM_TIMEOUT_MS = 8000;
+
 const SessionCueContext = createContext<SessionCueContextValue | null>(null);
 
 export function SessionCueProvider({ children }: { children: ReactNode }) {
@@ -104,11 +121,35 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     isPlaying: loopPlaying,
     selectedKey,
     bpm,
+    queueLoopSwap,
+    cancelLoopSwap,
+    subscribeSwap,
   } = useLoopPlayback();
   const { togglePad, stopPad, activeKeyIndex, mode, setMode } = usePadPlayback();
+  // Only to get out of the way. A setlist never drives the metronome; it just
+  // can't leave one running underneath what it fires.
+  const { isPlaying: metroPlaying, stopMetronome } = useMetronome();
+  const metroPlayingRef = useRef(metroPlaying);
+  metroPlayingRef.current = metroPlaying;
   const session = useSessionPlayback();
 
   const [liveItemId, setLiveItemId] = useState<string | null>(null);
+  // The cue waiting for a downbeat, and the id the running order draws as
+  // armed. Both, because one is read from a message handler and the other has
+  // to make the list re-render.
+  const pendingCueRef = useRef<SessionItem | null>(null);
+  const [armedItemId, setArmedItemId] = useState<string | null>(null);
+  // Backstop for a downbeat that never arrives -- see armCueFallback.
+  const armFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live mirrors of two values that decide whether a press arms or fires. Read
+  // through refs because play() is called from a press that captured an older
+  // render, and a stale "is a loop running" answers the question wrongly in
+  // exactly the case this feature is for.
+  const loopPlayingRef = useRef(loopPlaying);
+  loopPlayingRef.current = loopPlaying;
+  const liveItemIdRef = useRef<string | null>(null);
+  liveItemIdRef.current = liveItemId;
   // What the Loop and Pad tabs held before this session started, captured on
   // the first cue and put back on stop.
   //
@@ -179,7 +220,25 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     stopPad();
   };
 
-  const play = (item: SessionItem) => {
+  /**
+   * Clear the stage for a cue.
+   *
+   * A setlist is the top of the app: what it fires is what the room hears, and
+   * anything left running from another tab is something the user was doing
+   * BEFORE they started the set. The metronome is the case that bit -- it holds
+   * the same playback lock the loop engine wants, so firing a loop cue over a
+   * running click used to fail on the lock and simply not sound, with a warning
+   * nobody sees. Refusing is the right answer between two tabs the user is
+   * choosing between; it is the wrong answer for a cue, which is a decision
+   * that has already been made.
+   */
+  const clearTheStage = () => {
+    if (metroPlayingRef.current) stopMetronome();
+  };
+
+  const startCue = (item: SessionItem) => {
+    clearTheStage();
+
     // A stem cue is a different instrument: its tracks are multi-track audio
     // that has to stay locked to itself, so it runs on the session engine and
     // the loop engine is silenced rather than driven.
@@ -224,11 +283,144 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
       // after it. Nothing starts until both are set.
       if (selectedKey !== item.loopKey) setSelectedLoopKey(item.loopKey);
       if (item.bpm) setBpm(item.bpm);
-      if (!loopPlaying) startLoop();
+      // Unconditionally. This used to be gated on `!loopPlaying`, which is the
+      // value from the render this closure was made in -- so firing a cue while
+      // another was playing read "already playing" and skipped the start, even
+      // though selecting the new loop a line earlier had just stopped the old
+      // one. The cue went silent and only worked if you pressed stop first.
+      //
+      // Safe to call either way: startLoop returns early when the loop is
+      // genuinely still running, which it checks against a ref rather than a
+      // captured render.
+      startLoop();
     } else if (loopPlaying) {
       stopLoop();
     }
   };
+
+  /** Forget whatever was waiting, and stop waiting for it. */
+  const clearArmed = () => {
+    const wasArmed = pendingCueRef.current !== null;
+    pendingCueRef.current = null;
+    setArmedItemId(null);
+    if (armFallbackRef.current) {
+      clearTimeout(armFallbackRef.current);
+      armFallbackRef.current = null;
+    }
+    // The engine is holding a boundary for it; tell it to let go, or the swap
+    // would still land after the cue was abandoned.
+    if (wasArmed) cancelLoopSwap();
+  };
+
+  /**
+   * A press must always end in a sound.
+   *
+   * The wait is for an accent from the engine, and there are ways one never
+   * comes: a loop region shorter than a beat reports no beats at all, and an
+   * engine the OS reclaimed reports nothing. Neither is worth leaving a cue
+   * armed forever over -- quantising is a nicety, a button that does nothing is
+   * not. So the wait has a ceiling, generous enough that a real downbeat wins
+   * it at any tempo the app allows (a 4/4 bar at the slowest is six seconds).
+   */
+  const armCueFallback = () => {
+    if (armFallbackRef.current) clearTimeout(armFallbackRef.current);
+    armFallbackRef.current = setTimeout(() => {
+      armFallbackRef.current = null;
+      const next = pendingCueRef.current;
+      if (!next) return;
+      pendingCueRef.current = null;
+      setArmedItemId(null);
+      startCueRef.current(next);
+    }, ARM_TIMEOUT_MS);
+  };
+
+  /**
+   * Fire a cue -- on the next bar line, if something is already running.
+   *
+   * Pressing a cue mid-bar and having it start under your finger is the one
+   * thing a setlist must not do: the change lands wherever your thumb happened
+   * to be rather than where the band is. So a cue pressed over a running loop is
+   * ARMED, and joins on the next downbeat -- the same promise the section pads
+   * make inside a song.
+   *
+   * The swap itself is the engine's, not this file's. Everything the boundary
+   * needs is handed over in one message and both sources are scheduled against
+   * the audio clock, so the new loop starts on the sample the old one ends and
+   * the seam is a crossfade rather than a gap. Nothing about the timing comes
+   * back through here -- a message arriving on a downbeat would already be late
+   * by however long the bridge took, which is the whole reason the engine
+   * exists.
+   *
+   * The pad is not part of the swap. It is a drone rather than a transport, and
+   * moving it a beat early or late is inaudible, so it changes here as soon as
+   * the cue is armed.
+   *
+   * Only over a loop. A stem cue is tens of megabytes that have to be read and
+   * decoded before a note can sound, and the engine deliberately holds one
+   * song's stems at a time -- so there is nothing to have ready on a downbeat.
+   * Those still switch immediately.
+   */
+  const play = (item: SessionItem) => {
+    const loop = !item.tracks?.length && item.loopKey
+      ? findLoopByKey(item.loopKey)
+      : null;
+
+    if (loop && loopPlayingRef.current && liveItemIdRef.current !== item.id) {
+      captureTabState();
+      if (queueLoopSwap(loop, item.bpm ?? loop.bpm)) {
+        pendingCueRef.current = item;
+        setArmedItemId(item.id);
+        armCueFallback();
+        // The pad goes now: it has nothing to line up with, and waiting would
+        // leave the incoming cue's key arriving a bar after its loop.
+        if (item.padPack && item.padKey) {
+          armPad(item.padPack, item.padKey, item.padMode ?? "major");
+        } else {
+          stopPad();
+        }
+        return;
+      }
+      // Nothing decoded to swap in yet -- fall through and start it outright
+      // rather than swallowing the press.
+    }
+
+    // Pressing anything else abandons a cue that was waiting: the last thing
+    // pressed is what should play, which is how the section pads behave too.
+    clearArmed();
+    startCue(item);
+  };
+
+  // Held in refs and subscribed once: these are new closures every render, and
+  // re-subscribing on each would tear the listener down and rebuild it several
+  // times a second for no reason.
+  const startCueRef = useRef(startCue);
+  startCueRef.current = startCue;
+  const clearArmedRef = useRef(clearArmed);
+  clearArmedRef.current = clearArmed;
+
+  // The armed cue became the live one, or couldn't.
+  //
+  // The audio has already changed by the time this arrives -- the engine swapped
+  // the sources on the boundary itself. All that is left here is to say so: mark
+  // the cue live and take the armed styling off. The message being a little late
+  // costs a few milliseconds of a border colour, not a beat.
+  useEffect(
+    () =>
+      subscribeSwap((key) => {
+        const next = pendingCueRef.current;
+        if (!next) return;
+        clearArmedRef.current();
+
+        if (key === null) {
+          // The engine couldn't do it after all. Start the cue outright rather
+          // than leaving a press that never sounded.
+          startCueRef.current(next);
+          return;
+        }
+        setLiveItemId(next.id);
+      }),
+    [subscribeSwap]
+  );
 
   // Silence, and nothing else. Deliberately does NOT restore: putting the
   // user's own loop back re-selects it in the engine, so the next cue had to
@@ -238,6 +430,9 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
   const stopTransport = () => {
     setLiveItemId(null);
     pendingPadRef.current = null;
+    // A cue waiting on a downbeat that is no longer coming: stopping has to
+    // take the armed one with it, or it would fire into the silence.
+    clearArmedRef.current();
     stopLoop();
     // Unconditional: which engine a cue used isn't worth tracking, and stopping
     // one that isn't running costs nothing. Missing one would leave a song
@@ -269,6 +464,7 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     <SessionCueContext.Provider
       value={{
         liveItemId,
+        armedItemId,
         play,
         armPad,
         releasePad,
