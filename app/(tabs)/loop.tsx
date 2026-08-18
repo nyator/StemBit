@@ -56,8 +56,8 @@ export default function LoopScreen() {
     beatsPerBar,
     feelIndex,
     setFeelIndex,
-    speedMultiplier,
     resetBpm,
+    subscribeBeat,
     startLoop,
     stopLoop,
   } = useLoopPlayback();
@@ -72,24 +72,34 @@ export default function LoopScreen() {
   const { prefs, setPref } = usePreferences();
 
 
-  // The loop engine (a WebView Web Audio graph) doesn't report its playhead
-  // back to React, so there's no real beat position to visualize like the
-  // Metronome's currentBeat. This just pulses a fixed 4-beat cycle locally at
-  // the current BPM -- a tempo-synced approximation, not a sample-accurate one.
+  // Which beat the dots and the pulse are on, announced by the engine as each
+  // one lands -- the same grid cursor that schedules the click's accents and
+  // beats, so what you see and what you hear are one event.
   //
-  // Scaled by the feel, so half time pulses at half the rate the loop is now
-  // running at rather than carrying on at the raw BPM.
+  // This was a setInterval here, ticking at 60000 / (bpm * feel). It knew the
+  // tempo and still drifted, because knowing the tempo is not the hard part:
+  // setInterval only promises "no sooner than", so every tick that lands late
+  // is time the dots never get back, and the error only ever grows. Nothing
+  // measured on this side of the bridge can fix that -- the audio clock is the
+  // only one that knows when a beat actually happened.
+  //
+  // Whether the beat is an accent comes from the engine too, rather than being
+  // inferred from the dot's position. It is the engine that decides which beats
+  // get the accent sample, so it should be the engine that decides which dot
+  // flares.
   const [currentBeat, setCurrentBeat] = useState(0);
+  const [isAccent, setIsAccent] = useState(true);
   useEffect(() => {
     if (!isPlaying) {
       setCurrentBeat(0);
+      setIsAccent(true);
       return;
     }
-    const timer = setInterval(() => {
-      setCurrentBeat((beat) => (beat + 1) % loopBeats);
-    }, (60 * 1000) / (bpm * speedMultiplier));
-    return () => clearInterval(timer);
-  }, [isPlaying, bpm, speedMultiplier, loopBeats]);
+    return subscribeBeat((beat, accent) => {
+      setCurrentBeat(beat ?? 0);
+      setIsAccent(accent);
+    });
+  }, [isPlaying, subscribeBeat]);
 
   const {
     bpmText,
@@ -117,10 +127,11 @@ export default function LoopScreen() {
       const isCurrent = i === currentBeat;
       const activeColor = i === 0 ? COLORS.brand : COLORS.text;
       const size = isCurrent ? 12 : 8;
-      // The engine accents every bar downbeat, so that's the beat that gets
-      // the halo. Gated on isPlaying: currentBeat sits at 0 while stopped, and
-      // without this the downbeat would glow at rest.
-      const showGlow = isPlaying && isCurrent && i === 0;
+      // The halo goes on whichever beat the engine accented, rather than on
+      // whichever dot is first. The two agree today; if they ever stopped, the
+      // sound is the one that's right. Gated on isPlaying: currentBeat sits at
+      // 0 while stopped, and without this the downbeat would glow at rest.
+      const showGlow = isPlaying && isCurrent && isAccent;
       beats.push(
         <View
           key={i}
@@ -193,10 +204,10 @@ export default function LoopScreen() {
           className="items-center justify-center w-full mb-[18px]"
           style={{ height: 249 }}
         >
-          {/* The engine accents every bar downbeat, so that's what flares. */}
+          {/* Flares on the beats the engine accented, told by the engine. */}
           <DialGlowRings
             beat={currentBeat}
-            isAccent={currentBeat === 0}
+            isAccent={isAccent}
             isPlaying={isPlaying}
           />
           <View

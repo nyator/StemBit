@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -8,7 +9,9 @@ import {
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
-import { loadAudioBase64 } from "../utils/loadAssetBase64";
+import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
+import { METRONOME_SOUNDS } from "./MetronomeContext";
+import { usePreferences } from "./PreferencesContext";
 import type { CueTrack } from "./SessionsContext";
 
 // The session's own playback, in a hidden WebView of its own.
@@ -19,6 +22,20 @@ import type { CueTrack } from "./SessionsContext";
 //
 // It is also deliberately absent from FloatingEngineControls, so running a set
 // never surfaces on another tab.
+
+// Click pan preference -> StereoPanner value (-1 left .. 0 .. 1 right). The
+// same preference the loop click reads: pan is a decision about where you want
+// a count in your ears, not about which engine is producing it.
+const CLICK_PAN_VALUE: Record<string, number> = {
+  left: -1,
+  center: 0,
+  right: 1,
+};
+
+// Asset id -> bundled asset module, from the shared metronome sound registry.
+// The stem click follows the metronome's chosen sounds, as the loop click does.
+const soundAsset = (id: string) =>
+  METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
 
 /** How a launch is lined up against the transport grid, in beats. */
 export type Quantum = 0 | 1 | 2 | 4 | 8;
@@ -115,6 +132,7 @@ const SessionPlaybackContext =
   createContext<SessionPlaybackContextValue | null>(null);
 
 export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
+  const { prefs } = usePreferences();
   const webViewRef = useRef<WebView>(null);
   const [engineHtml] = useState(buildSessionEngineHtml);
   const [engineGeneration, setEngineGeneration] = useState(0);
@@ -175,6 +193,58 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     }
     webViewRef.current?.postMessage(JSON.stringify(message));
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* Click                                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  // Click sound ids already handed to the engine to decode.
+  const clickLoadedRef = useRef<Set<string>>(new Set());
+
+  const loadClickSound = (id: string | undefined) => {
+    if (!id || clickLoadedRef.current.has(id)) return;
+    const asset = soundAsset(id);
+    if (asset == null) return;
+    clickLoadedRef.current.add(id);
+    loadAssetBase64(asset)
+      .then((base64) => postToEngine({ type: "loadClick", id, base64 }))
+      .catch((error) => {
+        clickLoadedRef.current.delete(id);
+        console.error("Failed to load stem click sound", id, error);
+      });
+  };
+
+  // Everything about the click except whether it is on comes from the same
+  // preferences the loop click reads -- which samples, how loud each voice is,
+  // where it sits in the stereo field, and the metronome's own master. Only the
+  // on/off is its own (prefs.stemClick), because a song and a loop want a count
+  // at different times.
+  //
+  // Note the level: the metronome master, not the loop or pad volume. The click
+  // is the metronome, layered over a song rather than played on its own.
+  useEffect(() => {
+    loadClickSound(prefs.accentSound);
+    loadClickSound(prefs.beatSound);
+    postToEngine({
+      type: "setClick",
+      enabled: prefs.stemClick,
+      pan: CLICK_PAN_VALUE[prefs.loopClickPan] ?? 0,
+      accentId: prefs.accentSound,
+      beatId: prefs.beatSound,
+      accentVolume: prefs.accentVolume * prefs.metronomeVolume,
+      beatVolume: prefs.beatVolume * prefs.metronomeVolume,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    prefs.stemClick,
+    prefs.loopClickPan,
+    prefs.accentSound,
+    prefs.beatSound,
+    prefs.accentVolume,
+    prefs.beatVolume,
+    prefs.metronomeVolume,
+    engineGeneration,
+  ]);
 
   const loadCue = async (cueId: string, tracks: CueTrack[], force = false) => {
     if (cueId === loadedCueId && !force) return;
@@ -368,6 +438,9 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     pendingRef.current = new Set();
     // Any load still walking a track list belongs to the engine that just died.
     loadTokenRef.current += 1;
+    // The replacement has decoded nothing, click samples included; the effect
+    // that pushes click config re-sends them on the new generation.
+    clickLoadedRef.current.clear();
     pendingPlayRef.current = null;
     readyRef.current = false;
     loadedCueIdRef.current = null;

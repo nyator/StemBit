@@ -216,7 +216,12 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             beatVolume = Math.max(0, Math.min(1, nextBeatVolume));
           }
           if (typeof nextMasterVolume === "number") {
-            masterVolume = Math.max(0, Math.min(1, nextMasterVolume));
+            // Up to 2, not 1: the metronome's master is allowed past full scale
+            // so the click can be heard over a band. Keep this in step with
+            // METRONOME_MAX_VOLUME in context/PreferencesContext.tsx -- clamped
+            // here as well so a hand-edited preferences file can't ask for a
+            // gain that would tear.
+            masterVolume = Math.max(0, Math.min(2, nextMasterVolume));
           }
         }
 

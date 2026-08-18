@@ -16,11 +16,16 @@ import { COLORS, CONTROL } from "../../constants/theme";
 export const TRACK_WIDTH = 140;
 
 type SliderProps = {
-  /** Current position, 0–1. */
+  /** Current position, within min–max. */
   value: number;
   onChange: (value: number) => void;
   /** Fires once when the drag ends -- use this to persist, not onChange. */
   onComplete?: (value: number) => void;
+  /**
+   * Top of the throw. 1 is full scale for most things; the metronome runs to 2
+   * because its click has to cut through a band rather than sit in a mix.
+   */
+  max?: number;
   width?: number;
   /** Announced by screen readers, e.g. "Metronome volume". */
   accessibilityLabel?: string;
@@ -30,6 +35,7 @@ export default function Slider({
   value,
   onChange,
   onComplete,
+  max = 1,
   width = TRACK_WIDTH,
   accessibilityLabel,
 }: SliderProps) {
@@ -40,7 +46,7 @@ export default function Slider({
         onValueChange={onChange}
         onSlidingComplete={onComplete}
         minimumValue={0}
-        maximumValue={1}
+        maximumValue={max}
         minimumTrackTintColor={CONTROL.active}
         maximumTrackTintColor={CONTROL.track}
         thumbTintColor={COLORS.white}

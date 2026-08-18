@@ -35,13 +35,21 @@ import {
 } from "../../context/SessionPlaybackContext";
 import { usePreferences } from "../../context/PreferencesContext";
 import { useSessionCue } from "../../context/SessionCueContext";
-import { useLoopPlayback } from "../../context/LoopPlaybackContext";
+import {
+  useLoopPhase,
+  useLoopPlayback,
+} from "../../context/LoopPlaybackContext";
 import { KEYS, usePadPlayback } from "../../context/PadPlaybackContext";
 import { useLiveSections } from "../../hooks/useLiveSections";
 import { PAD_PACKS } from "../../constants/pads";
 import { findLoopByKey } from "../../constants/loops";
 import { hapticImpact } from "../../utils/haptics";
 import { describeCue } from "../../utils/describeCue";
+import { loadAudioBase64 } from "../../utils/loadAssetBase64";
+import {
+  LoopPreviewEngine,
+  type LoopPreviewHandle,
+} from "../../components/loopPreviewEngine";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import TrackTimeline from "../../components/ui/trackTimeline";
@@ -136,6 +144,17 @@ const DEFAULT_MIX: TrackMix = { level: 1, pan: 0, muted: false };
  * like it's being fought.
  */
 const MIN_SECTION_SECONDS = 0.25;
+
+/**
+ * Detector confidence at or above which the reading is worth trusting on sight.
+ *
+ * Not a probability -- it is the winning tempo's share of all the candidate
+ * intervals. Material with a clear pulse puts half of them or more on one
+ * answer; material without spreads them, and the reading is a guess dressed as
+ * a number. Either way the tempo is only ever offered here, so this decides
+ * what the card says rather than whether it appears.
+ */
+const CLEAR_PULSE = 0.5;
 
 /**
  * The cue's name, at the top of both STUDIO views.
@@ -238,7 +257,7 @@ export default function PerformanceScreen() {
   }>();
   const router = useRouter();
   const { findSession, updateItem, removeItem } = useSessions();
-  const { prefs } = usePreferences();
+  const { prefs, setPref } = usePreferences();
   const session = useSessionPlayback();
   // A loop or pad cue is fired the same way the setlist row fires it -- through
   // the cue context, which loads the loop, sets the tempo and arms the pad in
@@ -251,8 +270,11 @@ export default function PerformanceScreen() {
     stop: stopCue,
     stopTransport: stopCueTransport,
     liveItemId,
-    loopPhase,
   } = useSessionCue();
+  // Retained rather than read off the context: PERFORM's readout draws it, so
+  // the engine reports its position for as long as this screen is up and stops
+  // when it isn't. See useLoopPhase.
+  const loopPhase = useLoopPhase();
   // Only for a tempo nudge landing on a loop that is already sounding. Everything
   // else about the loop engine is the cue context's business.
   const { setBpm: setEngineBpm } = useLoopPlayback();
@@ -438,6 +460,12 @@ export default function PerformanceScreen() {
     // A section id belonging to the cue we just left, which would otherwise sit
     // there arming RENAME and DELETE against a section that isn't on screen.
     setSelectedSectionId(null);
+    // A tempo read off another song's stems. Offering it here would be offering
+    // it for this one.
+    setDetecting(false);
+    setSuggestion(null);
+    detectKeyRef.current = null;
+    pendingAnalysisRef.current = null;
   }, [cue?.id]);
 
   // The stems are decoded on arrival so the first press starts immediately
@@ -856,6 +884,73 @@ export default function PerformanceScreen() {
 
   const [importing, setImporting] = useState(false);
 
+  /* ---------------------------------------------------------------------- */
+  /* Tempo detection                                                         */
+  /* ---------------------------------------------------------------------- */
+
+  // Reading a tempo off freshly imported stems, and what it came back with.
+  //
+  // Only on import, and only ever offered. A cue opened later already has its
+  // tempo -- either detected once and accepted, or typed -- and re-reading the
+  // audio every time the screen opened would be work done to arrive at the
+  // answer already stored. So this runs at the one moment there is nothing to
+  // go on, and even then it asks: the detector reports a confidence for a
+  // reason, and a tempo silently applied is one nobody checked.
+  const [detecting, setDetecting] = useState(false);
+  const [suggestion, setSuggestion] = useState<{
+    bpm: number;
+    confidence: number;
+    alternatives: number[];
+  } | null>(null);
+  const detectRef = useRef<LoopPreviewHandle>(null);
+  // Which import the analysis in flight belongs to, so a reply for stems that
+  // have since been replaced is dropped rather than applied to the wrong song.
+  const detectKeyRef = useRef<string | null>(null);
+
+  /**
+   * Read the tempo off one of the stems just imported.
+   *
+   * Through the loop preview engine rather than the stem engine: it is the one
+   * that carries the BPM analyser, and it exists precisely to measure a file
+   * without disturbing whatever is loaded for playback. One stem is enough --
+   * they are the same performance, and a bass part carries the pulse as well as
+   * a full mix does.
+   */
+  // The audio waiting to be handed over, and a tick to hand it over on. Held in
+  // a ref rather than state because it is tens of megabytes of base64, and
+  // announced by a counter because the detector has to be on screen before it
+  // can be called -- an effect runs after that render, a bare call would not.
+  const pendingAnalysisRef = useRef<{ cueId: string; base64: string } | null>(
+    null
+  );
+  const [analysisTick, setAnalysisTick] = useState(0);
+
+  const detectTempoFrom = async (track: CueTrack, cueId: string) => {
+    detectKeyRef.current = cueId;
+    setDetecting(true);
+    try {
+      const base64 = await loadAudioBase64(track.uri);
+      if (detectKeyRef.current !== cueId) return;
+      pendingAnalysisRef.current = { cueId, base64 };
+      setAnalysisTick((tick) => tick + 1);
+    } catch (error) {
+      console.error("Couldn't read the stem for tempo detection", error);
+      if (detectKeyRef.current === cueId) setDetecting(false);
+    }
+  };
+
+  useEffect(() => {
+    const pending = pendingAnalysisRef.current;
+    if (!pending) return;
+    pendingAnalysisRef.current = null;
+    detectRef.current?.analyze(pending.cueId, pending.base64);
+  }, [analysisTick]);
+
+  const applySuggestedTempo = () => {
+    if (suggestion) setCueBpm(suggestion.bpm);
+    setSuggestion(null);
+  };
+
   /**
    * Add stems to this cue, which is also how a cue becomes a song.
    *
@@ -904,6 +999,11 @@ export default function PerformanceScreen() {
       // where every one of them hangs for five seconds and then gives up.
       reloadStems(nextTracks);
       updateItem(sessionId, itemId, changes);
+
+      // Read the tempo off what just arrived. Only for fresh audio -- a cue
+      // opened later already has its tempo, and this is the one moment there is
+      // nothing to go on.
+      detectTempoFrom(picked[0], cue.id);
     } catch (error) {
       console.error("Stem import failed", error);
       Alert.alert("Import failed", "Those files couldn't be read.");
@@ -1501,6 +1601,68 @@ export default function PerformanceScreen() {
             onPress={pickStems}
           />
 
+          {/* What the detector read off the stems, offered rather than applied.
+              It reports a confidence for a reason: a tempo taken silently is
+              one nobody checked, and every quantised launch in the song is
+              measured from it. Declining leaves whatever was already there. */}
+          {detecting && (
+            <Text className="mt-4 text-[11px] text-brand font-satoshiRegular">
+              Reading the tempo off the stems…
+            </Text>
+          )}
+
+          {suggestion && (
+            <View
+              className="px-4 py-3 mt-4 border-2 rounded-lg"
+              style={{ borderColor: COLORS.brand }}
+            >
+              <Text className="text-[9px] text-brand font-spaceBold tracking-widest">
+                DETECTED TEMPO
+              </Text>
+              <Text
+                className="mt-1 text-2xl text-white font-spaceBold"
+                style={{ fontVariant: ["tabular-nums"] }}
+              >
+                {suggestion.bpm} BPM
+              </Text>
+              <Text className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular">
+                {suggestion.confidence >= CLEAR_PULSE
+                  ? "A clear pulse — this is very likely right."
+                  : "The pulse was hard to read — worth checking against the audio."}
+                {suggestion.alternatives.length > 0
+                  ? `  Also possible: ${suggestion.alternatives
+                      .slice(0, 2)
+                      .join(", ")}.`
+                  : ""}
+              </Text>
+
+              <View className="flex-row mt-3">
+                <TouchableOpacity
+                  onPress={() => setSuggestion(null)}
+                  accessibilityLabel="Keep the tempo already set"
+                  activeOpacity={0.8}
+                  className="items-center justify-center flex-1 py-3 mr-2 border rounded-lg"
+                  style={{ borderColor: COLORS.border }}
+                >
+                  <Text className="text-xs text-ink-muted font-spaceBold">
+                    KEEP {cue.bpm ?? 120}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={applySuggestedTempo}
+                  accessibilityLabel={`Use ${suggestion.bpm} BPM`}
+                  activeOpacity={0.8}
+                  className="items-center justify-center flex-1 py-3 rounded-lg"
+                  style={{ backgroundColor: COLORS.brand }}
+                >
+                  <Text className="text-xs text-white font-spaceBold">
+                    USE {suggestion.bpm}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Not optional the way it is for a loop cue, which can fall back to
               the tempo its loop was recorded at. A song has no such number, and
               everything on the grid -- where a launch lands, when a section
@@ -1718,6 +1880,43 @@ export default function PerformanceScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* The click, beside the pad because they are the same kind of thing:
+            something you bring in over the song rather than part of it, and
+            something you reach for mid-set rather than beforehand.
+
+            Only over stems. A loop cue's click is the loop engine's own and is
+            already switched on in Settings; a second button here meaning a
+            different click on the same screen would be two switches for one
+            sound. What it plays, how loud, and where it sits are the metronome's
+            settings either way -- this is only whether. */}
+        {isStemCue && (
+          <TouchableOpacity
+            onPress={() => {
+              hapticImpact(prefs.haptics, "medium");
+              setPref("stemClick", !prefs.stemClick);
+            }}
+            accessibilityLabel={
+              prefs.stemClick ? "Turn the click off" : "Play a click with the song"
+            }
+            accessibilityState={{ selected: prefs.stemClick }}
+            activeOpacity={0.8}
+            className="items-center justify-center px-4 py-3 mr-2 border-2 rounded-lg"
+            style={{
+              backgroundColor: prefs.stemClick ? COLORS.brand : "transparent",
+              borderColor: prefs.stemClick ? COLORS.brand : COLORS.border,
+            }}
+          >
+            <Text
+              className="text-[11px] font-spaceBold"
+              style={{
+                color: prefs.stemClick ? COLORS.white : COLORS.textMuted,
+              }}
+            >
+              CLICK
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           onPress={() => {
             hapticImpact(prefs.haptics, "light");
@@ -1908,6 +2107,35 @@ export default function PerformanceScreen() {
           </Text>
         )}
       </View>
+
+      {/* The tempo detector, mounted only while a reading is in flight.
+          A second audio engine is not something to keep around: it is here for
+          the seconds after an import and gone again. The loop engine rather
+          than the stem one because it is the engine that carries the BPM
+          analyser, and it is built to measure a file without disturbing
+          whatever is loaded for playback. */}
+      {detecting && (
+        <LoopPreviewEngine
+          ref={detectRef}
+          clickEnabled={false}
+          onAnalyzed={(analysis) => {
+            // A reply for stems that have since been replaced belongs to a song
+            // that is no longer on screen.
+            if (detectKeyRef.current !== analysis.key) return;
+            setDetecting(false);
+            if (analysis.tempo) setSuggestion(analysis.tempo);
+          }}
+          onDetected={() => {}}
+          onRegionPeaks={() => {}}
+          onPosition={() => {}}
+          onError={(message) => {
+            // Never fatal: the tempo is typed in if it can't be read, which is
+            // how every stem cue got one before this existed.
+            console.error("Tempo detection failed", message);
+            setDetecting(false);
+          }}
+        />
+      )}
 
       {/* The running order. A sheet rather than a screen, so getting to another
           song is one gesture out and one back rather than a navigation.

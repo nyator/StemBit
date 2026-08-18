@@ -86,22 +86,31 @@ import {
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 
-// How wide a window a held handle zooms into: about a second across the same few
-// hundred pixels the whole file had, so roughly 2ms per pixel — finer than the
-// nudge buttons.
-const ZOOM_WINDOW_SECONDS = 1;
-// How much audio is measured behind it. Wider than the window because a dragged
-// edge scrolls the view, and re-measuring on every frame of that would be a round
-// trip to the engine per frame; with a buffer either side, scrolling is just
+// How much audio is measured behind the zoomed view. Wider than the window,
+// because the view scrolls -- dragged by the finger, or shoved along by an edge
+// nearing the side -- and re-measuring on every frame of that would be a round
+// trip to the engine per frame. With a buffer either side, scrolling is just
 // re-slicing numbers already in hand.
-const ZOOM_BUFFER_SECONDS = 4;
-// Buckets across the buffer, kept in proportion so the resolution is the same
-// whatever the window is: ~2ms per bucket.
+//
+// A multiple of the window rather than a fixed number of seconds: the zoom is
+// continuous now, so the window is anything from the whole file down to a tenth
+// of a second, and a fixed four seconds would be a wasteful buffer at one end
+// and no buffer at all at the other.
+const ZOOM_BUFFER_FACTOR = 3;
+/** ...but never so narrow that a small scroll runs off the end of it. */
+const ZOOM_BUFFER_MIN_SECONDS = 2;
+// Buckets across the buffer. Fixed, so the resolution improves as you zoom in:
+// the same 1920 measurements spread over a narrower buffer.
 const ZOOM_BUCKETS = 1920;
-// The view coming within this much of the buffer's end is the cue to measure a
-// new one, centred where the view is now. Half a window of slack, so the old
-// buffer still covers the screen while the new one is on its way.
-const ZOOM_REFILL_SECONDS = ZOOM_WINDOW_SECONDS / 2;
+/**
+ * Past this window width the overview's own peaks are as good as anything the
+ * engine would send back, so nothing is measured at all.
+ *
+ * The overview is a few hundred buckets across the whole file. Zoomed a little,
+ * a slice of it still has more detail per pixel than the screen can draw; it is
+ * only further in that it turns into a handful of bars stretched wide.
+ */
+const ZOOM_MEASURE_BELOW_SECONDS = 30;
 
 // Detected tempo at or above this confidence is applied on the spot; below it,
 // the tempo is estimated from the region's length instead and the screen says so.
@@ -546,19 +555,24 @@ export default function ImportLoopScreen() {
   // than a round trip per frame, and the engine is only asked again when the view
   // approaches the end of what's measured.
 
-  // The stretch of audio to measure around a position, clamped to the file.
-  const zoomBufferAround = (at: number) => {
-    const span = Math.min(ZOOM_BUFFER_SECONDS, Math.max(0.05, duration));
+  // The stretch of audio to measure behind a window, clamped to the file.
+  const zoomBufferFor = (view: { start: number; end: number }) => {
+    const window = Math.max(0.05, view.end - view.start);
+    const span = Math.min(
+      Math.max(0.05, duration),
+      Math.max(ZOOM_BUFFER_MIN_SECONDS, window * ZOOM_BUFFER_FACTOR)
+    );
+    const centre = (view.start + view.end) / 2;
     const from = Math.min(
-      Math.max(0, at - span / 2),
+      Math.max(0, centre - span / 2),
       Math.max(0, duration - span)
     );
     return { start: from, end: from + span };
   };
 
-  const fetchZoomBuffer = (at: number) => {
+  const fetchZoomBuffer = (view: { start: number; end: number }) => {
     if (!analysis) return null;
-    const buffer = zoomBufferAround(at);
+    const buffer = zoomBufferFor(view);
     engineRef.current?.regionPeaks(
       analysis.key,
       buffer.start,
@@ -568,41 +582,53 @@ export default function ImportLoopScreen() {
     return buffer;
   };
 
-  const requestZoom = (edge: "start" | "end", at: number) => {
+  /**
+   * The trimmer is looking somewhere new -- zoomed, scrolled, or back out to
+   * the whole file.
+   *
+   * Measures a buffer for it, but only when the window is narrow enough that
+   * measuring beats slicing the overview, and only when what is already
+   * measured doesn't still cover the view. The whole point of a buffer wider
+   * than the window is that most scrolling needs nothing.
+   */
+  const handleViewChange = (view: { start: number; end: number } | null) => {
     if (!analysis || duration <= 0) return;
-    const buffer = fetchZoomBuffer(at);
-    if (!buffer) return;
-    // Peaks land in a moment; until they do the trimmer stretches the overview's
-    // own, so the view is never blank under the finger.
-    setZoom({
-      edge,
-      bufferStart: buffer.start,
-      bufferEnd: buffer.end,
-      peaks: [],
-      origin: at,
-      windowSeconds: ZOOM_WINDOW_SECONDS,
-    });
-  };
 
-  // The view has scrolled. Measure a new buffer if it's running out of the
-  // current one -- and only then, since the whole point of the buffer is that
-  // most scrolling needs nothing.
-  const handleNeedPeaks = (viewStart: number, viewEnd: number) => {
+    if (!view || view.end - view.start > ZOOM_MEASURE_BELOW_SECONDS) {
+      setZoom(null);
+      return;
+    }
+
     setZoom((current) => {
-      if (!current) return current;
-      const roomBefore =
-        viewStart - current.bufferStart >= ZOOM_REFILL_SECONDS ||
-        current.bufferStart <= 0;
-      const roomAfter =
-        current.bufferEnd - viewEnd >= ZOOM_REFILL_SECONDS ||
-        current.bufferEnd >= duration - 0.0001;
-      if (roomBefore && roomAfter) return current;
+      // Room left in the buffer on both sides, or the file's own edge, means
+      // the view is still covered and there is nothing to do.
+      if (current) {
+        const margin = (view.end - view.start) / 2;
+        const roomBefore =
+          view.start - current.bufferStart >= margin || current.bufferStart <= 0;
+        const roomAfter =
+          current.bufferEnd - view.end >= margin ||
+          current.bufferEnd >= duration - 0.0001;
+        if (roomBefore && roomAfter) return current;
+      }
 
-      const buffer = fetchZoomBuffer((viewStart + viewEnd) / 2);
-      if (!buffer || buffer.start === current.bufferStart) return current;
-      // The old peaks stay on screen until the new ones arrive: they still cover
-      // the view, which is what the slack in the refill margin is for.
-      return { ...current, bufferStart: buffer.start, bufferEnd: buffer.end };
+      const buffer = fetchZoomBuffer(view);
+      if (!buffer) return current;
+      if (
+        current &&
+        current.bufferStart === buffer.start &&
+        current.bufferEnd === buffer.end
+      ) {
+        return current;
+      }
+      // Peaks land in a moment. Until they do the old ones stay on screen if
+      // there are any, and the trimmer stretches the overview's if there
+      // aren't -- either way the view is never blank under the finger.
+      return {
+        bufferStart: buffer.start,
+        bufferEnd: buffer.end,
+        peaks: current?.peaks ?? [],
+      };
     });
   };
 
@@ -838,8 +864,9 @@ export default function ImportLoopScreen() {
 
         {analysis && (
           <>
-            {/* What plays. Drag the ends; hold one to zoom in, which is finer
-                than any nudge button could be, so there are none. */}
+            {/* What plays. Drag the ends; pinch or use the buttons to zoom in,
+                which is finer than any nudge button could be, so there are
+                none. */}
             {/* <SectionLabel text="The part that loops" /> */}
             <WaveformTrimmer
               peaks={analysis.peaks}
@@ -848,12 +875,7 @@ export default function ImportLoopScreen() {
               end={trim.end}
               onChange={(start, end) => setTrim({ start, end })}
               onComplete={commitTrim}
-              onEdgeLongPress={(edge) => {
-                hapticImpact(prefs.haptics, "medium");
-                requestZoom(edge, edge === "start" ? trim.start : trim.end);
-              }}
-              onEdgeRelease={() => setZoom(null)}
-              onNeedPeaks={handleNeedPeaks}
+              onViewChange={handleViewChange}
               zoom={zoom}
               classname="mt-2"
             />
@@ -871,7 +893,7 @@ export default function ImportLoopScreen() {
                 </Text> */}
                 <Text className="text-white text-[12px] font-satoshiRegular mt-[2px]">
                   {isOnGrid
-                    ? "Drag the ends to trim. Hold one to zoom in."
+                    ? "Drag the ends to trim. Pinch to zoom in."
                     : "It'll drift out of time as it repeats."}
                 </Text>
               </View>

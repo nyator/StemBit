@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useState,
   useRef,
@@ -56,6 +57,32 @@ const CLICK_PAN_VALUE: Record<string, number> = {
 const soundAsset = (id: string) =>
   METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
 
+/**
+ * A hold on the loop's phase, and the value that hold keeps fed.
+ *
+ * `phase` is how far through the current loop pass playback is, 0–1, resetting
+ * on every pass -- so it drives anything that has to move in time with the loop.
+ * An Animated.Value rather than a number: it changes 16 times a second, and the
+ * provider wraps the whole app, so as state it would re-render every screen for
+ * a value one row draws. Interpolate it; don't read it in render.
+ *
+ * Only the engine can know it. A bundled loop's region is found inside the
+ * WebView (silence trim, then a snap to whole beats), so its length exists
+ * nowhere in JS, and anything timed here instead would drift against the audio.
+ *
+ * It costs something to know, which is why it is leased rather than simply
+ * available. Reporting it is 16 messages a second, each parsed on the RN JS
+ * thread and each starting a JS-driven animation on arrival -- continuous work
+ * on the one thread that also has to deliver the beat. Left running for screens
+ * that draw no phase, it saturated that thread and the beat visualiser slid
+ * progressively behind a click that never moved. So the engine is asked for it
+ * only while a lease is out, and released the moment the last one goes.
+ */
+export type LoopPhaseLease = {
+  phase: Animated.Value;
+  release: () => void;
+};
+
 type LoopPlaybackContextValue = {
   bpm: number;
   setBpm: React.Dispatch<React.SetStateAction<number>>;
@@ -83,19 +110,39 @@ type LoopPlaybackContextValue = {
   speedMultiplier: number;
   resetBpm: () => void;
   /**
-   * How far through the current loop pass playback is, 0–1, resetting to 0 on
-   * every pass -- so it drives anything that has to move in time with the loop.
+   * Take out a lease on the loop's phase: the value, and the reporting that
+   * keeps it moving. Release it when you stop drawing.
    *
-   * An Animated.Value rather than a number: it changes 16 times a second, and
-   * this provider wraps the whole app, so as state it would re-render every
-   * screen for a value one row draws. Interpolate it; don't read it in render.
+   * The value is reachable ONLY through a lease, which is the point. The engine
+   * reports its position only while something has said it is drawing that --
+   * see the note on the lease type -- so a phase handed out on its own would
+   * sit at zero forever and read as a bug in whoever drew it. Making the two
+   * inseparable means that cannot be written.
    *
-   * Only the engine can know this. A bundled loop's region is found inside the
-   * WebView (silence trim, then a snap to whole beats), so its length exists
-   * nowhere in JS, and anything timed here instead would drift against the
-   * audio.
+   * Prefer the useLoopPhase hook below, which pairs the lease to a component's
+   * lifetime so releasing isn't something a caller can forget.
    */
-  loopPhase: Animated.Value;
+  retainPhase: () => LoopPhaseLease;
+  /**
+   * Watch the loop's beats: which beat of the bar has just landed, 0-based and
+   * null when nothing is sounding, and whether it's an accent. Returns an
+   * unsubscribe.
+   *
+   * One call per beat, from the engine's own grid -- the cursor that schedules
+   * the click -- announced at the moment that beat sounds. That is the only
+   * number that cannot drift from what is being heard, and two earlier attempts
+   * at this both did: a setInterval at the current tempo, and then sampling the
+   * playhead every 60ms. Neither is wrong about the tempo; they are wrong about
+   * *when*, by a little more each bar.
+   *
+   * A subscription rather than a value on this context, for the same reason
+   * loopPhase is an Animated.Value: this provider wraps the whole app, and as
+   * state every beat would re-render every tab and both navigators for a row of
+   * dots that one screen draws.
+   */
+  subscribeBeat: (
+    listener: (beat: number | null, accent: boolean) => void
+  ) => () => void;
   setSelectedLoopKey: (key: string | undefined) => void;
   startLoop: () => void;
   stopLoop: () => void;
@@ -178,6 +225,16 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // Last reported phase, to tell a wrap (which snaps) from normal progress
   // (which tweens).
   const lastPhaseRef = useRef(0);
+  // Whoever is drawing the beat, and the last beat they were told about. A set
+  // rather than a single callback so a screen mounting before the last one
+  // unmounts can't silently displace it.
+  const beatListenersRef = useRef<
+    Set<(beat: number | null, accent: boolean) => void>
+  >(new Set());
+  const lastBeatRef = useRef<number | null>(null);
+  // How many mounted things are drawing loopPhase. Zero means the engine can
+  // stop reporting its position -- see retainPhase.
+  const phaseDemandRef = useRef(0);
   // Bumping this remounts the WebView, which is how a dead engine is
   // recovered (see restartEngine).
   const [engineGeneration, setEngineGeneration] = useState(0);
@@ -363,6 +420,61 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /**
+   * Say that something is drawing the loop's phase. Returns a release.
+   *
+   * The engine only reports its position while someone is looking, because the
+   * reporting is not free and it is not free on a thread that can afford it:
+   * sixteen messages a second, each one parsed on the RN JS thread and each one
+   * starting a 60ms JS-driven animation on arrival. Continuous work, forever,
+   * on the same thread that has to deliver the beat -- and the beat is what
+   * ends up queued behind it. That is a visualiser running progressively later
+   * than a click which is scheduled on the audio clock and doesn't care how
+   * busy JS is.
+   *
+   * The Loop tab draws no phase at all, so before this it was paying that bill
+   * for nothing, the whole time it was playing.
+   */
+  const retainPhase = useCallback((): LoopPhaseLease => {
+    phaseDemandRef.current += 1;
+    if (phaseDemandRef.current === 1 && isPlayingRef.current) {
+      postToEngine({ type: "positionUpdates", enabled: true });
+    }
+
+    // Each lease releases once. Without this a double release -- React's strict
+    // mode runs an effect's cleanup twice on mount, and callers are human --
+    // would decrement for a hold that was only taken once, and the count would
+    // reach zero while something was still drawing.
+    let released = false;
+    return {
+      phase: loopPhase,
+      release: () => {
+        if (released) return;
+        released = true;
+        phaseDemandRef.current = Math.max(0, phaseDemandRef.current - 1);
+        if (phaseDemandRef.current === 0) {
+          postToEngine({ type: "positionUpdates", enabled: false });
+          loopPhase.setValue(0);
+          lastPhaseRef.current = 0;
+        }
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Stable across renders, so a subscriber's effect doesn't tear down and
+  // resubscribe every time this provider re-renders -- which it does on every
+  // tempo nudge.
+  const subscribeBeat = useCallback(
+    (listener: (beat: number | null, accent: boolean) => void) => {
+      beatListenersRef.current.add(listener);
+      return () => {
+        beatListenersRef.current.delete(listener);
+      };
+    },
+    []
+  );
+
   const stopLoop = () => {
     pendingPlayRef.current = false;
     isPlayingRef.current = false;
@@ -371,6 +483,12 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     postToEngine({ type: "positionUpdates", enabled: false });
     loopPhase.setValue(0);
     lastPhaseRef.current = 0;
+    // Said here as well as by the engine's parting message, so a dot is never
+    // left lit by a message that went missing on the way out.
+    if (lastBeatRef.current !== null) {
+      lastBeatRef.current = null;
+      beatListenersRef.current.forEach((listener) => listener(null, false));
+    }
     release("loop");
   };
 
@@ -443,7 +561,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const beginPlayback = () => {
     isPlayingRef.current = true;
     setIsPlaying(true);
-    postToEngine({ type: "positionUpdates", enabled: true });
+    // Only if something is actually drawing the phase -- see retainPhase.
+    if (phaseDemandRef.current > 0) {
+      postToEngine({ type: "positionUpdates", enabled: true });
+    }
     postToEngine({ type: "play", rate: getPlaybackRate() });
   };
 
@@ -474,6 +595,15 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         loadClickSound(prefs.beatSound);
         postClickConfig();
         postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
+      } else if (data.type === "beat") {
+        // A beat is landing right now. One message per beat, sent by the grid
+        // that schedules the click, at the moment the click sounds -- so what
+        // is drawn and what is heard are the same event rather than two clocks
+        // that agree at the start.
+        const beat = typeof data.beat === "number" ? data.beat : null;
+        const accent = data.accent === true;
+        lastBeatRef.current = beat;
+        beatListenersRef.current.forEach((listener) => listener(beat, accent));
       } else if (data.type === "position") {
         // phase is 0–1 through the current pass, or null when the engine stops
         // and takes the playhead away.
@@ -686,7 +816,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         setFeelIndex,
         speedMultiplier,
         resetBpm,
-        loopPhase,
+        retainPhase,
+        subscribeBeat,
         setSelectedLoopKey,
         startLoop,
         stopLoop,
@@ -730,4 +861,22 @@ export function useLoopPlayback() {
     );
   }
   return context;
+}
+
+/**
+ * The loop's phase, for anything that draws it.
+ *
+ * Holds the engine's position reporting open for exactly as long as the
+ * component is mounted, and lets it stop the moment nothing is drawing. This is
+ * the only way to get the value -- see LoopPhaseLease for why the two travel
+ * together -- so there is no version of this a caller can hold wrong.
+ */
+export function useLoopPhase() {
+  const { retainPhase } = useLoopPlayback();
+  // Taken once per mount, in an initialiser rather than an effect: the value has
+  // to exist on the first render, and a phase that arrived one render late would
+  // remount whatever interpolates it.
+  const [lease] = useState(retainPhase);
+  useEffect(() => lease.release, [lease]);
+  return lease.phase;
 }

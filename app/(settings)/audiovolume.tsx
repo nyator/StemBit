@@ -10,7 +10,10 @@ import {
     SettingSlider
 } from "../../components/ui/settingRow";
 import type { Preferences } from "../../context/PreferencesContext";
-import { usePreferences } from "../../context/PreferencesContext";
+import {
+    METRONOME_MAX_VOLUME,
+    usePreferences,
+} from "../../context/PreferencesContext";
 import {
     Pad,
     Metromone,
@@ -78,12 +81,21 @@ const AudioVolume = () => {
                         onComplete={(v) => setPref("padVolume", v)}
                         border={true}
                     />
+                    {/* Runs to 200%, where the other two stop at full scale.
+                        A click has to be heard over a band rather than sit in a
+                        mix with one, and on a loud stage the accent sample at
+                        full scale still isn't always enough. 100% is the click
+                        as recorded and the default; past that is deliberate
+                        overdrive, which is what the readout is there to make
+                        findable. */}
                     <SettingSlider
                         icon={Metromone}
-                        label="Metronome Volume"
+                        label="Metro... Volume"
+                        // sublabel="100% is the click as recorded"
                         value={volumes.metronome}
                         onValueChange={setVolume("metronome")}
                         onComplete={(v) => setPref("metronomeVolume", v)}
+                        max={METRONOME_MAX_VOLUME}
                         // border={true}
                     />
                 </SettingSection>

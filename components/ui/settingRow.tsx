@@ -48,12 +48,14 @@ type SegmentedRowProps<T extends string> = BaseProps & {
   onChange: (value: T) => void;
 };
 
-// Same shape as a switch row but the value is continuous, 0–1.
+// Same shape as a switch row but the value is continuous, 0 to max.
 type SliderRowProps = BaseProps & {
   value: number;
   onValueChange: (value: number) => void;
   /** Fires once when the drag ends -- persist here, not on every tick. */
   onComplete?: (value: number) => void;
+  /** Top of the throw; 1 (full scale) unless a control can be pushed past it. */
+  max?: number;
 };
 
 const RowShell = ({
@@ -170,22 +172,43 @@ export function SettingSwitch({ value, onValueChange, ...base }: SwitchRowProps)
 }
 
 // Continuous-value row -- a volume level rather than an on/off.
+//
+// The percentage is read out beside the slider because the throw alone stops
+// being self-explanatory the moment one of these runs past full scale: on a
+// control that reaches 200%, the thumb sitting halfway means "normal", and
+// there is nothing about a half-full track that says so.
 export function SettingSlider({
   value,
   onValueChange,
   onComplete,
+  max = 1,
   ...base
 }: SliderRowProps) {
   return (
     <RowShell
       {...base}
       right={
-        <Slider
-          value={value}
-          onChange={onValueChange}
-          onComplete={onComplete}
-          accessibilityLabel={base.label}
-        />
+        <View className="flex-row items-center">
+          <Slider
+            value={value}
+            onChange={onValueChange}
+            onComplete={onComplete}
+            max={max}
+            accessibilityLabel={base.label}
+          />
+          <Text
+            className="ml-2 text-[11px] text-ink-muted font-spaceBold"
+            style={{
+              // Fixed width and tabular digits, so the slider doesn't shuffle
+              // sideways as the number goes from 9% to 100%.
+              width: 38,
+              textAlign: "right",
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {Math.round(value * 100)}%
+          </Text>
+        </View>
       }
     />
   );

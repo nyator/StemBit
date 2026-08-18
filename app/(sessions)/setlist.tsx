@@ -19,6 +19,7 @@ import {
 } from "../../context/SessionsContext";
 import { removeStems } from "../../utils/importStems";
 import { useSessionCue } from "../../context/SessionCueContext";
+import { useLoopPhase } from "../../context/LoopPlaybackContext";
 import { useSessionPlayback } from "../../context/SessionPlaybackContext";
 import { useLiveSections } from "../../hooks/useLiveSections";
 import LoopFillBar from "../../components/ui/loopFillBar";
@@ -69,7 +70,11 @@ export default function SetlistScreen() {
   const router = useRouter();
   const { findSession, addItem, removeItem, reorderItems } = useSessions();
   const { prefs } = usePreferences();
-  const { play, stop, endSession, liveItemId, loopPhase } = useSessionCue();
+  const { play, stop, endSession, liveItemId } = useSessionCue();
+  // Retained rather than read off the context: the row's fill bar is the only
+  // thing here that draws it, so the engine reports its position for exactly as
+  // long as this screen is up. See useLoopPhase.
+  const loopPhase = useLoopPhase();
   // Stem songs run on their own engine -- multi-track and sample-locked, which
   // only works inside one AudioContext -- so firing one from here means talking
   // to that engine directly rather than through the cue context.

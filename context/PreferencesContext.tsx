@@ -16,7 +16,7 @@ import * as FileSystem from "expo-file-system";
 //   beatVolume    -> gain of the metronome's regular clicks, 0–1
 //   accentSound   -> id of the click sound the accent voice plays
 //   beatSound     -> id of the click sound the regular-beat voice plays
-//   metronomeVolume -> master gain for the metronome, scales accent+beat, 0–1
+//   metronomeVolume -> master gain for the metronome, scales accent+beat, 0–2
 //   padVolume     -> master gain for the pad instrument, 0–1
 //   loopVolume    -> master gain for the loop's backing track, 0–1
 //   loopClick     -> play a metronome click alongside a loop (off by default)
@@ -25,6 +25,18 @@ import * as FileSystem from "expo-file-system";
 //                    own mix level. One key press sounds all of them.
 //   natureNoise   -> the ambience bed layered over every pad. A mixer channel
 //                    of its own, muted until the user brings it in.
+/**
+ * How far the metronome's master gain can be pushed, where 1 is the click as
+ * its sample was recorded.
+ *
+ * Past full scale on purpose. Every other level in the app is a balance -- how
+ * loud this sits against that -- and tops out where the signal does. A click
+ * isn't in the mix; it is competing with a drummer, and the sample at unity is
+ * not always louder than one. The engines clamp to this same ceiling, so a
+ * hand-edited preferences file can't ask for a gain that would tear.
+ */
+export const METRONOME_MAX_VOLUME = 2;
+
 export type Preferences = {
   haptics: boolean;
   meterAccents: boolean;
@@ -36,6 +48,16 @@ export type Preferences = {
   padVolume: number;
   loopVolume: number;
   loopClick: boolean;
+  /**
+   * A click over a stem song, toggled from the performance screen.
+   *
+   * Separate from loopClick because they are different decisions: a loop is a
+   * bare backing track that often wants a count, while a multitrack song
+   * usually has a drummer in it already. Everything else about the two clicks
+   * -- pan, which samples, how loud -- is shared, so setting it once sets it
+   * for both.
+   */
+  stemClick: boolean;
   loopClickPan: "left" | "center" | "right";
   padLayers: PadLayer[];
   natureNoise: MixSettings;
@@ -64,14 +86,25 @@ const DEFAULTS: Preferences = {
   // Ableton kit's accent/beat voices.
   accentSound: "ableton_accent",
   beatSound: "ableton_beat",
-  // Per-engine master levels (Settings -> Audio Output / Volume). Defaults are
-  // the slider positions the Figma draws (98/140, 119/140, 70/140).
-  metronomeVolume: 0.99,
+  // Per-engine master levels (Settings -> Audio Output / Volume).
+  //
+  // The metronome's runs to 2 where the others stop at 1, and 1 is its default:
+  // the click has to cut through a band rather than sit in a mix, and on a loud
+  // stage the accent sample at full scale still isn't always enough. 100% is
+  // the click as recorded; above that is deliberate overdrive, which is why it
+  // is the number the slider starts at rather than the top of the throw.
+  //
+  // The pad and loop defaults are the slider positions the Figma draws
+  // (119/140, 70/140).
+  metronomeVolume: 1,
   padVolume: 0.7,
   loopVolume: 0.8,
   // The loop click is opt-in: loops play with no click until the user turns it
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,
+  // Off for the same reason the loop's is: a song is not a rehearsal aid until
+  // someone says so, and a click nobody asked for is heard by the room.
+  stemClick: false,
   loopClickPan: "center",
   // First entry of PAD_PACKS, at full level. Not imported from
   // constants/pads.ts on purpose: preferences are plain persisted values, and

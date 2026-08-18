@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Animated } from "react-native";
 
 import { KEYS, usePadPlayback } from "./PadPlaybackContext";
 import { useLoopPlayback } from "./LoopPlaybackContext";
@@ -53,13 +52,12 @@ type TabState = {
 type SessionCueContextValue = {
   /** The cue currently live, so the list can mark it. */
   liveItemId: string | null;
-  /**
-   * How far through the current loop pass the live cue is, 0–1. Passed through
-   * from the loop engine so the setlist can show it without reaching into the
-   * Loop tab's context itself. Animated.Value, not a number -- see the note on
-   * LoopPlaybackContext.loopPhase.
-   */
-  loopPhase: Animated.Value;
+  // No loopPhase here any more. It used to be passed through so the setlist
+  // could draw a fill bar without reaching into the Loop tab's context, and
+  // that convenience is exactly what made it possible to hold the value without
+  // the lease that keeps it fed -- a bar that would simply never move. Anything
+  // drawing the phase asks LoopPlaybackContext for it directly, through
+  // useLoopPhase, which cannot be held wrong.
   play: (item: SessionItem) => void;
   /**
    * Sound a pad at a given key, under whatever else is playing.
@@ -106,7 +104,6 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     isPlaying: loopPlaying,
     selectedKey,
     bpm,
-    loopPhase,
   } = useLoopPlayback();
   const { togglePad, stopPad, activeKeyIndex, mode, setMode } = usePadPlayback();
   const session = useSessionPlayback();
@@ -272,7 +269,6 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     <SessionCueContext.Provider
       value={{
         liveItemId,
-        loopPhase,
         play,
         armPad,
         releasePad,

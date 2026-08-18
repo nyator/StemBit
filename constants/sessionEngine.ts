@@ -94,6 +94,22 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         var schedulerTimer = null;
         var positionTimer = null;
 
+        // --- Click ----------------------------------------------------------
+        // Decoded click samples by id, and the grid that fires them. Off until
+        // the app says otherwise: a song is not a rehearsal aid by default.
+        var clickBuffers = {};
+        var clickEnabled = false;
+        var clickPan = 0; // -1 left .. 0 centre .. +1 right
+        var clickAccentId = null;
+        var clickBeatId = null;
+        var clickAccentVol = 1.0;
+        var clickBeatVol = 0.8;
+        var clickTimer = null;
+        var clickNextTime = 0;
+        // Bar-relative, so the accent decision and the beat are one number.
+        var clickBeatIndex = 0;
+        var clickSources = [];
+
         // Same lookahead constants the metronome uses, and for the same reason.
         var LOOKAHEAD_MS = 25;
         var SCHEDULE_AHEAD = 0.1;
@@ -344,7 +360,161 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           }
 
           currentSectionId = section.sectionId;
+          // The click re-locks to the song, not to the transport. A section
+          // launch seeks every stem to a new offset, so the beat the music is
+          // on changes under the grid -- a click left counting from where the
+          // transport started would be right up until the first pad press and
+          // wrong after it.
+          startClickGrid(atTime);
           post({ type: "launched", sectionId: section.sectionId });
+        }
+
+        // --- Click ------------------------------------------------------------
+        // A metronome over the stems, on the same AudioContext as the audio it
+        // is counting, so it cannot drift from it. Same subsystem the loop
+        // engine carries, and the same shape: one bar-relative beat index feeds
+        // the accent decision, the grid is seeded from the music's own position
+        // rather than free-running, and it is re-seeded whenever that position
+        // is moved out from under it.
+        function loadClickSound(id, base64) {
+          if (!id || clickBuffers[id]) return;
+          var ctx = ensureContext();
+          ctx.decodeAudioData(
+            base64ToArrayBuffer(base64),
+            function (buf) {
+              clickBuffers[id] = buf;
+            },
+            function () {
+              post({ type: "error", message: "click decode failed: " + id });
+            }
+          );
+        }
+
+        // Hard left / centre / hard right. An unconnected merger input is
+        // digital silence, which a panner's curve only approaches -- see the
+        // long note on the same function in constants/loopEngine.ts.
+        function connectClickOutput(node, ctx) {
+          if (Math.abs(clickPan) >= 0.99 && ctx.createChannelMerger) {
+            var merger = ctx.createChannelMerger(2);
+            node.connect(merger, 0, clickPan < 0 ? 0 : 1);
+            merger.connect(ctx.destination);
+            return;
+          }
+          if (ctx.createStereoPanner) {
+            var panner = ctx.createStereoPanner();
+            panner.pan.value = clickPan;
+            node.connect(panner);
+            panner.connect(ctx.destination);
+            return;
+          }
+          node.connect(ctx.destination);
+        }
+
+        // Straight to the destination, not through master: the performance
+        // screen's MUTE pulls master down to drop the band, and the one thing
+        // you still want in your ears at that moment is the count.
+        function scheduleClick(beatIndex, time) {
+          var ctx = audioContext;
+          var isAccent = beatIndex === 0;
+          var buffer = clickBuffers[isAccent ? clickAccentId : clickBeatId];
+          if (!buffer) return;
+          var source = ctx.createBufferSource();
+          source.buffer = buffer;
+          var gain = ctx.createGain();
+          gain.gain.value = isAccent ? clickAccentVol : clickBeatVol;
+          source.connect(gain);
+          connectClickOutput(gain, ctx);
+          source.start(time);
+          clickSources.push(source);
+          source.onended = function () {
+            var idx = clickSources.indexOf(source);
+            if (idx !== -1) clickSources.splice(idx, 1);
+          };
+        }
+
+        /** Beats into the SONG at a moment -- what the click counts. */
+        function songBeatAt(atTime) {
+          var seconds = songSeconds(atTime);
+          if (seconds === null) return beatsElapsed(atTime);
+          return seconds / secondsPerBeat();
+        }
+
+        function seedClickGrid(atTime) {
+          var spb = secondsPerBeat();
+          if (spb <= 0) return;
+          var bpb = beatsPerBar > 0 ? beatsPerBar : 4;
+          var beatFloat = songBeatAt(atTime);
+          var nextBeat = Math.ceil(beatFloat - 1e-6);
+          clickBeatIndex = ((nextBeat % bpb) + bpb) % bpb;
+          clickNextTime = atTime + (nextBeat - beatFloat) * spb;
+        }
+
+        function clickScheduler() {
+          if (!transportRunning || !clickEnabled) return;
+          var spb = secondsPerBeat();
+          if (spb <= 0) return;
+          var bpb = beatsPerBar > 0 ? beatsPerBar : 4;
+          while (clickNextTime < audioContext.currentTime + SCHEDULE_AHEAD) {
+            scheduleClick(clickBeatIndex, clickNextTime);
+            clickBeatIndex = (clickBeatIndex + 1) % bpb;
+            clickNextTime += spb;
+          }
+          clickTimer = setTimeout(clickScheduler, LOOKAHEAD_MS);
+        }
+
+        function stopClickSources() {
+          for (var i = 0; i < clickSources.length; i++) {
+            try {
+              clickSources[i].stop();
+            } catch (e) {
+              // Already stopped, or scheduled in the future (cancels it).
+            }
+          }
+          clickSources = [];
+        }
+
+        function stopClickGrid() {
+          if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+          }
+          stopClickSources();
+        }
+
+        function startClickGrid(atTime) {
+          stopClickGrid();
+          if (!transportRunning || !clickEnabled) return;
+          seedClickGrid(
+            atTime == null ? audioContext.currentTime : atTime
+          );
+          clickScheduler();
+        }
+
+        function setClick(cfg) {
+          if (typeof cfg.pan === "number") {
+            clickPan = Math.max(-1, Math.min(1, cfg.pan));
+          }
+          if (typeof cfg.accentId === "string") clickAccentId = cfg.accentId;
+          if (typeof cfg.beatId === "string") clickBeatId = cfg.beatId;
+          // Up to 2: these arrive multiplied by the metronome's master, which is
+          // allowed past full scale so a click can be heard over a band. See
+          // METRONOME_MAX_VOLUME in context/PreferencesContext.tsx.
+          if (typeof cfg.accentVolume === "number") {
+            clickAccentVol = Math.max(0, Math.min(2, cfg.accentVolume));
+          }
+          if (typeof cfg.beatVolume === "number") {
+            clickBeatVol = Math.max(0, Math.min(2, cfg.beatVolume));
+          }
+
+          var wasEnabled = clickEnabled;
+          if (typeof cfg.enabled === "boolean") clickEnabled = cfg.enabled;
+          if (!transportRunning) return;
+          if (clickEnabled && !wasEnabled) {
+            // Joins in from wherever the song currently is, on the next beat.
+            startClickGrid(null);
+          } else if (!clickEnabled && wasEnabled) {
+            stopClickGrid();
+          }
         }
 
         function scheduler() {
@@ -423,6 +593,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             clearTimeout(schedulerTimer);
             schedulerTimer = null;
           }
+          stopClickGrid();
           stopPositionUpdates();
           // Bumped before the sources are stopped so a straight-played section
           // being cut short doesn't come back through onended and stop a
@@ -621,10 +792,19 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
                 tempo = data.bpm || tempo;
                 if (data.beatsPerBar) beatsPerBar = data.beatsPerBar;
                 startedAt = audioContext.currentTime - beatNow * secondsPerBeat();
+                // The click's spacing comes from the tempo, so its grid has to
+                // be rebuilt at the new one rather than carrying on at the old.
+                startClickGrid(null);
               } else {
                 tempo = data.bpm || tempo;
                 if (data.beatsPerBar) beatsPerBar = data.beatsPerBar;
               }
+              break;
+            case "loadClick":
+              loadClickSound(data.id, data.base64);
+              break;
+            case "setClick":
+              setClick(data);
               break;
             case "startTransport":
               startTransport();

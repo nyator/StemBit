@@ -37,7 +37,7 @@ export const TRACK_COLORS = [
 export const trackColor = (index: number) =>
   TRACK_COLORS[index % TRACK_COLORS.length];
 
-export const TILE_HEIGHT = 108;
+export const TILE_HEIGHT = 98;
 
 type TrackTileProps = {
   name: string;
@@ -87,14 +87,14 @@ export default function TrackTile({
       }}
     >
       <TouchableOpacity
-        onPress={onToggleMute}
+        onPress={onToggleSolo}
         activeOpacity={0.85}
         accessibilityLabel={`${isSilent ? "Unmute" : "Mute"} ${name}`}
         className="justify-between flex-1 px-3 pt-3 pb-2"
       >
         <Text
-          className="text-[15px] text-white font-satoshiBold"
-          numberOfLines={2}
+          className="text-[12px] text-white font-satoshiBold"
+          numberOfLines={1}
         >
           {name}
         </Text>
@@ -112,7 +112,7 @@ export default function TrackTile({
               floating in the middle of a card. */}
           <View
             className="overflow-hidden rounded-full"
-            style={{ height: 4, backgroundColor: COLORS.track }}
+            style={{ height: 6, backgroundColor: COLORS.track }}
           >
             <Animated.View
               style={{ width, height: "100%", backgroundColor: accent }}
@@ -124,21 +124,24 @@ export default function TrackTile({
       {/* Solo along the bottom edge rather than as a second tile: it is the
           rarer action, and the tile's main body should stay the mute, which is
           the one hit in a hurry. */}
-      <TouchableOpacity
-        onPress={onToggleSolo}
-        accessibilityLabel={`${isSolo ? "Clear solo" : "Solo"} ${name}`}
-        className="items-center py-[5px]"
-        style={{
-          backgroundColor: isSolo ? COLORS.warning : "rgba(255,255,255,0.07)",
-        }}
-      >
-        <Text
-          className="text-[10px] font-spaceBold tracking-widest"
-          style={{ color: isSolo ? COLORS.black : COLORS.textMuted }}
+
+      {!isSolo &&
+        <TouchableOpacity
+          onPress={onToggleMute}
+          accessibilityLabel={`${isSolo ? "Clear solo" : "Solo"} ${name}`}
+          className="items-center py-[8px]"
+          style={{
+            backgroundColor: isSolo ? COLORS.warning : "rgba(255,255,255,0.07)",
+          }}
         >
-          SOLO
-        </Text>
-      </TouchableOpacity>
+          <Text
+            className="text-[10px] font-spaceBold tracking-widest"
+            style={{ color: isSolo ? COLORS.black : COLORS.textMuted }}
+          >
+            MUTE
+          </Text>
+        </TouchableOpacity>
+      }
     </View>
   );
 }

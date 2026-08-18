@@ -89,10 +89,19 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         var clickBeatId = null;
         var clickAccentVol = 1.0;
         var clickBeatVol = 0.8;
-        var clickTimer = null;
-        var clickNextTime = 0;
-        var clickBeatIndex = 0;
         var clickSources = [];
+        // The beat grid, shared by the click and the dots. It runs whenever the
+        // loop plays, whether or not the click is switched on.
+        //
+        // gridBeatIndex is BAR-relative -- 0 .. beatsPerBar-1 -- because it is
+        // the one number both the click and the screen are given. The metronome
+        // engine keeps its beat the same way and for the same reason.
+        var beatTimer = null;
+        var gridNextTime = 0;
+        var gridBeatIndex = 0;
+        // One pending "a beat is landing now" timeout per scheduled beat, so
+        // they can be cancelled when the loop stops.
+        var beatTimers = [];
 
         // Catalog caches. Loops are preloaded (and decoded) up front so
         // selecting one is just a pointer swap — no decode wait at play
@@ -1082,6 +1091,11 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // timer rather than computed by the app: the position comes off the audio
         // hardware clock, which is the only clock that knows what is actually
         // being heard.
+        //
+        // Deliberately NOT where the beat comes from. This is a 60ms sampler --
+        // it says where the loop is when it happens to look, which is up to a
+        // frame late and by a different amount each time. Beats are announced by
+        // the grid that schedules them (see emitBeat), at the moment they sound.
         function startPositionUpdates() {
           stopPositionUpdates();
           if (!positionUpdates) return;
@@ -1121,32 +1135,66 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
         }
 
-        // --- Loop click (metronome layered over the loop) -----------------
-        // The click shares this engine's AudioContext, so it's on the exact
-        // same hardware clock as the loop and cannot drift from it. Rather
-        // than free-running, its grid is derived from the loop's own phase
-        // (seedClickGrid), so it re-locks precisely on every rate change.
+        // --- The beat grid (and the click layered on it) ------------------
+        // One cursor walks the loop's beats: it schedules the click when the
+        // click is on, and announces every beat to the app either way. Both
+        // come off this engine's AudioContext, so they are on the exact same
+        // hardware clock as the loop and cannot drift from it. Rather than
+        // free-running, the grid is derived from the loop's own phase
+        // on every tick, so it re-locks continuously and cannot walk away.
         // The accent falls on each bar's downbeat (every beatsPerBar beats),
         // so a long multi-bar loop accents every bar, not just its first beat.
+        //
+        // The announcement exists because the screen's dots used to keep their
+        // own time. Every version of that drifts -- a JS interval at the tempo
+        // obviously, but so does sampling the playhead every 60ms, because it
+        // reports where the loop is when it happens to look rather than when a
+        // beat lands. The only number that can't drift from the click is the
+        // one the click is scheduled from.
 
-        // Real seconds between clicks at the current warp (= 60 / userBpm).
-        function clickBeatSeconds() {
+        // Real seconds between beats at the current warp (= 60 / userBpm).
+        function beatSeconds() {
           if (!active || !active.nativeBpm) return 0;
           return 60 / (active.nativeBpm * currentRate);
         }
 
-        // Aim the click cursor at the loop's next beat boundary as of atTime,
-        // so clicks line up with wherever the loop currently is.
-        function seedClickGrid(atTime) {
+        // Put the grid on the loop's next beat boundary as of atTime, with the
+        // bar counted from the loop's own start. Called on play and on every
+        // rate change, so the click and the dots line up with the music rather
+        // than with whenever the grid happened to be started.
+        function seedBeatGrid(atTime) {
           if (!playing || !active || active.loopBeats < 1) return;
-          var beatSec = clickBeatSeconds();
+          var beatSec = beatSeconds();
           if (beatSec <= 0) return;
-          var phase = phaseAt(playing, atTime); // 0..1 through the loop
-          var beatFloat = phase * active.loopBeats; // beats elapsed into loop
+          var beatFloat = phaseAt(playing, atTime) * active.loopBeats;
           var nextBeat = Math.ceil(beatFloat - 1e-6);
-          clickBeatIndex = ((nextBeat % active.loopBeats) + active.loopBeats) %
-            active.loopBeats;
-          clickNextTime = atTime + (nextBeat - beatFloat) * beatSec;
+          var bpb = barBeats();
+          gridBeatIndex = ((nextBeat % bpb) + bpb) % bpb;
+          gridNextTime = atTime + (nextBeat - beatFloat) * beatSec;
+        }
+
+        // Tell the app a beat is landing, at the moment it lands.
+        //
+        // A timeout per beat, measured from the audio clock at the instant the
+        // beat was scheduled -- exactly what the metronome engine does for its
+        // own beat indicator. The timeout can fire late, as JS timers always
+        // can, but the next one is measured from the audio clock again, so
+        // lateness is a few milliseconds of visual latency and never builds up.
+        //
+        // beatIndex arrives bar-relative and is passed through untouched. No
+        // arithmetic here, because this is the number the click was scheduled
+        // with, and doing anything to it is how the two came apart.
+        function emitBeat(beatIndex, time) {
+          if (!audioContext) return;
+          var timer = setTimeout(
+            function () {
+              var idx = beatTimers.indexOf(timer);
+              if (idx !== -1) beatTimers.splice(idx, 1);
+              post({ type: "beat", beat: beatIndex, accent: beatIndex === 0 });
+            },
+            Math.max(0, (time - audioContext.currentTime) * 1000)
+          );
+          beatTimers.push(timer);
         }
 
         // Route a click's gain node to the destination at the current pan.
@@ -1194,10 +1242,12 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
 
         function scheduleClick(beatIndex, time) {
           var ctx = audioContext;
-          // Accent on every bar downbeat, so a multi-bar loop keeps a click
-          // per bar rather than one accent stretched across the whole loop.
-          var bpb = active && active.beatsPerBar > 0 ? active.beatsPerBar : 1;
-          var isAccent = beatIndex % bpb === 0;
+          // beatIndex is already bar-relative, so the downbeat is beat 0 -- the
+          // accent on a multi-bar loop lands once per bar rather than once per
+          // loop. Read straight, with no arithmetic of its own: the screen is
+          // handed this same number, and any sum done here and not there is a
+          // way for the accent and the lit dot to disagree.
+          var isAccent = beatIndex === 0;
           var buffer = clickBuffers[isAccent ? clickAccentId : clickBeatId];
           if (!buffer) return;
           var source = ctx.createBufferSource();
@@ -1214,25 +1264,54 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           };
         }
 
-        function clickScheduler() {
-          if (!clickEnabled || !playing || !active || active.loopBeats < 1) {
-            return;
-          }
-          var beatSec = clickBeatSeconds();
-          if (beatSec <= 0) return;
-          while (clickNextTime < audioContext.currentTime + CLICK_SCHEDULE_AHEAD) {
-            scheduleClick(clickBeatIndex, clickNextTime);
-            clickBeatIndex = (clickBeatIndex + 1) % active.loopBeats;
-            clickNextTime += beatSec;
-          }
-          clickTimer = setTimeout(clickScheduler, CLICK_LOOKAHEAD_MS);
+        // How many beats are in a bar -- the number the dots are counting, and
+        // the number the accent falls on the first of.
+        function barBeats() {
+          if (!active) return 4;
+          if (active.beatsPerBar > 0) return active.beatsPerBar;
+          return active.loopBeats > 0 ? active.loopBeats : 4;
         }
 
-        function stopClick() {
-          if (clickTimer) {
-            clearTimeout(clickTimer);
-            clickTimer = null;
+        function advanceGrid(beatSec) {
+          gridNextTime += beatSec;
+          gridBeatIndex = (gridBeatIndex + 1) % barBeats();
+        }
+
+        // Runs whenever the loop does, not only when the click is audible: the
+        // dots move with or without a click, and they have to move on the same
+        // grid either way. Whether a beat is also heard is one line of it.
+        //
+        // Modelled on the metronome's scheduler (constants/metronomeEngine.ts),
+        // deliberately, and the two properties that matter are the ones this
+        // kept getting wrong:
+        //
+        //   1. ONE number describes the beat, and both the sound and the screen
+        //      are handed it. gridBeatIndex is already bar-relative, so the
+        //      click's accent and the lit dot cannot disagree about which beat
+        //      this is -- that is what made the accent land on a different
+        //      circle, and it is now unrepresentable rather than merely fixed.
+        //
+        //   2. The counter only ever advances, once per beat scheduled. An
+        //      earlier version re-derived it from the loop's phase on every
+        //      tick to stop the cursor accumulating error, and bought a worse
+        //      bug: the same beat re-derived a fraction of a millisecond later
+        //      slipped past the "already scheduled" guard and went out twice,
+        //      with a freshly computed index attached.
+        function beatScheduler() {
+          if (!playing || !active) return;
+          var beatSec = beatSeconds();
+          if (beatSec <= 0) return;
+          while (gridNextTime < audioContext.currentTime + CLICK_SCHEDULE_AHEAD) {
+            emitBeat(gridBeatIndex, gridNextTime);
+            if (clickEnabled) scheduleClick(gridBeatIndex, gridNextTime);
+            advanceGrid(beatSec);
           }
+          beatTimer = setTimeout(beatScheduler, CLICK_LOOKAHEAD_MS);
+        }
+
+        // Silence pending clicks without touching the grid -- for turning the
+        // click off mid-loop, where the beats must carry on being announced.
+        function stopClickSources() {
           for (var i = 0; i < clickSources.length; i++) {
             try {
               clickSources[i].stop();
@@ -1243,13 +1322,25 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           clickSources = [];
         }
 
-        // (Re)start the click from the loop's position at atTime. Cancels any
-        // pending clicks first so a rate change can't double up the grid.
-        function startClick(atTime) {
-          stopClick();
-          if (!clickEnabled || !playing || !active) return;
-          seedClickGrid(atTime == null ? audioContext.currentTime : atTime);
-          clickScheduler();
+        function stopBeatGrid() {
+          if (beatTimer) {
+            clearTimeout(beatTimer);
+            beatTimer = null;
+          }
+          // Beats already queued for a moment that is no longer coming: without
+          // this, stopping leaves a dot lighting up on a silent loop.
+          for (var t = 0; t < beatTimers.length; t++) clearTimeout(beatTimers[t]);
+          beatTimers = [];
+          stopClickSources();
+        }
+
+        // (Re)start the grid from the loop's position at atTime. Cancels
+        // anything pending first so a rate change can't double it up.
+        function startBeatGrid(atTime) {
+          stopBeatGrid();
+          if (!playing || !active) return;
+          seedBeatGrid(atTime == null ? audioContext.currentTime : atTime);
+          beatScheduler();
         }
 
         // Swap sources at the same musical position with a short crossfade.
@@ -1271,8 +1362,10 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var next = startSource(phase, SWAP_FADE_SECONDS, swapTime);
           if (!next) return;
           stopSource(old, SWAP_FADE_SECONDS, swapTime);
-          // Re-lock the click to the loop at its new warp.
-          startClick(swapTime);
+          // Re-lock the grid to the loop at its new warp, so the click and the
+          // dots both follow the tempo change instead of carrying on at the old
+          // spacing.
+          startBeatGrid(swapTime);
         }
 
         function play(rate) {
@@ -1287,9 +1380,9 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (playing) stopSource(playing, 0);
           playing = null;
           startSource(0, 0);
-          // The loop's downbeat is playing.startedAt (phase 0); start the
-          // click there so beat 0 lands exactly on it.
-          startClick(playing ? playing.startedAt : null);
+          // The loop's downbeat is playing.startedAt (phase 0); start the grid
+          // there so beat 0 lands exactly on it.
+          startBeatGrid(playing ? playing.startedAt : null);
           startPositionUpdates();
         }
 
@@ -1299,8 +1392,11 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             rateTimer = null;
           }
           stopKeepAlive();
-          stopClick();
+          stopBeatGrid();
           stopPositionUpdates();
+          // The dots go dark with the sound rather than sticking on whichever
+          // beat the loop happened to stop on.
+          post({ type: "beat", beat: null, accent: false });
           if (playing) {
             stopSource(playing, 0.008); // tiny fade: no click on stop
             playing = null;
@@ -1347,19 +1443,28 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           if (typeof cfg.accentId === "string") clickAccentId = cfg.accentId;
           if (typeof cfg.beatId === "string") clickBeatId = cfg.beatId;
+          // Up to 2, not 1. These arrive already multiplied by the metronome's
+          // master (see postClickConfig), which is allowed past full scale so
+          // the click can be heard over a band -- clamping to 1 here would quietly
+          // put the ceiling back. Keep in step with METRONOME_MAX_VOLUME in
+          // context/PreferencesContext.tsx.
           if (typeof cfg.accentVolume === "number") {
-            clickAccentVol = Math.max(0, Math.min(1, cfg.accentVolume));
+            clickAccentVol = Math.max(0, Math.min(2, cfg.accentVolume));
           }
           if (typeof cfg.beatVolume === "number") {
-            clickBeatVol = Math.max(0, Math.min(1, cfg.beatVolume));
+            clickBeatVol = Math.max(0, Math.min(2, cfg.beatVolume));
           }
           var wasEnabled = clickEnabled;
           if (typeof cfg.enabled === "boolean") clickEnabled = cfg.enabled;
           if (playing) {
             if (clickEnabled && !wasEnabled) {
-              startClick(null); // join in from the loop's current position
+              // Re-seed rather than wait: the grid is already running, but the
+              // beats it has queued ahead have no click attached to them, so
+              // without this the click joins a lookahead late.
+              startBeatGrid(null);
             } else if (!clickEnabled && wasEnabled) {
-              stopClick();
+              // Only the sound. The grid keeps running, because the dots do.
+              stopClickSources();
             }
           }
         }
