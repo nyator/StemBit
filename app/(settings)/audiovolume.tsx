@@ -11,6 +11,9 @@ import {
 } from "../../components/ui/settingRow";
 import type { Preferences } from "../../context/PreferencesContext";
 import {
+    DEFAULT_LOOP_VOLUME,
+    DEFAULT_METRONOME_VOLUME,
+    DEFAULT_PAD_VOLUME,
     METRONOME_MAX_VOLUME,
     usePreferences,
 } from "../../context/PreferencesContext";
@@ -67,6 +70,7 @@ const AudioVolume = () => {
                         value={volumes.loop}
                         onValueChange={setVolume("loop")}
                         onComplete={(v) => setPref("loopVolume", v)}
+                        defaultValue={DEFAULT_LOOP_VOLUME}
                         border={true}
                     />
                     <SettingSlider
@@ -75,6 +79,7 @@ const AudioVolume = () => {
                         value={volumes.pad}
                         onValueChange={setVolume("pad")}
                         onComplete={(v) => setPref("padVolume", v)}
+                        defaultValue={DEFAULT_PAD_VOLUME}
                         border={true}
                     />
                     
@@ -85,6 +90,7 @@ const AudioVolume = () => {
                         value={volumes.metronome}
                         onValueChange={setVolume("metronome")}
                         onComplete={(v) => setPref("metronomeVolume", v)}
+                        defaultValue={DEFAULT_METRONOME_VOLUME}
                         max={METRONOME_MAX_VOLUME}
                     />
                 </SettingSection>

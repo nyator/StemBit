@@ -54,6 +54,8 @@ type SliderRowProps = BaseProps & {
   onValueChange: (value: number) => void;
   /** Fires once when the drag ends -- persist here, not on every tick. */
   onComplete?: (value: number) => void;
+  /** Where a double tap puts the slider. Omitted, a double tap does nothing. */
+  defaultValue?: number;
   /** Top of the throw; 1 (full scale) unless a control can be pushed past it. */
   max?: number;
 };
@@ -181,6 +183,7 @@ export function SettingSlider({
   value,
   onValueChange,
   onComplete,
+  defaultValue,
   max = 1,
   ...base
 }: SliderRowProps) {
@@ -193,6 +196,7 @@ export function SettingSlider({
             value={value}
             onChange={onValueChange}
             onComplete={onComplete}
+            defaultValue={defaultValue}
             max={max}
             accessibilityLabel={base.label}
           />

@@ -77,11 +77,23 @@ export type PadLayer = MixSettings & {
   pack: string;
 };
 
+// Where a control returns to when it's double-tapped, and what it starts at.
+// Named rather than written twice because the mixer has to know the same
+// numbers DEFAULTS does, and a reset that put a fader somewhere it never
+// started would be a worse lie than no reset at all.
+export const DEFAULT_PAD_LEVEL = 1;
+export const DEFAULT_NATURE_LEVEL = 0.4;
+export const DEFAULT_METRONOME_VOLUME = 1.5;
+export const DEFAULT_PAD_VOLUME = 0.8;
+export const DEFAULT_LOOP_VOLUME = 1;
+export const DEFAULT_ACCENT_VOLUME = 1;
+export const DEFAULT_BEAT_VOLUME = 0.8;
+
 const DEFAULTS: Preferences = {
   haptics: true,
   meterAccents: true,
-  accentVolume: 1,
-  beatVolume: 0.8,
+  accentVolume: DEFAULT_ACCENT_VOLUME,
+  beatVolume: DEFAULT_BEAT_VOLUME,
   // Ids from METRONOME_SOUNDS (context/MetronomeContext.tsx). Default to the
   // Ableton kit's accent/beat voices.
   accentSound: "ableton_accent",
@@ -96,9 +108,9 @@ const DEFAULTS: Preferences = {
   //
   // The pad and loop defaults are the slider positions the Figma draws
   // (119/140, 70/140).
-  metronomeVolume: 1,
-  padVolume: 0.7,
-  loopVolume: 0.8,
+  metronomeVolume: DEFAULT_METRONOME_VOLUME,
+  padVolume: DEFAULT_PAD_VOLUME,
+  loopVolume: DEFAULT_LOOP_VOLUME,
   // The loop click is opt-in: loops play with no click until the user turns it
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,
@@ -110,10 +122,10 @@ const DEFAULTS: Preferences = {
   // constants/pads.ts on purpose: preferences are plain persisted values, and
   // pulling the catalog in here would make this module depend on the audio
   // assets it indexes.
-  padLayers: [{ pack: "drone-pad", level: 1, muted: false }],
+  padLayers: [{ pack: "drone-pad", level: DEFAULT_PAD_LEVEL, muted: false }],
   // Present in the mixer from the start but muted: ambience under every key
   // press is a deliberate choice, not something to discover already running.
-  natureNoise: { level: 0.6, muted: true },
+  natureNoise: { level: DEFAULT_NATURE_LEVEL, muted: true },
   seenOnboarding: false,
   // Distinct from seenOnboarding, which gates the pre-login carousel. This one
   // covers the tour over the tab bar, which can only run once the user is

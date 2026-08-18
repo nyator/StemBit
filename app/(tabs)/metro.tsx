@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { View, Text, StatusBar, TouchableOpacity, TextInput } from "react-native";
-import NativeSlider from "@react-native-community/slider";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
@@ -18,7 +17,11 @@ import {
   MAX_BPM,
 } from "../../context/MetronomeContext";
 import { useBpmControl } from "../../hooks/useBpmControl";
-import { usePreferences } from "../../context/PreferencesContext";
+import {
+  DEFAULT_ACCENT_VOLUME,
+  DEFAULT_BEAT_VOLUME,
+  usePreferences,
+} from "../../context/PreferencesContext";
 import { hapticImpact } from "../../utils/haptics";
 
 import HeaderComponent from "../../components/headerComponent";
@@ -30,7 +33,8 @@ import AmbientGlow from "../../components/ui/ambientGlow";
 import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { DialGlowRings } from "../../components/ui/dialGlowRing";
 import BeatGlow, { BEAT_GLOW_SIZE } from "../../components/ui/beatGlow";
-import { COLORS, CONTROL, SHADOWS, SIZES } from "../../constants/theme";
+import Slider from "../../components/ui/slider";
+import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
 import {
   AddCircle,
   MinusCircle,
@@ -138,16 +142,14 @@ export default function MetroScreen() {
       <View className="items-center justify-center px-2 py-1 rounded-[8px] bg-[rgba(25,25,25,0.5)]">
         <Text className="text-white text-overline font-spaceBold">{badge}</Text>
       </View>
-      <NativeSlider
-        style={{ flex: 1, height: 32 }}
+      <Slider
+        width="fill"
         value={value}
-        onValueChange={onSlide}
-        onSlidingComplete={onCommit}
-        minimumValue={0}
-        maximumValue={1}
-        minimumTrackTintColor={CONTROL.active}
-        maximumTrackTintColor={CONTROL.track}
-        thumbTintColor={COLORS.white}
+        onChange={onSlide}
+        onComplete={onCommit}
+        defaultValue={
+          voice === "accent" ? DEFAULT_ACCENT_VOLUME : DEFAULT_BEAT_VOLUME
+        }
         accessibilityLabel={`${badge} volume`}
       />
       <TouchableOpacity

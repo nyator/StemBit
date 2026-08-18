@@ -1557,6 +1557,7 @@ export default function PerformanceScreen() {
                 onPanCommit={saveMix}
                 onToggleMute={() => toggleMute(track.id)}
                 onToggleSolo={() => toggleSolo(track.id)}
+                defaultMix={DEFAULT_MIX}
               />
             ))}
           </ScrollView>

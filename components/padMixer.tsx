@@ -3,6 +3,10 @@ import { View, Text, TouchableOpacity } from "react-native";
 
 import { MAX_PAD_LAYERS, NATURE_CHANNEL } from "../constants/pads";
 import { COLORS } from "../constants/theme";
+import {
+  DEFAULT_NATURE_LEVEL,
+  DEFAULT_PAD_LEVEL,
+} from "../context/PreferencesContext";
 import { usePadLayers, type MixerChannel } from "../hooks/usePadLayers";
 import { MinusCircle } from "./icons";
 import VerticalFader from "./ui/verticalFader";
@@ -68,6 +72,7 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
             setDraftLevel(null);
             setLevel(channel.id, level);
           }}
+          defaultValue={isNature ? DEFAULT_NATURE_LEVEL : DEFAULT_PAD_LEVEL}
           accessibilityLabel={`${channel.title} level`}
         />
       </View>

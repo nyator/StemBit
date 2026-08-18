@@ -2,7 +2,8 @@ import { useMemo, useRef } from "react";
 import { Animated, PanResponder, Text, TouchableOpacity, View } from "react-native";
 
 import { COLORS } from "../../constants/theme";
-import VerticalFader from "./verticalFader";
+import { useDoubleTap } from "../../hooks/useDoubleTap";
+import VerticalFader, { ADJUST_ACTIONS } from "./verticalFader";
 import type { TrackMix } from "../../context/SessionPlaybackContext";
 
 // One stem's channel strip: meter, fader, pan, mute, solo.
@@ -25,6 +26,8 @@ const PAN_HEIGHT = 22;
 // Anything inside this of centre snaps to it, so a pan can be put back to the
 // middle with a finger instead of a steady hand.
 const PAN_DETENT = 0.06;
+// How far one screen-reader nudge moves the pan, of a throw that runs -1 to 1.
+const PAN_NUDGE = 0.1;
 
 type MixerStripProps = {
   name: string;
@@ -41,6 +44,12 @@ type MixerStripProps = {
   onPanCommit: (pan: number) => void;
   onToggleMute: () => void;
   onToggleSolo: () => void;
+  /**
+   * Where a double tap puts the fader and the pan bar -- unity and centre, the
+   * two positions a strip gets put back to often enough that hunting for them
+   * with a fingertip is the wrong way to spend a soundcheck.
+   */
+  defaultMix?: Pick<TrackMix, "level" | "pan">;
 };
 
 export default function MixerStrip({
@@ -55,11 +64,18 @@ export default function MixerStrip({
   onPanCommit,
   onToggleMute,
   onToggleSolo,
+  defaultMix,
 }: MixerStripProps) {
   const panRef = useRef({ onPan, onPanCommit });
   panRef.current = { onPan, onPanCommit };
   const latestPanRef = useRef(mix.pan);
   latestPanRef.current = mix.pan;
+  const defaultRef = useRef(defaultMix);
+  defaultRef.current = defaultMix;
+  // Latched for the rest of the gesture once a double tap has centred the pan,
+  // so the finger that did it can't slide it straight back off centre.
+  const panResetRef = useRef(false);
+  const registerPanTap = useDoubleTap();
 
   const panResponder = useMemo(
     () =>
@@ -67,8 +83,22 @@ export default function MixerStrip({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (event) => handlePan(event.nativeEvent.locationX),
-        onPanResponderMove: (event) => handlePan(event.nativeEvent.locationX),
+        onPanResponderGrant: (event) => {
+          const { locationX, locationY } = event.nativeEvent;
+          const home = defaultRef.current;
+          if (registerPanTap({ x: locationX, y: locationY }) && home != null) {
+            panResetRef.current = true;
+            latestPanRef.current = home.pan;
+            panRef.current.onPan(home.pan);
+            return;
+          }
+          panResetRef.current = false;
+          handlePan(locationX);
+        },
+        onPanResponderMove: (event) => {
+          if (panResetRef.current) return;
+          handlePan(event.nativeEvent.locationX);
+        },
         onPanResponderRelease: () =>
           panRef.current.onPanCommit(latestPanRef.current),
         onPanResponderTerminate: () =>
@@ -82,6 +112,17 @@ export default function MixerStrip({
     const next = Math.abs(raw) < PAN_DETENT ? 0 : raw;
     latestPanRef.current = next;
     panRef.current.onPan(next);
+  };
+
+  // Like the fader's, a nudge has no release to wait for, so it commits as it
+  // goes. It keeps the centre detent, so stepping across the middle lands on it
+  // rather than stepping over it.
+  const nudgePan = (delta: number) => {
+    const raw = Math.max(-1, Math.min(1, latestPanRef.current + delta));
+    const next = Math.abs(raw) < PAN_DETENT ? 0 : raw;
+    latestPanRef.current = next;
+    panRef.current.onPan(next);
+    panRef.current.onPanCommit(next);
   };
 
   // Meters are read in RMS, which is a small number for anything but a
@@ -148,6 +189,7 @@ export default function MixerStrip({
           value={mix.level}
           onChange={onLevel}
           onComplete={onLevelCommit}
+          defaultValue={defaultMix?.level}
           accessibilityLabel={`${name} level`}
         />
       </View>
@@ -164,6 +206,11 @@ export default function MixerStrip({
         accessibilityRole="adjustable"
         accessibilityLabel={`${name} pan`}
         accessibilityValue={{ min: -100, max: 100, now: Math.round(mix.pan * 100) }}
+        accessibilityActions={ADJUST_ACTIONS}
+        onAccessibilityAction={({ nativeEvent }) => {
+          if (nativeEvent.actionName === "increment") nudgePan(PAN_NUDGE);
+          if (nativeEvent.actionName === "decrement") nudgePan(-PAN_NUDGE);
+        }}
         style={{
           width: PAN_WIDTH,
           height: PAN_HEIGHT,
