@@ -1,6 +1,6 @@
-import { View, Text, StatusBar, ScrollView, TouchableOpacity, Linking } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, ScrollView, TouchableOpacity, Linking } from "react-native";
 
+import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
 import { COLORS, SUPPORT_EMAIL } from "../../constants/theme";
 
@@ -28,13 +28,12 @@ const GUIDES: {
 
 const privacypolicy = () => {
     return (
-        <SafeAreaView className="flex-1 bg-canvas">
-            <StatusBar barStyle="light-content" />
+        <Screen glows={["topLeft"]}>
             <ScreenHeader title="Privacy Policy" />
 
-            <ScrollView className="flex-1 px-5">
+            <ScrollView className="flex-1 px-screen">
                 <View className="mb-10">
-                    <Text className="self-stretch justify-start text-ink-muted text-center text-md font-light leading-10">
+                    <Text className="self-stretch justify-start text-ink-muted text-center text-label font-light leading-10">
                         At Stembits, protecting your operational data and profile details is our topmost priority.
                         This policy outlines how we capture and store telemetry.
                     </Text>
@@ -45,19 +44,19 @@ const privacypolicy = () => {
                         className=""    
                     >
                         <View className="flex-row items-center mb-2">
-                            <Text className="text-md uppercase text-ink-muted font-spaceBold">
+                            <Text className="text-label uppercase text-ink-muted font-spaceBold">
                                 {guide.title}
                             </Text>
                         </View>
                         <View className=" p-4 mb-5 rounded-2xl bg-surface">
-                            <Text className="text-md leading-5 text-white font-satoshiRegular">
+                            <Text className="text-label leading-5 text-white font-satoshiRegular">
                                 {guide.body}
                             </Text>
                         </View>
                     </View>
                 ))}
             </ScrollView>
-        </SafeAreaView>
+        </Screen>
     );
 };
 

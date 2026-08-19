@@ -98,7 +98,7 @@ export default function CueElements({
               Every warp is measured from it -- a loop recorded at 80 and played
               at 140 is a different thing to hear than one recorded at 132 --
               so it belongs next to the tempo control, not two taps away. */}
-          <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+          <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
             Recorded at {loop.bpm} BPM.
           </Text>
 
@@ -135,10 +135,10 @@ export default function CueElements({
           className="flex-row items-center justify-between px-4 py-3 mt-3 border rounded-lg"
           style={{ borderColor: COLORS.border }}
         >
-          <Text className="text-[11px] text-ink-muted font-spaceBold tracking-widest">
+          <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
             KEY
           </Text>
-          <Text className="text-white font-satoshiBold text-[15px]">
+          <Text className="text-white font-satoshiBold text-body">
             {padKey
               ? `${padKey} ${padMode === "minor" ? "min" : "maj"}`
               : "Not set"}
@@ -147,7 +147,7 @@ export default function CueElements({
       )}
 
       {!loopKey && !padPack && (
-        <Text className="mt-6 text-center text-[13px] text-ink-muted font-satoshiRegular">
+        <Text className="mt-6 text-center text-label text-ink-muted font-satoshiRegular">
           This cue has nothing in it yet. Pick a loop, a pad, or both — it will
           fire from here and from its row in the setlist.
         </Text>
@@ -206,7 +206,7 @@ function SelectRow({
     >
       <View className="flex-1">
         <Text
-          className="text-[15px] font-satoshiBold"
+          className="text-body font-satoshiBold"
           numberOfLines={1}
           style={{ color: value ? COLORS.white : COLORS.textMuted }}
         >
@@ -214,7 +214,7 @@ function SelectRow({
         </Text>
         {detail && (
           <Text
-            className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular"
+            className="mt-0.5 text-micro text-ink-muted font-satoshiRegular"
             numberOfLines={1}
           >
             {detail}
@@ -269,12 +269,12 @@ export function TempoStepper({
 
         <View className="items-center flex-1">
           <Text
-            className="text-3xl text-white font-spaceBold"
+            className="text-heading text-white font-spaceBold"
             style={{ fontVariant: ["tabular-nums"] }}
           >
             {bpm ?? "--"}
           </Text>
-          <Text className="text-[9px] text-ink-muted font-spaceBold tracking-widest">
+          <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
             BPM
           </Text>
         </View>
@@ -290,20 +290,20 @@ export function TempoStepper({
             accessibilityLabel="Back to the loop's own tempo"
             hitSlop={10}
           >
-            <Text className="text-[11px] text-brand font-spaceBold tracking-widest">
+            <Text className="text-micro text-brand font-spaceBold tracking-widest">
               RESET TO {nativeBpm}
             </Text>
           </TouchableOpacity>
         )}
         {isLive && (
-          <Text className="ml-auto text-[11px] text-ink-muted font-satoshiRegular">
+          <Text className="ml-auto text-micro text-ink-muted font-satoshiRegular">
             Changes land as you make them.
           </Text>
         )}
       </View>
 
       {bpm === undefined && hint && (
-        <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+        <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
           {hint}
         </Text>
       )}
@@ -321,7 +321,7 @@ function Step({ label, onPress }: { label: string; onPress: () => void }) {
       className="items-center justify-center border rounded-lg"
       style={{ width: 52, height: 52, borderColor: COLORS.border }}
     >
-      <Text className="text-base text-white font-spaceBold">{label}</Text>
+      <Text className="text-body text-white font-spaceBold">{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -408,7 +408,7 @@ function Element({
     >
       <View className="flex-row items-center">
         <Text
-          className="text-[9px] font-spaceBold tracking-widest"
+          className="text-micro font-spaceBold tracking-widest"
           style={{ color: isLive ? COLORS.brand : COLORS.textMuted }}
         >
           {label}
@@ -422,13 +422,13 @@ function Element({
       </View>
 
       <Text
-        className="mt-1 text-lg text-white font-satoshiBold"
+        className="mt-1 text-title text-white font-satoshiBold"
         numberOfLines={1}
       >
         {title}
       </Text>
       {detail && (
-        <Text className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular">
+        <Text className="mt-0.5 text-micro text-ink-muted font-satoshiRegular">
           {detail}
         </Text>
       )}

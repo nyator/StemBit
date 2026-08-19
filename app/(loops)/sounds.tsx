@@ -1,16 +1,12 @@
 import React, { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StatusBar,
-  ScrollView,
-} from "react-native";
+import { View, TouchableOpacity, ScrollView } from "react-native";
 
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 import ScreenHeader from "../../components/ui/screenHeader";
+import Screen from "../../components/ui/screen";
+import Chip from "../../components/ui/chip";
+import SegmentedControl from "../../components/ui/segmentedControl";
 import SelectLoopView from "../../components/selectLoopView";
 import {
   LOOP_CATEGORIES,
@@ -21,16 +17,14 @@ import {
   type LoopCategory,
 } from "../../constants/loops";
 import { useUserLoops } from "../../context/UserLoopsContext";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import { Add } from "../../components/icons";
-import { COLORS } from "../../constants/theme";
+import { COLORS, LAYOUT } from "../../constants/theme";
 
 type BrowseMode = "categories" | "artists";
 
-const BROWSE_MODES: { key: BrowseMode; label: string }[] = [
-  { key: "categories", label: "Categories" },
-  { key: "artists", label: "Artists" },
+const BROWSE_MODES = [
+  { value: "categories" as const, label: "Categories" },
+  { value: "artists" as const, label: "Artists" },
 ];
 
 const LoopBrowserScreen = () => {
@@ -67,12 +61,7 @@ const LoopBrowserScreen = () => {
       : getLoopsByArtist(filter, allLoops).length;
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
-
+    <Screen glows={["topLeftFar", "bottomLeft"]}>
       {/* The way in to importing a loop of your own. Sits in the header rather
           than in the list: it isn't one of the loops, it's what makes another
           one. */}
@@ -91,24 +80,11 @@ const LoopBrowserScreen = () => {
 
       {/* Browse mode: Categories / Artists */}
       <View className="items-center mb-4">
-        <View className="flex-row bg-white/10 rounded-xl p-1">
-          {BROWSE_MODES.map((mode) => (
-            <TouchableOpacity
-              key={mode.key}
-              accessibilityLabel={`Browse by ${mode.label}`}
-              onPress={() => switchMode(mode.key)}
-              className={`px-6 py-2 rounded-lg ${browseMode === mode.key ? "bg-ink border-ink-muted" : ""
-                }`}
-            >
-              <Text
-                className={`text-sm font-satoshiMedium ${browseMode === mode.key ? "text-black" : "text-white"
-                  }`}
-              >
-                {mode.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <SegmentedControl
+          options={BROWSE_MODES}
+          value={browseMode}
+          onChange={switchMode}
+        />
       </View>
 
       {/* Filter chips: All + each category/artist */}
@@ -116,15 +92,18 @@ const LoopBrowserScreen = () => {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+          contentContainerStyle={{
+            paddingHorizontal: LAYOUT.screenPaddingX,
+            gap: 8,
+          }}
         >
-          <FilterChip
+          <Chip
             label={`All (${allLoops.length})`}
             selected={selectedFilter === null}
             onPress={() => setSelectedFilter(null)}
           />
           {filters.map((filter) => (
-            <FilterChip
+            <Chip
               key={filter}
               label={`${filter} (${countFor(filter)})`}
               selected={selectedFilter === filter}
@@ -135,29 +114,8 @@ const LoopBrowserScreen = () => {
       </View>
 
       <SelectLoopView loops={filteredLoops} />
-    </SafeAreaView>
+    </Screen>
   );
 };
-
-type FilterChipProps = {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-};
-
-const FilterChip = ({ label, selected, onPress }: FilterChipProps) => (
-  <TouchableOpacity
-    onPress={onPress}
-    className={`px-4 py-2 rounded-full border ${selected ? "bg-ink border-ink-muted" : "bg-white/10 border-white/20"
-      }`}
-  >
-    <Text
-      className={`text-sm font-satoshiMedium ${selected ? "text-black" : "text-white"
-        }`}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
 
 export default LoopBrowserScreen;

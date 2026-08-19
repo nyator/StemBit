@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StatusBar } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScrollView } from "react-native";
 
+import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
 import {
     SettingSwitch,
@@ -58,11 +58,10 @@ const AudioVolume = () => {
         setVolumes((prev) => ({ ...prev, [engine]: value }));
 
     return (
-        <SafeAreaView className="flex-1 bg-canvas">
-            <StatusBar barStyle="light-content" />
+        <Screen glows={["topLeft"]}>
             <ScreenHeader title="Audio Output / Volume" />
 
-            <ScrollView className="flex-1 px-5 ">
+            <ScrollView className="flex-1 px-screen">
                 <SettingSection title=" Volume">
                     <SettingSlider
                         icon={Loop}
@@ -123,7 +122,7 @@ const AudioVolume = () => {
                     />
                 </SettingSection>
             </ScrollView>
-        </SafeAreaView>
+        </Screen>
     );
 };
 

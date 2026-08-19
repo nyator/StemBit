@@ -105,7 +105,7 @@ export default function OnboardingScreen() {
             </View>
 
             <View className="items-center gap-4 mt-8">
-              <Text className="text-[32px] leading-[38px] text-center font-spaceBold text-ink">
+              <Text className="text-center text-hero font-spaceBold text-ink">
                 {item.title}
               </Text>
               <Text className="text-body leading-[26px] text-center font-satoshiRegular text-ink-soft">

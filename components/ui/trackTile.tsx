@@ -1,6 +1,6 @@
 import { Animated, Text, TouchableOpacity, View } from "react-native";
 
-import { COLORS } from "../../constants/theme";
+import { COLORS, TRACK_PALETTE } from "../../constants/theme";
 
 // One stem, as something to hit.
 //
@@ -16,22 +16,11 @@ import { COLORS } from "../../constants/theme";
 // answers that; a name and a border don't.
 
 /**
- * Channel colours, in the order stems get them.
- *
- * Hue is doing real work: it is how you find the drums on a screen you are not
- * looking at directly. So these are spread across the wheel and kept clear of
- * the brand blue, which the transport and the section pads already own.
+ * Channel colours, in the order stems get them. Defined in constants/theme.ts
+ * with the rest of the palette; re-exported here because this is where callers
+ * already look for it.
  */
-export const TRACK_COLORS = [
-  "#38BDF8", // cyan
-  "#22C55E", // green
-  "#F59E0B", // amber
-  "#EF4444", // red
-  "#A855F7", // violet
-  "#14B8A6", // teal
-  "#EC4899", // pink
-  "#84CC16", // lime
-] as const;
+export const TRACK_COLORS = TRACK_PALETTE;
 
 /** The colour for the nth stem, wrapping for songs with more stems than hues. */
 export const trackColor = (index: number) =>
@@ -93,7 +82,7 @@ export default function TrackTile({
         className="justify-between flex-1 px-3 pt-3 pb-2"
       >
         <Text
-          className="text-[12px] text-white font-satoshiBold"
+          className="text-overline text-white font-satoshiBold"
           numberOfLines={1}
         >
           {name}
@@ -101,7 +90,7 @@ export default function TrackTile({
 
         <View>
           <Text
-            className="mb-[6px] text-[10px] font-spaceBold tracking-widest"
+            className="mb-1.5 text-nav font-spaceBold tracking-widest"
             style={{ color: isSilent ? COLORS.textMuted : accent }}
           >
             {isSolo ? "SOLO" : isSilent ? "MUTED" : "ON"}
@@ -129,13 +118,13 @@ export default function TrackTile({
         <TouchableOpacity
           onPress={onToggleMute}
           accessibilityLabel={`${isSolo ? "Clear solo" : "Solo"} ${name}`}
-          className="items-center py-[8px]"
+          className="items-center py-2"
           style={{
             backgroundColor: isSolo ? COLORS.warning : "rgba(255,255,255,0.07)",
           }}
         >
           <Text
-            className="text-[10px] font-spaceBold tracking-widest"
+            className="text-nav font-spaceBold tracking-widest"
             style={{ color: isSolo ? COLORS.black : COLORS.textMuted }}
           >
             MUTE

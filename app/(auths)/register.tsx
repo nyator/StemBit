@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { StatusBar } from "react-native";
-import { Link, router, Redirect } from "expo-router";
+import { View, Text } from "react-native";
+import { Link, router } from "expo-router";
 
-import FormField from "../../components/formField";
-import CustomButton from "../../components/customButton";
-import CustomToast from "../../components/customToast";
+import Screen from "../../components/ui/screen";
+import { BrandButton } from "../../components/ui/brandButton";
+import { BrandInput } from "../../components/ui/brandInput";
 
 import { createUser } from "../../lib/appwrite";
 
@@ -61,75 +59,90 @@ const RegisterScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1">
-      <StatusBar barStyle="light-content" />
-      {/* {error ? <CustomToast type="error" title={error} /> : null} */}
-      <View className="flex-1 px-5">
-        <View className="flex flex-row justify-center items-center mt-10 mb-5">
-          <Text className="mb-4 text-5xl text-white font-satoshiBold">Stem</Text>
-          <Text className="mb-4 text-5xl text-brand font-satoshiBold">Bits</Text>
+    <Screen glows={["topRight", "bottomLeft"]} className="px-instrument">
+      <View className="flex-1">
+        {/* Same wordmark as sign-in, rather than this screen's own two-tone
+            "StemBits" lockup -- one brand mark, set one way. */}
+        <View className="items-center pt-20 pb-2">
+          <Text className="text-white font-wordmark text-wordmarkLg tracking-wordmark">
+            stembits
+          </Text>
         </View>
-        <View className="flex items-start">
-          <Text className="text-3xl text-white font-satoshiBold">Signup</Text>
-          <View className="flex flex-col gap-6 items-center w-full">
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e) => setForm({ ...form, email: e })}
-              otherStyles="mt-10"
-              placeholder="Enter Email"
-              keyboardType="email-address"
-            />
 
-            <FormField
-              title="Password"
-              value={form.password}
-              handleChangeText={(e) => setForm({ ...form, password: e })}
-              placeholder="Enter your password"
-            />
+        <View className="justify-center flex-1 w-full">
+          <Text className="mb-6 text-white font-satoshiBold text-heading">
+            Create account
+          </Text>
 
-            <FormField
-              title="Confirm Password"
-              value={form.confirmPassword}
-              handleChangeText={(e) => setForm({ ...form, confirmPassword: e })}
-              placeholder="Re-enter password"
-            />
+          <BrandInput
+            label="Email Address"
+            placeholder="Enter your email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            value={form.email}
+            onChangeText={(email) => setForm({ ...form, email })}
+            returnKeyType="next"
+          />
 
-            <CustomButton
-              title="Signup"
-              containerStyles="w-full"
-              handlePress={submit}
-              isLoading={isSubmitting}
-            />
+          <BrandInput
+            label="Password"
+            placeholder="Enter your password"
+            secure
+            autoCapitalize="none"
+            autoComplete="new-password"
+            value={form.password}
+            onChangeText={(password) => setForm({ ...form, password })}
+            returnKeyType="next"
+          />
 
-            {showToast && error && (
-              <Text className="text-red-500 font-satoshiMedium py-3 text-center w-full absolute bottom-5">
-                {error}
-              </Text>
-            )}
+          <BrandInput
+            label="Confirm Password"
+            placeholder="Re-enter password"
+            secure
+            autoCapitalize="none"
+            value={form.confirmPassword}
+            onChangeText={(confirmPassword) =>
+              setForm({ ...form, confirmPassword })
+            }
+            onSubmitEditing={submit}
+            returnKeyType="go"
+          />
 
-            <View className="flex flex-row mt-2">
-              <Text className="text-xl text-white font-satoshiMedium">
-                Already have an account?
-              </Text>
-              <TouchableOpacity>
-                <Link
-                  href="/login"
-                  className="text-xl underline text-brand font-satoshiMedium"
-                >
-                  {" "}
-                  Login
-                </Link>
-              </TouchableOpacity>
-            </View>
+          {/* In flow rather than absolutely positioned, so it pushes the button
+              down instead of landing on top of whatever is beneath it. */}
+          {showToast && error ? (
+            <Text className="mb-3 text-center text-danger font-satoshiMedium text-label">
+              {error}
+            </Text>
+          ) : null}
+
+          <BrandButton
+            label="Sign up"
+            onPress={submit}
+            loading={isSubmitting}
+          />
+
+          <View className="flex-row justify-center mt-4">
+            <Text className="text-ink-soft font-satoshiMedium text-body">
+              Already have an account?{" "}
+            </Text>
+            <Link
+              href="/login"
+              className="underline text-brand font-satoshiMedium text-body"
+            >
+              Log in
+            </Link>
           </View>
         </View>
-        <View className="flex absolute bottom-0 right-2/4 flex-row">
-          <Text className="text-white/50 font-satoshiMedium">by</Text>
-          <Text className="text-brand font-satoshiMedium"> nehtek</Text>
+
+        <View className="flex-row justify-center pb-2">
+          <Text className="text-ink-faint font-satoshiMedium text-label">by </Text>
+          <Text className="text-brand font-satoshiMedium text-label">nehtek</Text>
         </View>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 };
 

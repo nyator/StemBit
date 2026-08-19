@@ -1,7 +1,6 @@
 import React from "react";
-import { View, Text, StatusBar, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import LaunchPadComponent from "../../components/launchPad";
 import HeaderComponent from "../../components/headerComponent";
@@ -16,8 +15,16 @@ import { findPadPackByKey, type PadPack } from "../../constants/pads";
 import { hapticImpact } from "../../utils/haptics";
 import { COLORS } from "../../constants/theme";
 import { SortPad } from "../../components/icons";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import SegmentedControl from "../../components/ui/segmentedControl";
+
+// Major and minor are the two halves of the same pad, so they are one control
+// rather than two buttons -- and the accent says which half you are in from
+// across a stage, matching the colour the pads themselves light up.
+const PAD_MODES = [
+  { value: "major" as const, label: "Maj" },
+  { value: "minor" as const, label: "Min" },
+];
 
 // The pad instrument's audio lives in PadPlaybackContext (mounted at the app
 // root) so a held drone keeps sounding while the user navigates away. This
@@ -49,42 +56,17 @@ export default function PadScreen() {
   };
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 bg-canvas">
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      {/* <AmbientGlow style={GLOW_PLACEMENTS.topRight} /> */}
-
+    <Screen glows={["topLeftFar"]} className="items-center justify-start">
       <HeaderComponent />
-      <View className="items-center justify-start flex-1 w-full px-5">
+      <View className="items-center justify-start flex-1 w-full px-instrument">
         <View className="flex-row items-center justify-center w-full gap-3 mt-2">
-          <View className="flex-row p-1 rounded-xl bg-white/5">
-            <TouchableOpacity
-              accessibilityLabel="Major"
-              onPress={() => setMode("major")}
-              className="px-4 py-2 rounded-lg"
-              style={{ backgroundColor: !isMinor ? COLORS.brand : "transparent" }}
-            >
-              <Text
-                className="text-md font-satoshiMedium"
-                style={{ color: !isMinor ? COLORS.white : COLORS.white }}
-              >
-                Maj
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              accessibilityLabel="Minor"
-              onPress={() => setMode("minor")}
-              className="px-4 py-2 rounded-lg"
-              style={{ backgroundColor: isMinor ? COLORS.danger : "transparent" }}
-            >
-              <Text
-                className="text-md font-satoshiMedium"
-                style={{ color: isMinor ? COLORS.white : COLORS.white }}
-              >
-                Min
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <SegmentedControl
+            options={PAD_MODES}
+            value={mode}
+            onChange={setMode}
+            accent={isMinor ? COLORS.danger : COLORS.brand}
+            className="bg-white/5"
+          />
 
           {/* What's loaded, and the control that changes it — one target, so
               the name isn't a label sitting next to a button that means the
@@ -104,7 +86,7 @@ export default function PadScreen() {
           >
             <SortPad size={20} color={COLORS.white} />
             <Text
-              className="text-white shrink text-md font-satoshiMedium"
+              className="text-white shrink text-label font-satoshiMedium"
               numberOfLines={1}
             >
               {padStackLabel}
@@ -124,7 +106,6 @@ export default function PadScreen() {
           ))}
         </View>
       </View>
-      <StatusBar barStyle="light-content" />
-    </SafeAreaView>
+    </Screen>
   );
 }

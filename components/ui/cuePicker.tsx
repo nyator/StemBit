@@ -6,7 +6,7 @@ import {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 
-import { COLORS } from "../../constants/theme";
+import { COLORS, LAYOUT } from "../../constants/theme";
 import { TickCircle } from "../icons";
 import { BrandInput } from "./brandInput";
 import Chip from "./chip";
@@ -160,7 +160,7 @@ export default function CuePicker({
       <BottomSheetScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
-          paddingHorizontal: 20,
+          paddingHorizontal: LAYOUT.screenPaddingX,
           paddingTop: 4,
           paddingBottom: 40,
         }}
@@ -228,7 +228,7 @@ export default function CuePicker({
         ))}
 
         {shown.length === 0 && (
-          <Text className="mt-6 text-center text-[13px] text-ink-muted font-satoshiRegular">
+          <Text className="mt-6 text-center text-label text-ink-muted font-satoshiRegular">
             Nothing matches that.
           </Text>
         )}
@@ -265,7 +265,7 @@ function Row({
     >
       <View className="flex-1">
         <Text
-          className="text-[15px] font-satoshiBold"
+          className="text-body font-satoshiBold"
           numberOfLines={1}
           style={{ color: muted ? COLORS.textMuted : COLORS.white }}
         >
@@ -273,7 +273,7 @@ function Row({
         </Text>
         {detail && (
           <Text
-            className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular"
+            className="mt-0.5 text-micro text-ink-muted font-satoshiRegular"
             numberOfLines={1}
           >
             {detail}

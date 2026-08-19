@@ -3,12 +3,10 @@ import {
   Alert,
   PanResponder,
   ScrollView,
-  StatusBar,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
@@ -29,14 +27,15 @@ import { hapticImpact } from "../../utils/haptics";
 import { describeCue } from "../../utils/describeCue";
 
 import ScreenHeader from "../../components/ui/screenHeader";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import EmptyState from "../../components/ui/emptyState";
 import { COLORS } from "../../constants/theme";
 import {
   Add,
   ArrowRight,
   ChevronDown,
   DragHandle,
+  Musicnote,
   PlayFilled,
   Stop,
 } from "../../components/icons";
@@ -369,10 +368,7 @@ export default function SetlistScreen() {
     );
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-
+    <Screen glows={["topLeftFar"]}>
       <ScreenHeader
         title={session?.title ?? "Session"}
         action={
@@ -387,23 +383,25 @@ export default function SetlistScreen() {
       />
 
       {!session ? (
-        <Text className="px-5 text-white/60 font-satoshiMedium">
+        <Text className="px-screen text-body text-white/60 font-satoshiMedium">
           That session couldn&apos;t be found — it may have been deleted.
         </Text>
       ) : (
         <>
           <ScrollView
-            className="flex-1 px-5"
+            className="flex-1 px-screen"
             contentContainerStyle={{ paddingBottom: 24 }}
             // The list holds still while a row is in hand, or the drag and the
             // scroll fight each other for the same finger.
             scrollEnabled={!dragId}
           >
           {session.items.length === 0 ? (
-            <Text className="mt-10 text-center text-white/50 font-satoshiMedium">
-              No cues yet. Add them in the order you&apos;ll play them — each one
-              opens in studio, where you give it its stems, its loop, or its pad.
-            </Text>
+            <View className="mt-10">
+              <EmptyState
+                icon={Musicnote}
+                message="No cues yet. Add them in the order you'll play them — each one opens in studio, where you give it its stems, its loop, or its pad."
+              />
+            </View>
           ) : null}
 
           {items.map((item, index) => {
@@ -551,13 +549,13 @@ export default function SetlistScreen() {
                   >
                     <View style={{ flex: 1, justifyContent: "center" }}>
                       <Text
-                        className="text-lg text-white font-satoshiBold"
+                        className="text-title text-white font-satoshiBold"
                         numberOfLines={1}
                       >
                         {index + 1}. {item.title}
                       </Text>
                       <Text
-                        className="text-[13px] font-satoshiRegular mt-[3px]"
+                        className="text-label font-satoshiRegular mt-1"
                         numberOfLines={1}
                         style={{
                           color:
@@ -608,7 +606,7 @@ export default function SetlistScreen() {
                 {isStemCue && expanded && (
                   <View className="px-3 pb-3">
                     {(item.sections?.length ?? 0) === 0 ? (
-                      <Text className="mb-3 text-[11px] text-ink-muted font-satoshiRegular">
+                      <Text className="mb-3 text-micro text-ink-muted font-satoshiRegular">
                         No sections yet — mark them on the timeline in studio.
                       </Text>
                     ) : (
@@ -641,7 +639,7 @@ export default function SetlistScreen() {
                       accessibilityLabel={`Open ${item.title} in performance mode`}
                       className="items-center py-3 mt-1 border rounded-lg border-hairline"
                     >
-                      <Text className="text-[11px] text-brand font-spaceBold tracking-widest">
+                      <Text className="text-micro text-brand font-spaceBold tracking-widest">
                         PERFORMANCE MODE
                       </Text>
                     </TouchableOpacity>
@@ -652,7 +650,7 @@ export default function SetlistScreen() {
           })}
 
           {items.length > 0 && (
-            <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+            <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
               Tap the transport to play a cue, tap again to stop. Tap a song&apos;s
               name to open its sections. Drag the grip to reorder, hold a cue to
               open, edit or remove it.
@@ -673,7 +671,7 @@ export default function SetlistScreen() {
             the worst thing to find under a thumb in the dark. Hence a name,
             an outline, and the cue it will open written underneath. */}
           {performCue && (
-            <View className="px-5 pt-2 pb-1">
+            <View className="px-screen pt-2 pb-1">
               <TouchableOpacity
                 onPress={() => openPerformance(performCue)}
                 accessibilityLabel={`Open ${performCue.title} in performance mode`}
@@ -686,11 +684,11 @@ export default function SetlistScreen() {
                 }}
               >
                 <View className="flex-1">
-                  <Text className="text-[10px] text-brand font-spaceBold tracking-widest">
+                  <Text className="text-nav text-brand font-spaceBold tracking-widest">
                     PERFORM
                   </Text>
                   <Text
-                    className="mt-[2px] text-white font-satoshiBold text-[15px]"
+                    className="mt-0.5 text-white font-satoshiBold text-body"
                     numberOfLines={1}
                   >
                     {performCue.title}
@@ -702,7 +700,7 @@ export default function SetlistScreen() {
           )}
         </>
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 

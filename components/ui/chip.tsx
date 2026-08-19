@@ -24,7 +24,7 @@ export default function Chip({ label, selected, onPress }: ChipProps) {
       }`}
     >
       <Text
-        className={`text-sm font-satoshiMedium ${
+        className={`text-label font-satoshiMedium ${
           selected ? "text-black" : "text-white"
         }`}
       >

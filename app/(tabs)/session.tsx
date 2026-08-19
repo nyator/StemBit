@@ -1,29 +1,24 @@
-import { useCallback, useRef, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useRef, useState } from "react";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
-  BottomSheetBackdrop,
   BottomSheetTextInput,
-  type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 
 import { useSessions } from "../../context/SessionsContext";
 import HeaderComponent from "../../components/headerComponent";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import EmptyState from "../../components/ui/emptyState";
+import {
+  SHEET_BACKGROUND,
+  SHEET_HANDLE_INDICATOR,
+  useSheetBackdrop,
+} from "../../components/ui/sheet";
 import { BrandInput } from "../../components/ui/brandInput";
 import { BrandButton } from "../../components/ui/brandButton";
-import { COLORS, SHADOWS } from "../../constants/theme";
+import { COLORS, LAYOUT, SHADOWS, SIZES } from "../../constants/theme";
 import { Add, Folder, Musicnote } from "../../components/icons";
 
 // Sessions: what's been set up in advance so nothing is hunted for on stage.
@@ -59,18 +54,7 @@ export default function SessionsScreen() {
 
   // Same backdrop as the info sheets and the loop picker, so every sheet in the
   // app dims the screen by the same amount and closes the same way.
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
+  const renderBackdrop = useSheetBackdrop();
 
   // Placeholder for bringing a whole project in -- stems, cues and running
   // order in one file, rather than building a set a cue at a time. It's here
@@ -99,10 +83,7 @@ export default function SessionsScreen() {
     );
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-
+    <Screen glows={["topLeftFar"]}>
       <HeaderComponent />
 
 
@@ -124,20 +105,17 @@ export default function SessionsScreen() {
         // keyboard however the sheet is configured.
         android_keyboardInputMode="adjustResize"
         backdropComponent={renderBackdrop}
-        backgroundStyle={{
-          backgroundColor: "#090B10",
-          borderTopLeftRadius: 30,
-          borderTopRightRadius: 30,
-        }}
-        handleIndicatorStyle={{
-          backgroundColor: "rgba(255,255,255,0.4)",
-          width: 48,
-        }}
+        backgroundStyle={SHEET_BACKGROUND}
+        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
       >
         <BottomSheetView
-          style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 44 }}
+          style={{
+            paddingHorizontal: LAYOUT.screenPaddingX,
+            paddingTop: 8,
+            paddingBottom: 44,
+          }}
         >
-          <Text className="mb-4 text-white text-2xl font-spaceBold">
+          <Text className="mb-4 text-white text-heading font-spaceBold">
             New session
           </Text>
 
@@ -157,7 +135,7 @@ export default function SessionsScreen() {
 
           <View className="flex-row items-center my-5">
             <View className="flex-1 h-px bg-hairline" />
-            <Text className="mx-3 text-[11px] text-ink-muted font-satoshiRegular">
+            <Text className="mx-3 text-micro text-ink-muted font-satoshiRegular">
               OR
             </Text>
             <View className="flex-1 h-px bg-hairline" />
@@ -174,7 +152,7 @@ export default function SessionsScreen() {
               <Text className="text-white font-satoshiMedium">
                 Import project
               </Text>
-              <Text className="text-ink-muted text-[12px] font-satoshiRegular mt-[2px]">
+              <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
                 Stems and running order from a file — coming soon
               </Text>
             </View>
@@ -183,25 +161,22 @@ export default function SessionsScreen() {
       </BottomSheetModal>
 
       <ScrollView
-        className="flex-1 px-5"
+        className="flex-1 px-screen"
         // Empty, the invitation sits in the middle of the screen rather than
         // clinging to the top of an otherwise blank page. flexGrow is what lets
         // a scroll view centre at all: without it the content box is only as
         // tall as its contents, and there's nothing to centre within.
         contentContainerStyle={{
-          paddingBottom: 190,
+          paddingBottom: LAYOUT.tabBarClearance,
           flexGrow: 1,
           justifyContent: isEmpty ? "center" : "flex-start",
         }}
       >
         {isEmpty ? (
-          <View className="items-center justify-center px-6">
-            <Musicnote size={40} color="rgba(255,255,255,0.3)" />
-            <Text className="mt-4 text-center text-white/50 font-satoshiMedium">
-              No sessions yet. Make one for a tour or a season, put a setlist in
-              it for each night, and you'll never go looking for a loop mid-song.
-            </Text>
-          </View>
+          <EmptyState
+            icon={Musicnote}
+            message="No sessions yet. Make one for a tour or a season, put a setlist in it for each night, and you'll never go looking for a loop mid-song."
+          />
         ) : null}
 
         {sessions.map((session) => {
@@ -225,7 +200,7 @@ export default function SessionsScreen() {
               >
                 {session.title}
               </Text>
-              <Text className="text-ink-muted text-xs font-satoshiRegular mt-[2px]">
+              <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
                 {cues} {cues === 1 ? "cue" : "cues"}
               </Text>
             </TouchableOpacity>
@@ -233,7 +208,7 @@ export default function SessionsScreen() {
         })}
 
         {sessions.length > 0 && (
-          <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+          <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
             Hold a session to delete it.
           </Text>
         )}
@@ -248,10 +223,10 @@ export default function SessionsScreen() {
         activeOpacity={0.85}
         className="absolute items-center justify-center rounded-full bg-brand"
         style={{
-          right: 20,
+          right: LAYOUT.screenPaddingX,
           bottom: 10,
-          width: 56,
-          height: 56,
+          width: SIZES.fab,
+          height: SIZES.fab,
           ...SHADOWS.float,
         }}
       >
@@ -259,6 +234,6 @@ export default function SessionsScreen() {
             the button only ever means "new". */}
         <Add size={26} color={COLORS.white} />
       </TouchableOpacity>
-    </SafeAreaView>
+    </Screen>
   );
 }

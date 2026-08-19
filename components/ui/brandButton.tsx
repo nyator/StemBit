@@ -1,5 +1,11 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Pressable, Text, View, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 import { COLORS, GRADIENTS, RADII, SIZES } from "../../constants/theme";
 
@@ -21,23 +27,36 @@ type ButtonProps = {
   accessibilityLabel?: string;
 };
 
-/** Filled gradient button. The primary action on any screen. */
+/**
+ * Filled gradient button. The primary action on any screen.
+ *
+ * `loading` swaps the label for a spinner and blocks presses, which is what
+ * every submit in the auth flow needs -- the button is the only thing on screen
+ * that can say a request is in flight.
+ */
 export function BrandButton({
   label,
   onPress,
   disabled,
+  loading,
   style,
   accessibilityLabel,
-}: ButtonProps) {
+}: ButtonProps & { loading?: boolean }) {
+  const inert = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={inert}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!inert, busy: !!loading }}
       style={({ pressed }) => [
-        { width: "100%", opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
+        {
+          width: "100%",
+          // A loading button stays at full strength: it is working, not
+          // unavailable, and dimming it reads as the latter.
+          opacity: disabled ? 0.5 : pressed && !loading ? 0.85 : 1,
+        },
         style,
       ]}
     >
@@ -54,7 +73,13 @@ export function BrandButton({
           justifyContent: "center",
         }}
       >
-        <Text className="font-spaceBold text-body text-ink-onBrand">{label}</Text>
+        {loading ? (
+          <ActivityIndicator color={COLORS.textOnBrand} />
+        ) : (
+          <Text className="font-spaceBold text-body text-ink-onBrand">
+            {label}
+          </Text>
+        )}
       </LinearGradient>
     </Pressable>
   );

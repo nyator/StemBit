@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
 import { useFeatureTour } from "../../context/FeatureTourContext";
-import { COLORS, SHADOWS } from "../../constants/theme";
+import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
 import { PlayCircleOutline, PlayCircle, Pad, PadFill, MetronomeFill, MetronomeOutline, SortPad, SortPadFill, type IconComponent } from "../icons";
 
 // Each tab shows its outline icon when idle and the filled variant when active.
@@ -39,8 +39,8 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
       }}
     >
       <View
-        className="flex-row items-start justify-between px-[16px] py-[12px] rounded-nav bg-surface-glass border border-hairline-glass"
-        style={{  ...SHADOWS.float }}
+        className="flex-row items-start justify-between px-4 py-3 rounded-nav bg-surface-glass border border-hairline-glass"
+        style={SHADOWS.float}
       >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
@@ -85,10 +85,10 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
               className="items-center"
               style={{ width: 60, gap: 4 }}
             >
-              <Icon size={24} color={color} />
+              <Icon size={SIZES.navIcon} color={color} />
               <Text
-                className="font-spaceBold"
-                style={{ fontSize: 10, color }}
+                className="text-nav font-spaceBold"
+                style={{ color }}
                 numberOfLines={1}
               >
                 {label}

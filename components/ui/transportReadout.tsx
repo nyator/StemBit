@@ -112,7 +112,7 @@ export default function TransportReadout({
   return (
     <View>
       <View className="flex-row items-center mb-1">
-        <Text className="text-[9px] text-ink-muted font-spaceBold tracking-widest">
+        <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
           NOW PLAYING
         </Text>
         {isPlaying && (
@@ -123,7 +123,7 @@ export default function TransportReadout({
         )}
       </View>
 
-      <Text className="text-2xl text-white font-satoshiBold" numberOfLines={1}>
+      <Text className="text-heading text-white font-satoshiBold" numberOfLines={1}>
         {title}
       </Text>
 
@@ -186,11 +186,11 @@ function Cell({
 }) {
   return (
     <View className={align === "end" ? "items-end flex-1" : "mr-4"}>
-      <Text className="text-[9px] text-ink-muted font-spaceBold tracking-widest">
+      <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
         {label}
       </Text>
       <Text
-        className="mt-1 text-xl font-spaceBold"
+        className="mt-1 text-readout font-spaceBold"
         style={{
           color: muted ? COLORS.textMuted : COLORS.white,
           // Digits of equal width, so a counter doesn't shuffle its own

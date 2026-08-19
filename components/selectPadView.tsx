@@ -135,12 +135,12 @@ const SelectPadView = ({
           return (
             <View key={item.key}>
               {isNewArtistGroup && (
-                <Text className="mt-4 mb-2 text-xs uppercase text-ink-muted font-spaceBold">
+                <Text className="mt-4 mb-2 text-overline uppercase text-ink-muted font-spaceBold">
                   {item.artist}
                 </Text>
               )}
               <TouchableOpacity
-                className="flex-row items-center gap-[12px] p-[12px] mb-[6px] rounded-[12px]"
+                className="flex-row items-center gap-3 p-3 mb-1.5 rounded-md"
                 activeOpacity={0.75}
                 // Loaded packs are lit from the left by a brand bar and a
                 // tinted fill, unloaded ones sit flat. A row still has to read
@@ -184,7 +184,7 @@ const SelectPadView = ({
                     {item.title}
                   </Text>
                   <Text
-                    className="text-ink-muted text-[11px] font-satoshiRegular"
+                    className="text-ink-muted text-micro font-satoshiRegular"
                     numberOfLines={1}
                   >
                     {item.artist} · {item.genre}
@@ -193,7 +193,7 @@ const SelectPadView = ({
 
                 {layer?.muted && (
                   <Text
-                    className="text-[10px] font-spaceBold px-[6px] py-[2px] rounded"
+                    className="text-nav font-spaceBold px-1.5 py-0.5 rounded"
                     style={{
                       color: COLORS.danger,
                       backgroundColor: "rgba(239,68,68,0.15)",

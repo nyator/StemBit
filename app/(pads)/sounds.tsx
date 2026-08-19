@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, StatusBar } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View } from "react-native";
 
 import ScreenHeader from "../../components/ui/screenHeader";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import Chip from "../../components/ui/chip";
 import SelectPadView from "../../components/selectPadView";
 import PadMixer from "../../components/padMixer";
 import { PAD_PACKS } from "../../constants/pads";
@@ -20,51 +19,28 @@ export default function PadSoundsScreen() {
   }, [browseMode]);
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 overflow-hidden bg-canvas">
-      <StatusBar barStyle="light-content" />
-
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
-
+    <Screen glows={["topLeftFar", "bottomLeft"]} className="items-center justify-start">
       <ScreenHeader title="Select Pad" />
 
-      <View className="flex-1 w-full px-5">
-        {/* Filters: All / By Artist */}
+      <View className="flex-1 w-full px-screen">
+        {/* Filters: All / By Artist. The same chip the loop browser filters
+            with, so the two catalogues are browsed the same way. */}
         <View className="flex-row gap-2 mb-4">
-          <TouchableOpacity
+          <Chip
+            label="All"
+            selected={browseMode === "all"}
             onPress={() => setBrowseMode("all")}
-            className="items-center justify-center px-[16px] py-[8px] rounded-[20px]"
-            style={{
-              backgroundColor: browseMode === "all" ? "#FFFFFF" : "rgba(26,31,41,0.5)",
-            }}
-          >
-            <Text
-              className="text-md font-satoshiBold"
-              style={{ color: browseMode === "all" ? "#000000" : "#808A9E" }}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
+          />
+          <Chip
+            label="By Artist"
+            selected={browseMode === "byArtist"}
             onPress={() => setBrowseMode("byArtist")}
-            className="items-center justify-center px-[16px] py-[8px] rounded-[20px]"
-            style={{
-              backgroundColor: browseMode === "byArtist" ? "#FFFFFF" : "rgba(26,31,41,0.5)",
-            }}
-          >
-            <Text
-              className="text-md font-satoshiBold"
-              style={{ color: browseMode === "byArtist" ? "#000000" : "#808A9E" }}
-            >
-              By Artist
-            </Text>
-          </TouchableOpacity>
+          />
         </View>
 
         <SelectPadView packs={packs} groupByArtist={browseMode === "byArtist"} />
         <PadMixer />
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }

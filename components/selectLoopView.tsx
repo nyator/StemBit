@@ -8,6 +8,7 @@ import { COLORS } from "../constants/theme";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import { useUserLoops } from "../context/UserLoopsContext";
 import { Musicnote, PauseCircle, PlayCircle } from "./icons";
+import EmptyState from "./ui/emptyState";
 
 type SelectLoopViewProps = {
   // Which loops to show — defaults to everything (catalog + the user's
@@ -185,19 +186,18 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
 
   if (loops.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center px-10">
-        <Musicnote size={40} color="rgba(255,255,255,0.3)" />
-        <Text className="mt-4 text-center text-white/50 font-satoshiMedium">
-          No loops here yet — they'll show up as the catalog grows, or add one of
-          your own with + above.
-        </Text>
+      <View className="items-center justify-center flex-1">
+        <EmptyState
+          icon={Musicnote}
+          message="No loops here yet — they'll show up as the catalog grows, or add one of your own with + above."
+        />
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView className="flex-1 px-5">
+      <ScrollView className="flex-1 px-screen">
         {loops.map((item, i) => (
           <TouchableOpacity
             key={item.key}
@@ -224,7 +224,7 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
             <View className="w-2/6">
               <View className="flex-row items-center gap-2">
                 <Text
-                  className="text-white text-md font-satoshiBold"
+                  className="text-white text-label font-satoshiBold"
                   numberOfLines={1}
                   style={{ flexShrink: 1 }}
                 >
@@ -242,27 +242,27 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
                 )}
               </View>
               <View className="flex-row items-center justify-start gap-2">
-                <Text className="text-ink-muted text-xs font-satoshiRegular">
+                <Text className="text-ink-muted text-overline font-satoshiRegular">
                   {item.userAdded
                     ? "Imported"
                     : overriddenKeys.includes(item.key)
                       ? "Edited"
                       : `${item.artist} Artist`}
                 </Text>
-                <Text className="text-ink-muted text-xs font-satoshiRegular">
+                <Text className="text-ink-muted text-overline font-satoshiRegular">
                   .
                 </Text>
-                <Text className="text-xs text-ink-muted font-satoshiRegular">
+                <Text className="text-overline text-ink-muted font-satoshiRegular">
                   {item.category}
                 </Text>
               </View>
             </View>
 
             <View className="flex items-center justify-between w-2/6">
-              <Text className="text-white text-md font-satoshiRegular">
+              <Text className="text-white text-label font-satoshiRegular">
                 {item.timeSignature}
               </Text>
-              <Text className="text-sm text-white font-satoshiRegular">
+              <Text className="text-label text-white font-satoshiRegular">
                 {item.bpm} bpm
               </Text>
             </View>

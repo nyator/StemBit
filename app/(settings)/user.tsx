@@ -2,15 +2,14 @@ import { useEffect, useState } from "react";
 import {
   View,
   Text,
-  StatusBar,
   ScrollView,
   Alert,
   Platform,
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
 import { SettingLink, SettingSection } from "../../components/ui/settingRow";
 import { getUserDetails, updateUserName } from "../../lib/appwrite";
@@ -87,8 +86,7 @@ const UserScreen = () => {
     .toUpperCase();
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
+    <Screen glows={["topLeft"]}>
       <ScreenHeader title="Profile" />
 
       {loading ? (
@@ -96,7 +94,7 @@ const UserScreen = () => {
           <ActivityIndicator color={COLORS.brand} />
         </View>
       ) : (
-        <ScrollView className="flex-1 px-5">
+        <ScrollView className="flex-1 px-screen">
           {/* Avatar */}
           <View className="items-center my-6">
             <View
@@ -110,11 +108,11 @@ const UserScreen = () => {
                 {initial}
               </Text>
             </View>
-            <Text className="mt-4 text-2xl text-white font-satoshiBold">
+            <Text className="mt-4 text-heading text-white font-satoshiBold">
               {account ? account.name : "Not signed in"}
             </Text>
             {account && (
-              <Text className="mt-1 text-sm text-white/50 font-satoshiRegular">
+              <Text className="mt-1 text-label text-white/50 font-satoshiRegular">
                 {account.email}
               </Text>
             )}
@@ -153,7 +151,7 @@ const UserScreen = () => {
           )}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </Screen>
   );
 };
 

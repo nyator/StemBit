@@ -538,7 +538,7 @@ export default function TrackTimeline({
               >
                 <Text
                   numberOfLines={1}
-                  className="text-[11px] text-white font-satoshiBold"
+                  className="text-micro text-white font-satoshiBold"
                   style={{ opacity: isSilent ? 0.4 : 1 }}
                 >
                   {track.name}
@@ -601,7 +601,7 @@ export default function TrackTimeline({
                 <Text
                   key={label.bar}
                   pointerEvents="none"
-                  className="text-[9px] text-ink-muted font-spaceBold"
+                  className="text-micro text-ink-muted font-spaceBold"
                   style={{ position: "absolute", left: label.x + 3, top: 1 }}
                 >
                   {label.bar + 1}
@@ -653,7 +653,7 @@ export default function TrackTimeline({
                   >
                     <Text
                       numberOfLines={1}
-                      className="text-[9px] font-spaceBold"
+                      className="text-micro font-spaceBold"
                       style={{
                         color: isSelected ? COLORS.warning : COLORS.white,
                       }}
@@ -783,7 +783,7 @@ export default function TrackTimeline({
           marginTop: 6,
         }}
       >
-        <Text className="mr-2 text-[9px] text-ink-muted font-satoshiRegular">
+        <Text className="mr-2 text-micro text-ink-muted font-satoshiRegular">
           drag lanes to scroll · pinch to zoom
         </Text>
         <ZoomButton
@@ -793,7 +793,7 @@ export default function TrackTimeline({
           accessibilityLabel="Zoom out"
         />
         <View style={{ width: 46, alignItems: "center" }}>
-          <Text className="text-[10px] text-white font-spaceBold">
+          <Text className="text-nav text-white font-spaceBold">
             {zoomLabel}
           </Text>
         </View>
@@ -947,7 +947,7 @@ function ZoomButton({
         opacity: disabled ? 0.35 : 1,
       }}
     >
-      <Text className="text-[13px] text-white font-spaceBold">{label}</Text>
+      <Text className="text-label text-white font-spaceBold">{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -982,7 +982,7 @@ function LaneButton({
       }}
     >
       <Text
-        className="text-[10px] font-spaceBold"
+        className="text-nav font-spaceBold"
         style={{ color: active ? COLORS.black : COLORS.textMuted }}
       >
         {label}

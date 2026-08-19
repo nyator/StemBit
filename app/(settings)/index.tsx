@@ -1,18 +1,10 @@
-import {
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  Alert,
-  Linking,
-  Platform,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScrollView, Text, Alert, Linking, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
 
 import ScreenHeader from "../../components/ui/screenHeader";
+import Screen from "../../components/ui/screen";
+import { InverseButton } from "../../components/ui/brandButton";
 import {
   SettingLink,
   SettingSwitch,
@@ -29,8 +21,6 @@ import {
   Flash,
   MessageQuestion,
 } from "../../components/icons";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
 
 // Read from app.json via expo-constants rather than a hardcoded constant, so
 // these can't drift from what actually ships.
@@ -68,13 +58,10 @@ const SettingsScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeft} />
-      {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
-      <StatusBar barStyle="light-content" />
+    <Screen glows={["topLeft"]}>
       <ScreenHeader title="Settings" />
 
-      <ScrollView className="flex-1 px-5 ">
+      <ScrollView className="flex-1 px-screen">
         <SettingSection title="Account">
           <SettingLink
             icon={ProfileCircle}
@@ -83,7 +70,7 @@ const SettingsScreen = () => {
           />
         </SettingSection>
 
-        <SettingSection title=" Audio / Playback">
+        <SettingSection title="Audio / Playback">
           <SettingLink
             icon={VolumeHigh}
             label="Audio Output / Volume"
@@ -91,7 +78,7 @@ const SettingsScreen = () => {
           />
         </SettingSection>
 
-        <SettingSection title=" App">
+        <SettingSection title="App">
           <SettingSwitch
             icon={NotificationBing}
             label="Notification"
@@ -128,23 +115,24 @@ const SettingsScreen = () => {
           />
         </SettingSection>
 
-        <TouchableOpacity
-          className="self-center items-center py-2 border rounded-2xl bg-white w-28"
+        {/* The same white button the profile screen signs out with, rather
+            than a second one shaped like it. */}
+        <InverseButton
+          label="Log Out"
           onPress={handleLogout}
-        >
-          <Text className="text-base font-spaceBold">Log Out</Text>
-        </TouchableOpacity>
+          style={{ alignSelf: "center" }}
+        />
 
         <View className="items-center mt-3 mb-10">
-          <Text className="text-sm text-ink-muted font-spaceRegular">
+          <Text className="text-label text-ink-muted font-spaceRegular">
             version {VERSION}
           </Text>
-          <Text className="text-overline text-sm text-ink-muted font-spaceRegular">
+          <Text className="text-overline text-ink-muted font-spaceRegular">
             build {BUILD}
           </Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 };
 

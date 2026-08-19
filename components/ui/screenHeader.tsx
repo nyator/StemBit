@@ -2,6 +2,12 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { ArrowLeft } from "../icons";
+import { SIZES } from "../../constants/theme";
+
+// The back button's footprint: a 24pt icon inside 8pt of padding. The spacer
+// opposite it is the same width, which is what keeps the title optically
+// centred whether or not there is a right-hand action.
+const BACK_FOOTPRINT = SIZES.navIcon + 16;
 
 type ScreenHeaderProps = {
   title: string;
@@ -22,26 +28,28 @@ export default function ScreenHeader({
   const router = useRouter();
 
   return (
-    <View className="flex-row items-center justify-between w-full px-5 mt-4 mb-5">
+    <View className="flex-row items-center justify-between w-full px-screen mt-4 mb-5">
       {showBack ? (
         <TouchableOpacity
           onPress={onBack ?? (() => router.back())}
           className="p-2 rounded-full bg-white/10"
           accessibilityLabel="Go back"
         >
-          <ArrowLeft size={22} color="white" />
+          <ArrowLeft size={SIZES.navIcon} color="white" />
         </TouchableOpacity>
       ) : (
-        <View style={{ width: 38 }} />
+        <View style={{ width: BACK_FOOTPRINT }} />
       )}
       <Text
         numberOfLines={1}
         ellipsizeMode="tail"
-        className="flex-1 mx-2 text-2xl text-center text-white font-spaceBold"
+        className="flex-1 mx-2 text-center text-white text-heading font-spaceBold"
       >
         {title}
       </Text>
-      <View style={{ minWidth: 38, alignItems: "flex-end" }}>{action}</View>
+      <View style={{ minWidth: BACK_FOOTPRINT, alignItems: "flex-end" }}>
+        {action}
+      </View>
     </View>
   );
 }

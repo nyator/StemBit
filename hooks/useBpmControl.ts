@@ -21,6 +21,15 @@ const TAP_OUTLIER_TOLERANCE = 0.25;
 // - draft-based direct text entry (clamped on commit, not per keystroke)
 // - +/- steppers with hold-to-repeat
 // - tap tempo with median-based outlier rejection
+/**
+ * What the BPM controls hand back.
+ *
+ * Named so the shared instrument components can take the whole bundle rather
+ * than eight callbacks threaded through by hand -- the metronome, the loop and
+ * the import screen all build theirs from this same hook.
+ */
+export type BpmControls = ReturnType<typeof useBpmControl>;
+
 export function useBpmControl({
   bpm,
   setBpm,

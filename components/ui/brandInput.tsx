@@ -7,12 +7,14 @@ import {
 import {
   Text,
   TextInput,
+  TouchableOpacity,
   View,
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
 
 import { COLORS } from "../../constants/theme";
+import { Eye, EyeSlash } from "../icons";
 
 const FIELD_HEIGHT = 55;
 const ERROR_SLOT_HEIGHT = 3;
@@ -23,6 +25,15 @@ type BlurHandler = NonNullable<TextInputProps["onBlur"]>;
 type BrandInputProps = TextInputProps & {
   label?: string;
   error?: string;
+  /**
+   * Masks the field and puts a reveal toggle in the trailing slot.
+   *
+   * A prop rather than a separate password component, and read from the prop
+   * rather than inferred from the label: the field this replaced decided it was
+   * a password by comparing its own label to the string "Password", so renaming
+   * a label silently unmasked it.
+   */
+  secure?: boolean;
   rightSlot?: ReactNode;
   containerStyle?: ViewStyle;
   /**
@@ -42,6 +53,7 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
     {
       label,
       error,
+      secure,
       rightSlot,
       containerStyle,
       onFocus,
@@ -52,6 +64,7 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
     ref
   ) {
     const [focused, setFocused] = useState(false);
+    const [revealed, setRevealed] = useState(false);
     // Cast so the forwarded ref still typechecks. The prop is declared loosely
     // (ComponentType<TextInputProps>) because gorhom's input arrives wrapped in
     // memo + forwardRef and so isn't literally `typeof TextInput` -- but it does
@@ -93,7 +106,22 @@ export const BrandInput = forwardRef<TextInput, BrandInputProps>(
             onFocus={handleFocus}
             onBlur={handleBlur}
             {...props}
+            secureTextEntry={secure ? !revealed : props.secureTextEntry}
           />
+          {secure ? (
+            <TouchableOpacity
+              onPress={() => setRevealed((shown) => !shown)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={revealed ? "Hide password" : "Show password"}
+            >
+              {revealed ? (
+                <Eye size={20} color={COLORS.textMuted} />
+              ) : (
+                <EyeSlash size={20} color={COLORS.textMuted} />
+              )}
+            </TouchableOpacity>
+          ) : null}
           {rightSlot}
         </View>
         <View

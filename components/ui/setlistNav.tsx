@@ -87,13 +87,13 @@ function Neighbour({
 
       <View className={isPrev ? "flex-1 ml-2" : "flex-1 mr-2"}>
         <Text
-          className="text-[9px] text-ink-muted font-spaceBold tracking-widest"
+          className="text-micro text-ink-muted font-spaceBold tracking-widest"
           style={{ textAlign: isPrev ? "left" : "right" }}
         >
           {isPrev ? "PREV" : "NEXT"}
         </Text>
         <Text
-          className="mt-[2px] text-[13px] font-satoshiBold"
+          className="mt-0.5 text-label font-satoshiBold"
           numberOfLines={1}
           style={{
             color: cue ? COLORS.white : COLORS.textMuted,

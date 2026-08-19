@@ -126,10 +126,10 @@ export default function SectionPad({
         activeOpacity={0.85}
         accessibilityLabel={`Launch ${name}`}
         accessibilityState={{ selected: isLive }}
-        className={`justify-between flex-1 px-3 ${compact ? "py-[6px]" : "py-2"}`}
+        className={`justify-between flex-1 px-3 ${compact ? "py-1.5" : "py-2"}`}
       >
         <Text
-          className={`text-white font-satoshiBold ${compact ? "text-[13px]" : "text-[15px]"}`}
+          className={`text-white font-satoshiBold ${compact ? "text-label" : "text-body"}`}
           numberOfLines={1}
         >
           {name}
@@ -138,7 +138,7 @@ export default function SectionPad({
         {/* Whichever of three things is true: it's running, it's been hit and is
             waiting for the bar, or -- most of the time -- where it starts. */}
         <Text
-          className="text-[10px] font-spaceBold tracking-widest"
+          className="text-nav font-spaceBold tracking-widest"
           style={{
             color: isLive
               ? COLORS.white

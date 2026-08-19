@@ -4,12 +4,10 @@ import {
   Animated,
   Modal,
   ScrollView,
-  StatusBar,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   BottomSheetModal,
@@ -59,15 +57,15 @@ import CueElements, {
   clampBpm,
 } from "../../components/ui/cueElements";
 import SectionPad from "../../components/ui/sectionPad";
-import AmbientGlow from "../../components/ui/ambientGlow";
 import {
   MAX_SHEET_HEIGHT,
   SHEET_BACKGROUND,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "../../components/ui/sheet";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
-import { COLORS, SHADOWS } from "../../constants/theme";
+import Screen from "../../components/ui/screen";
+import EmptyState from "../../components/ui/emptyState";
+import { COLORS, LAYOUT, SHADOWS } from "../../constants/theme";
 import {
   Musicnote,
   Play,
@@ -195,7 +193,7 @@ function StemRow({
     <View className="flex-row items-center px-3 py-2 mb-2 border rounded-lg bg-surface border-hairline">
       <Musicnote size={16} color={COLORS.textMuted} />
       <Text
-        className="flex-1 ml-2 text-white font-satoshiMedium text-[13px]"
+        className="flex-1 ml-2 text-white font-satoshiMedium text-label"
         numberOfLines={1}
       >
         {name}
@@ -205,7 +203,7 @@ function StemRow({
         accessibilityLabel={`Remove ${name}`}
         hitSlop={10}
       >
-        <Text className="text-[11px] text-ink-muted font-spaceBold">REMOVE</Text>
+        <Text className="text-micro text-ink-muted font-spaceBold">REMOVE</Text>
       </TouchableOpacity>
     </View>
   );
@@ -229,7 +227,7 @@ function ImportStemsButton({
       className="items-center py-3 border rounded-lg border-hairline"
       style={importing ? { opacity: 0.5 } : undefined}
     >
-      <Text className="text-xs text-white font-spaceBold">
+      <Text className="text-overline text-white font-spaceBold">
         {importing
           ? "IMPORTING…"
           : hasStems
@@ -1325,12 +1323,12 @@ export default function PerformanceScreen() {
 
   if (!cue) {
     return (
-      <SafeAreaView className="flex-1 bg-canvas">
+      <Screen>
         <ScreenHeader title="Song" />
-        <Text className="mt-10 text-center text-white/50 font-satoshiMedium">
-          This cue is no longer in the setlist.
-        </Text>
-      </SafeAreaView>
+        <View className="mt-10">
+          <EmptyState message="This cue is no longer in the setlist." />
+        </View>
+      </Screen>
     );
   }
 
@@ -1339,9 +1337,7 @@ export default function PerformanceScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+    <Screen glows={["topLeftFar"]}>
 
       {/* The setlist's name up here in PERFORM, because the song's own name is
           about to be set six times larger directly underneath -- printing it
@@ -1370,7 +1366,7 @@ export default function PerformanceScreen() {
 
       {/* Which posture you're in. Two words rather than an icon: the difference
           between these views is not something a glyph can carry. */}
-      <View className="flex-row px-5 mb-3">
+      <View className="flex-row px-screen mb-3">
         {(["studio", "perform"] as const).map((option) => (
           <TouchableOpacity
             key={option}
@@ -1389,7 +1385,7 @@ export default function PerformanceScreen() {
             }}
           >
             <Text
-              className="text-[11px] font-spaceBold"
+              className="text-micro font-spaceBold"
               style={{ color: view === option ? COLORS.white : COLORS.textMuted }}
             >
               {option.toUpperCase()}
@@ -1403,7 +1399,7 @@ export default function PerformanceScreen() {
           them, not their contents. */}
       {view === "studio" && isStemCue ? (
         <ScrollView
-          className="flex-1 px-5"
+          className="flex-1 px-screen"
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
@@ -1447,7 +1443,7 @@ export default function PerformanceScreen() {
               hitSlop={10}
               accessibilityLabel="Add a section at the cursor"
             >
-              <Text className="text-[11px] text-brand font-spaceBold">
+              <Text className="text-micro text-brand font-spaceBold">
                 + SECTION AT {clock(cursorSeconds)}
               </Text>
             </TouchableOpacity>
@@ -1459,7 +1455,7 @@ export default function PerformanceScreen() {
                   hitSlop={10}
                   accessibilityLabel={`Rename ${selectedSection.name}`}
                 >
-                  <Text className="text-[11px] text-white font-spaceBold">
+                  <Text className="text-micro text-white font-spaceBold">
                     RENAME
                   </Text>
                 </TouchableOpacity>
@@ -1468,7 +1464,7 @@ export default function PerformanceScreen() {
                   hitSlop={10}
                   className="ml-4"
                 >
-                  <Text className="text-[11px] text-danger font-spaceBold">
+                  <Text className="text-micro text-danger font-spaceBold">
                     DELETE
                   </Text>
                 </TouchableOpacity>
@@ -1488,13 +1484,13 @@ export default function PerformanceScreen() {
             >
               <View className="flex-1">
                 <Text
-                  className="text-[11px] text-white font-satoshiBold"
+                  className="text-micro text-white font-satoshiBold"
                   numberOfLines={1}
                 >
                   {selectedSection.name}
                 </Text>
                 <Text
-                  className="mt-[2px] text-[10px] text-ink-muted font-spaceBold"
+                  className="mt-0.5 text-nav text-ink-muted font-spaceBold"
                   style={{ fontVariant: ["tabular-nums"] }}
                 >
                   {clock(selectedSection.startSeconds)} →{" "}
@@ -1514,7 +1510,7 @@ export default function PerformanceScreen() {
                 className="px-2 py-1 ml-2 border rounded"
                 style={{ borderColor: COLORS.border }}
               >
-                <Text className="text-[10px] text-white font-spaceBold">
+                <Text className="text-nav text-white font-spaceBold">
                   START HERE
                 </Text>
               </TouchableOpacity>
@@ -1525,7 +1521,7 @@ export default function PerformanceScreen() {
                 className="px-2 py-1 ml-2 border rounded"
                 style={{ borderColor: COLORS.border }}
               >
-                <Text className="text-[10px] text-white font-spaceBold">
+                <Text className="text-nav text-white font-spaceBold">
                   END HERE
                 </Text>
               </TouchableOpacity>
@@ -1588,7 +1584,7 @@ export default function PerformanceScreen() {
               one nobody checked, and every quantised launch in the song is
               measured from it. Declining leaves whatever was already there. */}
           {detecting && (
-            <Text className="mt-4 text-[11px] text-brand font-satoshiRegular">
+            <Text className="mt-4 text-micro text-brand font-satoshiRegular">
               Reading the tempo off the stems…
             </Text>
           )}
@@ -1598,16 +1594,16 @@ export default function PerformanceScreen() {
               className="px-4 py-3 mt-4 border-2 rounded-lg"
               style={{ borderColor: COLORS.brand }}
             >
-              <Text className="text-[9px] text-brand font-spaceBold tracking-widest">
+              <Text className="text-micro text-brand font-spaceBold tracking-widest">
                 DETECTED TEMPO
               </Text>
               <Text
-                className="mt-1 text-2xl text-white font-spaceBold"
+                className="mt-1 text-heading text-white font-spaceBold"
                 style={{ fontVariant: ["tabular-nums"] }}
               >
                 {suggestion.bpm} BPM
               </Text>
-              <Text className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular">
+              <Text className="mt-0.5 text-micro text-ink-muted font-satoshiRegular">
                 {suggestion.confidence >= CLEAR_PULSE
                   ? "A clear pulse — this is very likely right."
                   : "The pulse was hard to read — worth checking against the audio."}
@@ -1626,7 +1622,7 @@ export default function PerformanceScreen() {
                   className="items-center justify-center flex-1 py-3 mr-2 border rounded-lg"
                   style={{ borderColor: COLORS.border }}
                 >
-                  <Text className="text-xs text-ink-muted font-spaceBold">
+                  <Text className="text-overline text-ink-muted font-spaceBold">
                     KEEP {cue.bpm ?? 120}
                   </Text>
                 </TouchableOpacity>
@@ -1637,7 +1633,7 @@ export default function PerformanceScreen() {
                   className="items-center justify-center flex-1 py-3 rounded-lg"
                   style={{ backgroundColor: COLORS.brand }}
                 >
-                  <Text className="text-xs text-white font-spaceBold">
+                  <Text className="text-overline text-white font-spaceBold">
                     USE {suggestion.bpm}
                   </Text>
                 </TouchableOpacity>
@@ -1659,7 +1655,7 @@ export default function PerformanceScreen() {
         <>
           {/* Outside the scroll view, because what is playing and how long is
               left are not things you should have to scroll back up to. */}
-          <View className="px-5 pb-4">
+          <View className="px-screen pb-4">
             <TransportReadout
               title={cue.title}
               duration={duration}
@@ -1680,7 +1676,7 @@ export default function PerformanceScreen() {
           />
 
           <ScrollView
-            className="flex-1 px-5"
+            className="flex-1 px-screen"
             contentContainerStyle={{ paddingBottom: 16 }}
           >
             {/* Section pads. No waveform here: it is a tool for placing things
@@ -1694,7 +1690,7 @@ export default function PerformanceScreen() {
             </Text>
 
             {sections.length === 0 ? (
-              <Text className="mb-4 text-[11px] text-ink-muted font-satoshiRegular">
+              <Text className="mb-4 text-micro text-ink-muted font-satoshiRegular">
                 No sections yet — mark them on the timeline in STUDIO.
               </Text>
             ) : (
@@ -1744,7 +1740,7 @@ export default function PerformanceScreen() {
            No timeline, because there is nothing laid out in time to draw --
            the choices below are the whole of what this cue is. */
         <ScrollView
-          className="flex-1 px-5"
+          className="flex-1 px-screen"
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
@@ -1779,7 +1775,7 @@ export default function PerformanceScreen() {
             importing={importing}
             onPress={pickStems}
           />
-          <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+          <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
             Open the folder and select every stem — they&apos;ll play locked
             together, and this becomes a song rather than a loop cue.
           </Text>
@@ -1788,7 +1784,7 @@ export default function PerformanceScreen() {
         /* A loop cue's PERFORM: the same block a song gets, then the elements
            at a size you can check across a stage. */
         <>
-          <View className="px-5 pb-4">
+          <View className="px-screen pb-4">
             <CueReadout
               title={cue.title}
               subtitle={describeCue(cue)}
@@ -1815,7 +1811,7 @@ export default function PerformanceScreen() {
           />
 
           <ScrollView
-            className="flex-1 px-5"
+            className="flex-1 px-screen"
             contentContainerStyle={{ paddingBottom: 16 }}
           >
             <CueSummary
@@ -1834,7 +1830,7 @@ export default function PerformanceScreen() {
       {/* Key and pad, above the transport and in both views. The pad is a stage
           control (bring it in under the outro) and a studio one (hear the key
           while you place markers), so it does not belong to either view. */}
-      <View className="flex-row items-center px-5 mb-2">
+      <View className="flex-row items-center px-screen mb-2">
         <TouchableOpacity
           onPress={togglePad}
           disabled={!padPack}
@@ -1853,7 +1849,7 @@ export default function PerformanceScreen() {
           }}
         >
           <Text
-            className="text-[11px] font-spaceBold"
+            className="text-micro font-spaceBold"
             style={{ color: padIsLive ? COLORS.white : COLORS.textMuted }}
           >
             {songKey
@@ -1889,7 +1885,7 @@ export default function PerformanceScreen() {
             }}
           >
             <Text
-              className="text-[11px] font-spaceBold"
+              className="text-micro font-spaceBold"
               style={{
                 color: prefs.stemClick ? COLORS.white : COLORS.textMuted,
               }}
@@ -1909,13 +1905,13 @@ export default function PerformanceScreen() {
           className="items-center justify-center px-4 py-3 border rounded-lg"
           style={{ borderColor: COLORS.border }}
         >
-          <Text className="text-[11px] text-ink-muted font-spaceBold">KEY</Text>
+          <Text className="text-micro text-ink-muted font-spaceBold">KEY</Text>
         </TouchableOpacity>
       </View>
 
       {/* The transport spans the screen. It's the control most likely to be
           hit in a hurry, and the one where a miss is heard by the room. */}
-      <View className="px-5 pb-4">
+      <View className="px-screen pb-4">
         {/* Return-to-zero and loop only mean anything against a timeline. */}
         {view === "studio" && isStemCue && (
           <View className="flex-row mb-2">
@@ -1926,7 +1922,7 @@ export default function PerformanceScreen() {
               className="items-center justify-center flex-1 py-2 mr-2 border rounded-lg"
               style={{ borderColor: COLORS.border }}
             >
-              <Text className="text-[11px] text-ink-muted font-spaceBold">
+              <Text className="text-micro text-ink-muted font-spaceBold">
                 RTZ
               </Text>
             </TouchableOpacity>
@@ -1946,7 +1942,7 @@ export default function PerformanceScreen() {
               }}
             >
               <Text
-                className="text-[11px] font-spaceBold"
+                className="text-micro font-spaceBold"
                 style={{ color: loopEnabled ? COLORS.white : COLORS.textMuted }}
               >
                 LOOP
@@ -1977,7 +1973,7 @@ export default function PerformanceScreen() {
             }}
           >
             {cueIsLive ? <Stop size={40} /> : <PlayFilled size={40} />}
-            <Text className="ml-3 text-2xl text-white font-spaceBold">
+            <Text className="ml-3 text-heading text-white font-spaceBold">
               {cueIsLive ? "STOP" : "PLAY"}
             </Text>
           </TouchableOpacity>
@@ -1998,7 +1994,7 @@ export default function PerformanceScreen() {
             }}
           >
             {session.isPlaying ? <Stop size={40} /> : <PlayFilled size={40} />}
-            <Text className="ml-3 text-2xl text-white font-spaceBold">
+            <Text className="ml-3 text-heading text-white font-spaceBold">
               {session.isPlaying ? "STOP" : "PLAY"}
             </Text>
           </TouchableOpacity>
@@ -2050,7 +2046,7 @@ export default function PerformanceScreen() {
                 <Play size={30} color={COLORS.white} />
               )}
               <Text
-                className="ml-2 text-xl text-white font-spaceBold"
+                className="ml-2 text-readout text-white font-spaceBold"
                 style={{ color: session.isPlaying ? COLORS.brand : COLORS.white }}
               >
                 {session.isPlaying ? "PLAYING" : "PLAY"}
@@ -2074,7 +2070,7 @@ export default function PerformanceScreen() {
               }}
             >
               <Text
-                className="text-[12px] font-spaceBold"
+                className="text-overline font-spaceBold"
                 style={{ color: masterMuted ? COLORS.white : COLORS.textMuted }}
               >
                 MUTE
@@ -2084,7 +2080,7 @@ export default function PerformanceScreen() {
         )}
 
         {!session.isReady && tracks.length > 0 && (
-          <Text className="mt-2 text-center text-[11px] text-ink-muted font-satoshiRegular">
+          <Text className="mt-2 text-center text-micro text-ink-muted font-satoshiRegular">
             Loading stems — play will start as soon as they&apos;re ready.
           </Text>
         )}
@@ -2109,7 +2105,7 @@ export default function PerformanceScreen() {
             the top of its content so the sheet can be pulled shut. */}
         <BottomSheetScrollView
           contentContainerStyle={{
-            paddingHorizontal: 20,
+            paddingHorizontal: LAYOUT.screenPaddingX,
             paddingTop: 4,
             paddingBottom: 40,
           }}
@@ -2140,24 +2136,24 @@ export default function PerformanceScreen() {
                     }}
                   >
                     <Text
-                      className="w-6 text-[13px] text-ink-muted font-spaceBold"
+                      className="w-6 text-label text-ink-muted font-spaceBold"
                       style={{ fontVariant: ["tabular-nums"] }}
                     >
                       {index + 1}
                     </Text>
                     <View className="flex-1 ml-1">
                       <Text
-                        className="text-white font-satoshiBold text-[15px]"
+                        className="text-white font-satoshiBold text-body"
                         numberOfLines={1}
                       >
                         {item.title}
                       </Text>
-                      <Text className="mt-[2px] text-[11px] text-ink-muted font-satoshiRegular">
+                      <Text className="mt-0.5 text-micro text-ink-muted font-satoshiRegular">
                         {describeCue(item)}
                       </Text>
                     </View>
                     {isCurrent && (
-                      <Text className="text-[10px] text-brand font-spaceBold tracking-widest">
+                      <Text className="text-nav text-brand font-spaceBold tracking-widest">
                         HERE
                       </Text>
                     )}
@@ -2165,7 +2161,7 @@ export default function PerformanceScreen() {
             );
           })}
 
-          <Text className="mt-2 text-[11px] text-ink-muted font-satoshiRegular">
+          <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
             Tapping a cue loads it and stops there — press PLAY when
             you&apos;re ready.
           </Text>
@@ -2192,7 +2188,7 @@ export default function PerformanceScreen() {
             <Text className="mb-1 text-white font-satoshiBold text-title">
               Song key
             </Text>
-            <Text className="mb-4 text-[11px] text-ink-muted font-satoshiRegular">
+            <Text className="mb-4 text-micro text-ink-muted font-satoshiRegular">
               What a pad plays underneath this song.
             </Text>
 
@@ -2214,7 +2210,7 @@ export default function PerformanceScreen() {
                   }}
                 >
                   <Text
-                    className="text-xs font-spaceBold"
+                    className="text-overline font-spaceBold"
                     style={{
                       color: songKey === key ? COLORS.white : COLORS.textMuted,
                     }}
@@ -2242,7 +2238,7 @@ export default function PerformanceScreen() {
                   }}
                 >
                   <Text
-                    className="text-[11px] font-spaceBold"
+                    className="text-micro font-spaceBold"
                     style={{
                       color:
                         songMode === option ? COLORS.white : COLORS.textMuted,
@@ -2266,7 +2262,7 @@ export default function PerformanceScreen() {
                   className="items-center justify-center flex-1 py-3 mr-2 border rounded-lg"
                   style={{ borderColor: COLORS.border }}
                 >
-                  <Text className="text-xs text-ink-muted font-spaceBold">
+                  <Text className="text-overline text-ink-muted font-spaceBold">
                     CLEAR
                   </Text>
                 </TouchableOpacity>
@@ -2278,7 +2274,7 @@ export default function PerformanceScreen() {
                 className="items-center justify-center flex-1 py-3 rounded-lg"
                 style={{ backgroundColor: COLORS.brand }}
               >
-                <Text className="text-xs text-white font-spaceBold">DONE</Text>
+                <Text className="text-overline text-white font-spaceBold">DONE</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2311,7 +2307,7 @@ export default function PerformanceScreen() {
                 naming it -- and seeing it here is what tells you whether the
                 default end needs dragging afterwards. */}
             <Text
-              className="mb-1 text-[11px] text-ink-muted font-spaceBold"
+              className="mb-1 text-micro text-ink-muted font-spaceBold"
               style={{ fontVariant: ["tabular-nums"] }}
             >
               {clock(naming?.startSeconds ?? 0)} →{" "}
@@ -2319,7 +2315,7 @@ export default function PerformanceScreen() {
                 ? clock(naming.endSeconds)
                 : "END OF SONG"}
             </Text>
-            <Text className="mb-4 text-[11px] text-ink-muted font-satoshiRegular">
+            <Text className="mb-4 text-micro text-ink-muted font-satoshiRegular">
               Drag either edge on the timeline to trim it.
             </Text>
 
@@ -2343,7 +2339,7 @@ export default function PerformanceScreen() {
                 className="items-center justify-center flex-1 py-3 mr-2 border rounded-lg"
                 style={{ borderColor: COLORS.border }}
               >
-                <Text className="text-xs text-ink-muted font-spaceBold">
+                <Text className="text-overline text-ink-muted font-spaceBold">
                   CANCEL
                 </Text>
               </TouchableOpacity>
@@ -2354,7 +2350,7 @@ export default function PerformanceScreen() {
                 className="items-center justify-center flex-1 py-3 rounded-lg"
                 style={{ backgroundColor: COLORS.brand }}
               >
-                <Text className="text-xs text-white font-spaceBold">
+                <Text className="text-overline text-white font-spaceBold">
                   {naming?.id ? "SAVE" : "ADD"}
                 </Text>
               </TouchableOpacity>
@@ -2362,6 +2358,6 @@ export default function PerformanceScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </Screen>
   );
 }

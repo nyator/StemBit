@@ -19,6 +19,7 @@ export const COLORS = {
   surfaceMuted: "rgba(42,42,42,0.7)", // segmented control, unselected
   surfaceGlass: "rgba(15,20,22,0.52)", // floating nav bar
   surfaceField: "#17181F", // input / text-field fill
+  surfaceSheet: "#090B10", // bottom-sheet panel, darker than the canvas
 
   // The one hue the design derives its depth from: separators, the dial's
   // shadow, and the ambient corner glow are all this teal-navy at low alpha.
@@ -29,9 +30,10 @@ export const COLORS = {
   borderStrong: "rgba(0,65,91,0.5)", // outlined buttons (TAP TEMPO)
   borderDial: "rgba(3,40,54,0.26)", // metronome dial ring
   borderSegment: "rgba(47,47,47,0.7)", // segmented control, unselected
-  borderGlass: "rgba(255,2ed55,255,0.12)", // floating nav bar
+  borderGlass: "rgba(255,255,255,0.12)", // floating nav bar
   borderBrand: "rgba(103,175,203,0.26)", // primary gradient button
   borderIdle: "#4F4F4F", // unselected radio ring
+  handle: "rgba(255,255,255,0.4)", // a sheet's grab bar
 
   // Slider track behind the filled portion.
   track: "#2D3332",
@@ -62,6 +64,27 @@ export const COLORS = {
   success: "#10B981",
   warning: "#F59E0B",
 } as const;
+
+/**
+ * Channel colours, in the order stems get them.
+ *
+ * A categorical palette, not a semantic one: hue is doing real work here, since
+ * it is how you find the drums on a screen you are not looking at directly. So
+ * these are spread across the wheel and kept clear of the brand blue, which the
+ * transport and the section pads already own. Two of them land on the same hex
+ * as `danger` and `warning` -- that is the spread doing its job, not a token
+ * being reused, and neither carries the semantic meaning here.
+ */
+export const TRACK_PALETTE = [
+  "#38BDF8", // cyan
+  "#22C55E", // green
+  "#F59E0B", // amber
+  "#EF4444", // red
+  "#A855F7", // violet
+  "#14B8A6", // teal
+  "#EC4899", // pink
+  "#84CC16", // lime
+] as const;
 
 /* -------------------------------------------------------------------------- */
 /* Controls                                                                    */
@@ -105,6 +128,7 @@ export const RADII = {
   md: 14, // buttons
   lg: 16, // cards, grouped list containers
   xl: 20, // screen container
+  sheet: 30, // bottom sheet's top corners
   nav: 47, // floating nav bar
   dial: 90, // metronome dial (half of its 180px box)
   pill: 100,
@@ -124,16 +148,22 @@ export const SPACING = {
   "3xl": 28,
 } as const;
 
-// Screen-level layout constants. Horizontal padding is 24 on list screens and
-// 28 on the instrument screens (metronome, pad, loop) -- that difference is
-// intentional in the design, not drift.
+// Screen-level layout constants. Horizontal padding is 20 on list and pushed
+// screens and 28 on the instrument screens (metronome, pad, loop) -- that
+// difference is intentional in the design, not drift.
 export const LAYOUT = {
-  screenPaddingX: 24,
+  // 20, not the 24 the Figma draws. The app shipped 20 in twenty-seven places
+  // and 24 in none, so this follows the screens rather than asking every screen
+  // edge in the product to move. List screens and pushed screens both use it.
+  screenPaddingX: 20,
   instrumentPaddingX: 28,
   screenPaddingTop: 66,
   groupGap: 24, // between settings groups
   rowGap: 12, // between a group header and its rows
   rowPadding: 16, // inside a settings row
+  // Bottom padding a scrolling tab screen needs so its last row clears the
+  // floating nav bar (150pt tall, 8pt off the bottom) and the FAB beside it.
+  tabBarClearance: 190,
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -191,14 +221,39 @@ export const FONTS = {
 export const TYPE = {
   /** 48 -- the BPM readout. Painted with GRADIENTS.brand in the design. */
   display: { fontFamily: FONTS.spaceBold, fontSize: 48 },
+  /**
+   * 32 -- the onboarding carousel's page title.
+   *
+   * The largest prose in the app and the first thing a new user reads, so it
+   * gets its own tier rather than borrowing the 28 the wordmark uses -- that
+   * one is sized to a logotype in a handwriting face, not to a sentence.
+   */
+  hero: { fontFamily: FONTS.spaceBold, fontSize: 32, lineHeight: 38 },
   /** 36 -- "stembits" on splash and sign-in. */
   wordmarkLg: { fontFamily: FONTS.wordmark, fontSize: 36, letterSpacing: -0.3 },
   /** 28 -- "stembits" in the app header. */
   wordmarkSm: { fontFamily: FONTS.wordmark, fontSize: 28, letterSpacing: -0.3 },
-  /** 18 -- screen titles. */
+  /**
+   * 24 -- the title of a pushed screen, and the value in a large readout.
+   *
+   * The token file used to call 18 the screen-title size while every pushed
+   * screen rendered 24. The screens were the ones in the user's hands, so the
+   * token moved rather than fourteen headers.
+   */
+  heading: { fontFamily: FONTS.satoshiBold, fontSize: 24 },
+  /** 18 -- card, sheet and control titles. Not screen titles; see `heading`. */
   title: { fontFamily: FONTS.satoshiBold, fontSize: 18 },
   /** 18 -- segmented control values (4/4, 1x, 0.5x), TAP TEMPO. */
   control: { fontFamily: FONTS.spaceBold, fontSize: 18 },
+  /**
+   * 20 -- a numeric value read at arm's length: the elapsed and remaining
+   * clocks, a cue's tempo on the performance screen.
+   *
+   * Between `title` and `heading` because it is neither: it is not naming a
+   * thing, it is the thing, and it is read from further away than any label on
+   * the same screen. Pair it with the `overline` eyebrow above it.
+   */
+  readout: { fontFamily: FONTS.spaceBold, fontSize: 20 },
   /** 16 -- list rows, form fields, prose. */
   body: { fontFamily: FONTS.satoshiMedium, fontSize: 16 },
   /** 16 -- button labels. */
@@ -211,6 +266,14 @@ export const TYPE = {
   meta: { fontFamily: FONTS.spaceRegular, fontSize: 14 },
   /** 12 -- uppercase settings group headers. Pair with textTransform. */
   overline: { fontFamily: FONTS.spaceBold, fontSize: 12 },
+  /**
+   * 11 -- the dense instrument tier: strip names, fader percentages, cue meta.
+   *
+   * The floor for anything a musician reads while playing. The 9px labels that
+   * used to sit under it -- the BPM caption, PREV/NEXT, the timeline's bar
+   * numbers -- have all been brought up here or to `overline`.
+   */
+  micro: { fontFamily: FONTS.spaceBold, fontSize: 11 },
   /** 10 -- floating nav labels. */
   nav: { fontFamily: FONTS.spaceBold, fontSize: 10 },
 } as const;
@@ -233,6 +296,7 @@ export const SIZES = {
   switchHeight: 22,
   switchKnob: 18,
   segmentWidth: 105,
+  fab: 56, // floating action button, e.g. "new session"
 } as const;
 
 /* -------------------------------------------------------------------------- */

@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
-  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
@@ -36,8 +32,8 @@ import { useBpmControl } from "../../hooks/useBpmControl";
 import { hapticImpact } from "../../utils/haptics";
 
 import ScreenHeader from "../../components/ui/screenHeader";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import { BpmDial, StepperButton } from "../../components/ui/instrument";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
 import WaveformTrimmer, {
@@ -692,17 +688,9 @@ export default function ImportLoopScreen() {
     setBpm(value);
   };
 
-  const {
-    bpmText,
-    handleBpmTextChange,
-    commitBpmText,
-    increase,
-    decrease,
-    startHoldIncrease,
-    startHoldDecrease,
-    endHold,
-    handleTapTempo,
-  } = useBpmControl({
+  // Passed whole to the dial and the steppers, the way the two instrument
+  // screens do it.
+  const controls = useBpmControl({
     bpm,
     setBpm: setBpmByHand,
     minBpm: LOOP_MIN_BPM,
@@ -787,11 +775,7 @@ export default function ImportLoopScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
-
+    <Screen glows={["topLeftFar", "bottomLeft"]}>
       <ScreenHeader title={editing ? "Edit Loop" : "Add Loop"} />
 
       {/* The name field and the BPM field both sit low enough to be behind the
@@ -806,7 +790,7 @@ export default function ImportLoopScreen() {
       > */}
       <ScrollView
         ref={scrollRef}
-        className="flex-1 px-5"
+        className="flex-1 px-screen"
         contentContainerStyle={{ paddingBottom: fieldFocused ? 220 : 0 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -836,7 +820,7 @@ export default function ImportLoopScreen() {
             >
               {editing ? editing.title : picked ? picked.name : "Choose a file"}
             </Text>
-            <Text className="text-ink-muted text-[11px] font-satoshiRegular">
+            <Text className="text-ink-muted text-micro font-satoshiRegular">
               {busy
                 ? "Reading and decoding…"
                 : editing
@@ -848,7 +832,7 @@ export default function ImportLoopScreen() {
           </View>
           {!editing && (
             <Text
-              className="text-[11px] font-spaceBold"
+              className="text-micro font-spaceBold"
               style={{ color: COLORS.brand }}
             >
               {picked ? "CHANGE" : "CHOOSE"}
@@ -857,7 +841,7 @@ export default function ImportLoopScreen() {
         </TouchableOpacity>
 
         {notice && (
-          <Text className="mt-2 text-xs text-danger font-satoshiMedium">
+          <Text className="mt-2 text-overline text-danger font-satoshiMedium">
             {notice}
           </Text>
         )}
@@ -891,7 +875,7 @@ export default function ImportLoopScreen() {
                     ? `${wholeBars} ${wholeBars === 1 ? "bar" : "bars"} · ${formatSeconds(trimLength)}`
                     : `${formatSeconds(trimLength)} — not a whole bar`}
                 </Text> */}
-                <Text className="text-white text-[12px] font-satoshiRegular mt-[2px]">
+                <Text className="text-white text-overline font-satoshiRegular mt-0.5">
                   {isOnGrid
                     ? "Drag the ends to trim. Pinch to zoom in."
                     : "It'll drift out of time as it repeats."}
@@ -904,7 +888,7 @@ export default function ImportLoopScreen() {
                   accessibilityLabel="Snap the region to whole bars"
                   className="px-3 py-2 ml-2 bg-white rounded-sm"
                 >
-                  <Text className="text-black text-xs font-spaceBold">FIX</Text>
+                  <Text className="text-black text-overline font-spaceBold">FIX</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -912,71 +896,46 @@ export default function ImportLoopScreen() {
                 accessibilityLabel="Reset to the whole file"
                 className="px-3 py-2 ml-2 rounded-sm bg-white/10"
               >
-                <Text className="text-white text-xs font-spaceBold">RESET</Text>
+                <Text className="text-white text-overline font-spaceBold">RESET</Text>
               </TouchableOpacity>
             </View>
 
-            {/* <SectionLabel text="Tempo" /> */}
             <View
-              className="flex-row items-center mt-8 gap-[10px] self-center"
+              className="flex-row items-center self-center gap-3 mt-8"
               onLayout={(event) => {
                 tempoOffsetRef.current = event.nativeEvent.layout.y;
               }}
             >
-              <View className="flex-row items-center justify-between">
-                <TouchableOpacity
-                  accessibilityLabel="Decrease loop tempo"
-                  onPress={decrease}
-                  onLongPress={startHoldDecrease}
-                  onPressOut={endHold}
-                  className="p-2 rounded-lg bg-white/10"
-                >
-                  <MinusCircle size={28} color={COLORS.white} />
-                </TouchableOpacity>
+              <StepperButton
+                direction="down"
+                controls={controls}
+                label="Decrease loop tempo"
+              />
 
-                <View
-                  className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
-                >
-                  <TextInput
-                    className="p-0 text-center font-spaceBold"
-                    style={{
-                      minWidth: 86,
-                      fontSize: 40,
-                      color: isPlaying ? COLORS.brand : COLORS.white,
-                    }}
-                    value={bpmText}
-                    onChangeText={handleBpmTextChange}
-                    onEndEditing={commitBpmText}
-                    keyboardType="numeric"
-                    maxLength={3}
-                    selectTextOnFocus
-                    underlineColorAndroid="transparent"
-                    onFocus={() => {
-                      setFieldFocused(true);
-                      scrollFieldIntoView(tempoOffsetRef.current);
-                    }}
-                    onBlur={() => setFieldFocused(false)}
-                  />
-                  <Text className="uppercase text-label text-ink-muted font-satoshiBold">
-                    BPM
-                  </Text>
-                </View>
+              {/* The same dial the metronome and the loop player use, in its
+                  compact form: no transport here for the beat rings to flare
+                  against, and it has to sit inline between the steppers. */}
+              <BpmDial
+                controls={controls}
+                isPlaying={isPlaying}
+                variant="compact"
+                onFocus={() => {
+                  setFieldFocused(true);
+                  scrollFieldIntoView(tempoOffsetRef.current);
+                }}
+                onBlur={() => setFieldFocused(false)}
+              />
 
-                <TouchableOpacity
-                  accessibilityLabel="Increase loop tempo"
-                  onPress={increase}
-                  onLongPress={startHoldIncrease}
-                  onPressOut={endHold}
-                  className="p-2 rounded-lg bg-white/10"
-                >
-                  <AddCircle size={28} color={COLORS.white} />
-                </TouchableOpacity>
-              </View>
+              <StepperButton
+                direction="up"
+                controls={controls}
+                label="Increase loop tempo"
+              />
             </View>
 
 
             <Text
-              className="mt-1 text-xs text-center font-satoshiRegular"
+              className="mt-1 text-overline text-center font-satoshiRegular"
               style={{
                 color:
                   tempoSource === "detected" &&
@@ -994,7 +953,7 @@ export default function ImportLoopScreen() {
                 back as 140 and the reading you wanted is usually right here. */}
             {!isShipped && alternatives.length > 0 && (
               <View className="flex-row flex-wrap items-center justify-center gap-2 mt-3">
-                <Text className="text-xs text-ink-muted font-satoshiRegular">
+                <Text className="text-overline text-ink-muted font-satoshiRegular">
                   {tempoSource === "detected" ? "" : "Heard:"}
                 </Text>
                 {alternatives.map((option) => (
@@ -1029,9 +988,9 @@ export default function ImportLoopScreen() {
             {!isShipped && (
             <View className="flex-row gap-2 mt-4">
               <TouchableOpacity
-                onPressIn={handleTapTempo}
+                onPressIn={controls.handleTapTempo}
                 accessibilityLabel="Tap along to set the tempo"
-                className="items-center justify-center flex-1 py-[10px] border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 py-2.5 border-2 border-hairline-strong rounded-sm"
               >
                 <Text className="text-white text-title font-spaceBold">
                   TAP IT OUT
@@ -1042,7 +1001,7 @@ export default function ImportLoopScreen() {
                 disabled={detecting}
                 style={detecting ? { opacity: 0.5 } : undefined}
                 accessibilityLabel="Find the tempo in the audio again"
-                className="items-center justify-center flex-1 py-[10px] border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 py-2.5 border-2 border-hairline-strong rounded-sm"
               >
                 <Text className="text-white text-title font-spaceBold">
                   {detecting ? "LISTENING…" : "FIND IT"}
@@ -1084,7 +1043,7 @@ export default function ImportLoopScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* <Text className="mt-2 text-[11px] text-center text-ink-muted font-satoshiRegular">
+            {/* <Text className="mt-2 text-micro text-center text-ink-muted font-satoshiRegular">
               {isBlockedByOtherEngine
                 ? "Stop the Metronome first"
                 : clickOn
@@ -1118,7 +1077,7 @@ export default function ImportLoopScreen() {
                 />
               </View>
             ) : (
-              <Text className="my-5 text-xs text-ink-muted font-satoshiRegular">
+              <Text className="my-5 text-overline text-ink-muted font-satoshiRegular">
                 {title} · this loop came with the app, so only its tempo and
                 region are saved.
               </Text>
@@ -1180,7 +1139,7 @@ export default function ImportLoopScreen() {
                 </>
               )}
 
-              <Text className="mt-5 text-xs text-ink-soft font-satoshiRegular">
+              <Text className="mt-5 text-overline text-ink-soft font-satoshiRegular">
                 Hear it warp: play it at another tempo.
               </Text>
               <View className="flex-row items-center justify-center gap-4 mt-2">
@@ -1202,7 +1161,7 @@ export default function ImportLoopScreen() {
                   >
                     {targetBpm} BPM
                   </Text>
-                  <Text className="text-ink-muted text-[10px] font-spaceBold uppercase">
+                  <Text className="text-ink-muted text-nav font-spaceBold uppercase">
                     playing at {(targetBpm / bpm).toFixed(2)}x
                   </Text>
                 </View>
@@ -1247,7 +1206,7 @@ export default function ImportLoopScreen() {
         }}
         clickEnabled={clickOn}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -1297,12 +1256,12 @@ function Disclosure({
           </Text>
           <View className="flex-row items-center gap-2">
             {!expanded && summary ? (
-              <Text className="text-xs text-ink-muted font-satoshiRegular">
+              <Text className="text-overline text-ink-muted font-satoshiRegular">
                 {summary}
               </Text>
             ) : null}
             <Text
-              className="text-[11px] font-spaceBold"
+              className="text-micro font-spaceBold"
               style={{ color: COLORS.brand }}
             >
               {expanded ? "HIDE" : "SHOW"}
@@ -1333,7 +1292,7 @@ function Chip({ label, selected, onPress }: ChipProps) {
         }`}
     >
       <Text
-        className={`text-sm font-satoshiMedium ${selected ? "text-black" : "text-white"
+        className={`text-label font-satoshiMedium ${selected ? "text-black" : "text-white"
           }`}
       >
         {label}

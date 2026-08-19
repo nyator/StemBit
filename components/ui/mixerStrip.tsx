@@ -156,7 +156,7 @@ export default function MixerStrip({
     >
       <Text
         numberOfLines={1}
-        className="text-[10px] text-white font-satoshiBold"
+        className="text-nav text-white font-satoshiBold"
         style={{ maxWidth: STRIP_WIDTH - 10, marginBottom: 8 }}
       >
         {name}
@@ -194,7 +194,7 @@ export default function MixerStrip({
         />
       </View>
 
-      <Text className="mt-1 text-[9px] text-ink-muted font-spaceBold">
+      <Text className="mt-1 text-micro text-ink-muted font-spaceBold">
         {Math.round(mix.level * 100)}
       </Text>
 
@@ -251,7 +251,7 @@ export default function MixerStrip({
         />
       </View>
 
-      <Text className="mt-1 text-[9px] text-ink-muted font-spaceBold">
+      <Text className="mt-1 text-micro text-ink-muted font-spaceBold">
         {panLabel}
       </Text>
 
@@ -305,7 +305,7 @@ function StripButton({
       }}
     >
       <Text
-        className="text-[11px] font-spaceBold"
+        className="text-micro font-spaceBold"
         style={{ color: active ? COLORS.black : COLORS.textMuted }}
       >
         {label}

@@ -1,17 +1,15 @@
-import { View, Text, TouchableOpacity } from 'react-native'
-import React from 'react'
-import { Stack, useRouter } from 'expo-router'
+import { Stack } from "expo-router";
 
+import { COLORS } from "../../constants/theme";
 
-const LoopSoundsLayout = () => {
-    const router = useRouter();
-
-    return (
-        <Stack>
-            <Stack.Screen name="sounds" options={{headerShown: false}}/>
-            <Stack.Screen name="import" options={{headerShown: false}}/>
-        </Stack>
-    )
+// The loop catalogue and the importer that adds to it.
+export default function LoopSoundsLayout() {
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: COLORS.canvas },
+      }}
+    />
+  );
 }
-
-export default LoopSoundsLayout

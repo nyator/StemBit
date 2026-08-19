@@ -93,14 +93,22 @@ function RootLayout() {
                                         the navigator, like the engine controls
                                         -- can draw its spotlight over the top. */}
                                     <FeatureTourProvider>
-                                        <Stack>
-                                            <Stack.Screen name="index" options={{headerShown: false, contentStyle: {backgroundColor: COLORS.canvas}}}/>
-                                            <Stack.Screen name="(auths)" options={{headerShown: false}}/>
-                                            <Stack.Screen name="(tabs)" options={{headerShown: false, gestureEnabled: false}}/>
-                                            <Stack.Screen name="(settings)" options={{headerShown: false}}/>
-                                            <Stack.Screen name="(loops)" options={{headerShown: false}}/>
-                                            <Stack.Screen name="(sessions)" options={{headerShown: false}}/>
-                                            <Stack.Screen name="(pads)" options={{headerShown: false}}/>
+                                        {/* Every screen in the app draws its
+                                            own header, so the chrome is off
+                                            once here rather than per route.
+                                            Only (tabs) overrides anything. */}
+                                        <Stack
+                                            screenOptions={{
+                                                headerShown: false,
+                                                contentStyle: {backgroundColor: COLORS.canvas},
+                                            }}
+                                        >
+                                            {/* No swipe back out of the tabs:
+                                                behind them is the auth stack,
+                                                and a stray edge swipe on an
+                                                instrument screen should not
+                                                sign anyone out of the app. */}
+                                            <Stack.Screen name="(tabs)" options={{gestureEnabled: false}}/>
                                         </Stack>
                                         <FloatingEngineControls />
                                         <FeatureTour />

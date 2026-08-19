@@ -138,7 +138,7 @@ export default function SectionWave({
         className="items-center justify-center border rounded-lg border-hairline"
         style={{ height: HEIGHT, width }}
       >
-        <Text className="text-[11px] text-ink-muted font-satoshiRegular">
+        <Text className="text-micro text-ink-muted font-satoshiRegular">
           Measuring the song…
         </Text>
       </View>

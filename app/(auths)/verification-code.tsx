@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { View, Text, StatusBar } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
 
+import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
-import FormField from "../../components/formField";
-import CustomButton from "../../components/customButton";
+import AuthFooter from "../../components/ui/authFooter";
+import { BrandButton } from "../../components/ui/brandButton";
+import { BrandInput } from "../../components/ui/brandInput";
 
 export default function VerificationCodeScreen() {
   const router = useRouter();
@@ -23,35 +24,28 @@ export default function VerificationCodeScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
+    <Screen glows={["topLeft"]}>
       <ScreenHeader title="Verify Email" />
 
-      <View className="flex-1 px-5">
-        <Text className="mt-2 mb-1 text-sm leading-5 text-white/60 font-satoshiRegular">
+      <View className="flex-1 px-screen">
+        <Text className="mb-6 text-ink-soft font-satoshiRegular text-label leading-5">
           A verification code has been sent to your email.
         </Text>
-        <View className="flex flex-col items-center w-full gap-6">
-          <FormField
-            value={code}
-            handleChangeText={setCode}
-            otherStyles="mt-4"
-            placeholder="Enter verification code"
-            keyboardType="numeric"
-          />
-          <CustomButton
-            title="Verify"
-            containerStyles="w-full"
-            handlePress={submit}
-            isLoading={isSubmitting}
-          />
-        </View>
 
-        <View className="absolute bottom-0 flex-row right-2/4">
-          <Text className="text-white/50 font-satoshiMedium">by </Text>
-          <Text className="text-brand font-satoshiMedium">nehtek</Text>
-        </View>
+        <BrandInput
+          label="Verification Code"
+          placeholder="Enter verification code"
+          keyboardType="numeric"
+          value={code}
+          onChangeText={setCode}
+          onSubmitEditing={submit}
+          returnKeyType="go"
+        />
+
+        <BrandButton label="Verify" onPress={submit} loading={isSubmitting} />
       </View>
-    </SafeAreaView>
+
+      <AuthFooter />
+    </Screen>
   );
 }

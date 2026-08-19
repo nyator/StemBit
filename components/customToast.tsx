@@ -1,35 +1,45 @@
 import { View, Text } from "react-native";
 import React from "react";
+
 import { TickCircle, Warning2 } from "./icons";
+import { COLORS, SIZES } from "../constants/theme";
 
+// A brief, non-blocking message.
+//
+// Not wired to anything yet -- the app says everything through Alert today --
+// but it is kept on the design system so that whoever does wire it up starts
+// from the right surface. It used to be a white panel with the semantic colours
+// written out as hex, which on a dark app read as a notification from a
+// different product.
 
-type customToastProps = {
-  type: "success" | "error" | "warning";
+const TONES = {
+  success: { icon: TickCircle, color: COLORS.success },
+  error: { icon: Warning2, color: COLORS.danger },
+  warning: { icon: Warning2, color: COLORS.warning },
+} as const;
+
+type CustomToastProps = {
+  type: keyof typeof TONES;
   title: string;
+  /** Second line, when the title alone doesn't say what to do about it. */
   desc?: string;
 };
 
-export default function CustomToast({ type, title, desc }: customToastProps) {
+export default function CustomToast({ type, title, desc }: CustomToastProps) {
+  const { icon: Icon, color } = TONES[type];
+
   return (
     <View
-      className={`absolute right-0 top-40 z-30 py-2 pr-2 pl-1 bg-white/60 border-white rounded-l-[20px] border-l-[1px] border-t-[1px] border-b-[1px]`}
+      className="absolute z-30 flex-row items-start gap-3 p-4 border top-40 left-screen right-screen rounded-lg bg-surface-sheet border-hairline"
     >
-      <View className={`flex flex-row justify-center items-center gap-[2px]`}>
-        {type === "success" && (
-          <TickCircle size={22} color="#10B981" />
-        )}
-        {type === "error" && (
-          <Warning2 size={22} color="#EF4444" />
-        )}
-        {type === "warning" && (
-          <Warning2 size={22} color="#F59E0B" />
-        )}
-        <Text className="text-[15px] text-black font-satoshiMedium">
-          {title ? title : "title"}
-        </Text>
-        {/* <View className={` rounded-xl px-2 py-[2px] ${type === "success" && "bg-success"} ${type === "error" && "bg-danger"} ${type === "warning" && "bg-warning"}`}> */}
-        {/* <Text className='text-[15px] text-white font-spaceMedium'>{desc ? desc : "desc"}</Text> */}
-        {/* </View> */}
+      <Icon size={SIZES.rowIcon} color={color} />
+      <View className="flex-1">
+        <Text className="text-white text-body font-satoshiBold">{title}</Text>
+        {desc ? (
+          <Text className="mt-0.5 text-label text-ink-muted font-satoshiRegular">
+            {desc}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

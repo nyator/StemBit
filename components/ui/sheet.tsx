@@ -5,6 +5,8 @@ import {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 
+import { COLORS, RADII } from "../../constants/theme";
+
 // The chrome every bottom sheet in this app shares.
 //
 // Not a wrapper component: a sheet's own props -- how it sizes, whether it
@@ -25,14 +27,14 @@ export const MAX_SHEET_HEIGHT = Dimensions.get("window").height * 0.8;
 
 /** The panel itself: darker than the screen behind it, and rounded off. */
 export const SHEET_BACKGROUND: ViewStyle = {
-  backgroundColor: "#090B10",
-  borderTopLeftRadius: 30,
-  borderTopRightRadius: 30,
+  backgroundColor: COLORS.surfaceSheet,
+  borderTopLeftRadius: RADII.sheet,
+  borderTopRightRadius: RADII.sheet,
 };
 
 /** The bar you pull. Wide enough to read as a grip rather than a divider. */
 export const SHEET_HANDLE_INDICATOR: ViewStyle = {
-  backgroundColor: "rgba(255,255,255,0.4)",
+  backgroundColor: COLORS.handle,
   width: 48,
 };
 

@@ -31,7 +31,7 @@ export default function LaunchPadComponent({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      className="w-[30%] m-[1.5%] items-center justify-center overflow-hidden rounded-[15px] border active:scale-95"
+      className="w-[30%] m-[1.5%] items-center justify-center overflow-hidden rounded-lg border active:scale-95"
       style={{
         aspectRatio: 1,
         borderColor: isPlaying ? withAlpha(activeColor, 0.5) : "rgba(25,25,25,0.5)",
@@ -56,12 +56,8 @@ export default function LaunchPadComponent({
         </Svg>
       )}
       <Text
-        className="text-center font-satoshiBold"
-        style={{
-          fontSize: 20,
-          letterSpacing: -0.3,
-          color: isPlaying ? COLORS.white : COLORS.textSoft,
-        }}
+        className="text-center text-readout tracking-wordmark font-satoshiBold"
+        style={{ color: isPlaying ? COLORS.white : COLORS.textSoft }}
       >
         {selectKey || "•"}
       </Text>

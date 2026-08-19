@@ -608,7 +608,7 @@ export default function WaveformTrimmer({
           which a pinch never is. */}
       <View className="flex-row items-center mt-2">
         <Text
-          className="flex-1 text-[10px] font-satoshiRegular"
+          className="flex-1 text-nav font-satoshiRegular"
           style={{ color: zoomed ? COLORS.brand : COLORS.textMuted }}
           numberOfLines={1}
         >
@@ -624,7 +624,7 @@ export default function WaveformTrimmer({
           accessibilityLabel="Zoom out"
         />
         <View style={{ width: 42, alignItems: "center" }}>
-          <Text className="text-[10px] text-white font-spaceBold">
+          <Text className="text-nav text-white font-spaceBold">
             {zoomLabel}
           </Text>
         </View>
@@ -730,7 +730,7 @@ function ZoomButton({
         opacity: disabled ? 0.35 : 1,
       }}
     >
-      <Text className="text-[13px] text-white font-spaceBold">{label}</Text>
+      <Text className="text-label text-white font-spaceBold">{label}</Text>
     </TouchableOpacity>
   );
 }

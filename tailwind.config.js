@@ -9,6 +9,31 @@ module.exports = {
   content: ["./components/**/*.{js,jsx,ts,tsx}", "./app/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
+    // The type scale. Roles, smallest first -- see TYPE in constants/theme.ts
+    // for what each one is for.
+    //
+    // This REPLACES Tailwind's own scale rather than extending it (note the
+    // position outside `extend`, below). The app had been running three scales
+    // at once: these tokens, Tailwind's defaults (text-xs/sm/base/lg/xl/2xl),
+    // and 104 one-off `text-[Npx]` values -- plus `text-md`, which is not a
+    // class in any of them and so silently rendered at the platform default.
+    // Deleting the defaults is what stops a fourth from growing back.
+    fontSize: {
+      nav: "10px",
+      micro: "11px",
+      overline: "12px",
+      label: "14px",
+      body: "16px",
+      title: "18px",
+      readout: "20px",
+      heading: "24px",
+      wordmarkSm: "28px",
+      // The one tier that carries a sentence rather than a label, so it is the
+      // one that needs a line height declared with it.
+      hero: ["32px", "38px"],
+      wordmarkLg: "36px",
+      display: "48px",
+    },
     extend: {
       fontFamily: {
         // Figma design system. Space Grotesk carries numerals, controls and
@@ -30,6 +55,7 @@ module.exports = {
           muted: "rgba(42,42,42,0.7)", // segmented control, unselected
           glass: "rgba(15,20,22,0.52)", // floating nav
           field: "#17181F", // input / text-field fill
+          sheet: "#090B10", // bottom sheet panel, darker than the canvas
         },
         // The brand is a gradient; `brand` alone is the flat fallback.
         brand: {
@@ -72,16 +98,6 @@ module.exports = {
         nav: "47px", // floating nav
         dial: "90px",
       },
-      fontSize: {
-        nav: "10px",
-        overline: "12px",
-        label: "14px",
-        body: "16px",
-        title: "18px",
-        wordmarkSm: "28px",
-        wordmarkLg: "36px",
-        display: "48px",
-      },
       letterSpacing: {
         // The design tightens the wordmark and the status-bar clock by the
         // same amount; nothing else carries tracking.
@@ -89,7 +105,7 @@ module.exports = {
       },
       spacing: {
         row: "16px", // padding inside a settings row
-        screen: "24px", // horizontal padding, list screens
+        screen: "20px", // horizontal padding, every screen but the instruments
         instrument: "28px", // horizontal padding, metronome/pad/loop
       },
     },

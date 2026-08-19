@@ -88,7 +88,7 @@ export default function OnboardingNav({
         <View className="flex-row items-center">
           <Arrow direction="left" />
           <Text
-            className="text-[13px] font-satoshiRegular tracking-wordmark"
+            className="text-label font-satoshiRegular tracking-wordmark"
             style={{ color: MUTED }}
           >
             Back
@@ -106,7 +106,7 @@ export default function OnboardingNav({
       >
         <View className="flex-row items-center">
           <Text
-            className="text-[13px] font-satoshiRegular tracking-wordmark"
+            className="text-label font-satoshiRegular tracking-wordmark"
             style={{ color: MUTED }}
           >
             {nextLabel}

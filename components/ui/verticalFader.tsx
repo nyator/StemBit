@@ -196,13 +196,15 @@ export default function VerticalFader({
           width: CAP_WIDTH,
           height: CAP_HEIGHT,
           borderRadius: 4,
-          backgroundColor: "#D8DBE0",
+          // The same near-white every other control's thumb uses -- a fader cap
+          // and a switch knob are the same object in two orientations.
+          backgroundColor: CONTROL.knob,
           borderWidth: 1,
           borderColor: "rgba(0,0,0,0.35)",
           alignItems: "center",
           justifyContent: "center",
           // Lifts the cap off the track the way a real one sits proud.
-          shadowColor: "#000000",
+          shadowColor: COLORS.black,
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: 0.45,
           shadowRadius: 3,

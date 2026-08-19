@@ -1,12 +1,15 @@
-import React from "react";
 import { Stack } from "expo-router";
 
-const PadSoundsLayout = () => {
-  return (
-    <Stack>
-      <Stack.Screen name="sounds" options={{ headerShown: false }} />
-    </Stack>
-  );
-};
+import { COLORS } from "../../constants/theme";
 
-export default PadSoundsLayout;
+// The pad catalogue.
+export default function PadSoundsLayout() {
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: COLORS.canvas },
+      }}
+    />
+  );
+}

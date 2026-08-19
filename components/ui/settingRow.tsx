@@ -79,12 +79,12 @@ const RowShell = ({
     )}
     <View className="flex-1">
       <Text
-        className={`text-lg font-satoshiRegular ${danger ? "text-danger" : "text-white"}`}
+        className={`text-title font-satoshiRegular ${danger ? "text-danger" : "text-white"}`}
       >
         {label}
       </Text>
       {sublabel && (
-        <Text className="text-sm text-white/50 font-satoshiRegular">
+        <Text className="text-label text-white/50 font-satoshiRegular">
           {sublabel}
         </Text>
       )}
@@ -102,7 +102,7 @@ export function SettingLink({ onPress, value, ...base }: LinkRowProps) {
         right={
           <View className="flex-row items-center">
             {value && (
-              <Text className="mr-2 text-sm text-white/50 font-satoshiRegular">
+              <Text className="mr-2 text-label text-white/50 font-satoshiRegular">
                 {value}
               </Text>
             )}
@@ -123,7 +123,7 @@ export function SettingNoLink({ onPress, value, ...base }: LinkRowProps) {
         right={
           <View className="flex-row items-center">
             {value && (
-              <Text className="mr-2 text-sm text-white/50 font-satoshiRegular">
+              <Text className="mr-2 text-label text-white/50 font-satoshiRegular">
                 {value}
               </Text>
             )}
@@ -147,7 +147,7 @@ export function SettingStatus({
       {...base}
       right={
         value ? (
-          <Text className="text-sm text-white/50 font-satoshiRegular">
+          <Text className="text-label text-white/50 font-satoshiRegular">
             {value}
           </Text>
         ) : null
@@ -201,7 +201,7 @@ export function SettingSlider({
             accessibilityLabel={base.label}
           />
           <Text
-            className="ml-2 text-[11px] text-ink-muted font-spaceBold"
+            className="ml-2 text-micro text-ink-muted font-spaceBold"
             style={{
               // Fixed width and tabular digits, so the slider doesn't shuffle
               // sideways as the number goes from 9% to 100%.
@@ -262,7 +262,7 @@ export function SettingSegmented<T extends string>({
               accessibilityRole="radio"
               accessibilityLabel={option.label}
               accessibilityState={{ selected }}
-              className="items-center justify-center flex-1 py-[10px]"
+              className="items-center justify-center flex-1 py-2.5"
               style={{
                 borderRadius: RADII.sm,
                 backgroundColor: selected ? CONTROL.active : "transparent",
@@ -270,7 +270,7 @@ export function SettingSegmented<T extends string>({
             >
               <Text
                 numberOfLines={1}
-                className="text-sm font-satoshiMedium"
+                className="text-label font-satoshiMedium"
                 style={{ color: selected ? COLORS.white : COLORS.textMuted }}
               >
                 {option.label}
@@ -293,7 +293,7 @@ export function SettingSection({
 }) {
   return (
     <View className="mb-7">
-      {/* text-overline is the design's 12px group header; `text-md` is not a
+      {/* text-overline is the design's 12px group header; `text-label` is not a
           Tailwind size and silently produced no font-size at all. */}
       <Text className="mb-4 uppercase text-overline tracking-widest text-ink-muted font-spaceBold">
         {title}

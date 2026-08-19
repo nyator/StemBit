@@ -36,8 +36,8 @@ export default function NotificationsScreen() {
           />
         </View>
 
-        <View className="items-center gap-[3px] mt-12">
-          <Text className="text-[20px] tracking-wordmark font-spaceBold text-ink">
+        <View className="items-center gap-1 mt-12">
+          <Text className="text-heading tracking-wordmark font-spaceBold text-ink">
             Turn on Notifications
           </Text>
           <Text className="max-w-[274px] text-center text-body tracking-wordmark font-satoshiRegular text-ink-soft">
@@ -46,7 +46,7 @@ export default function NotificationsScreen() {
         </View>
       </View>
 
-      <View className="gap-[10px] px-7 pb-4">
+      <View className="gap-2.5 px-7 pb-4">
         <BrandButton label="Allow Notifications" onPress={continueToSignIn} />
         <GhostButton label="Maybe Later" onPress={continueToSignIn} />
       </View>
