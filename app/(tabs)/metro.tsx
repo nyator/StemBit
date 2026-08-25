@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StatusBar, TouchableOpacity, TextInput } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { Picker } from "@react-native-picker/picker";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useMetronome,
   TIME_SIGNATURES,
@@ -24,21 +25,25 @@ import {
 import { hapticImpact } from "../../utils/haptics";
 
 import HeaderComponent from "../../components/headerComponent";
-import { BpmInputAccessory } from "../../components/ui/bpmInputAccessory";
-import Screen from "../../components/ui/screen";
-import SegmentedControl from "../../components/ui/segmentedControl";
 import {
-  BeatDots,
-  BpmDial,
-  ControlLabel,
-  EngineNotice,
-  PickerButton,
-  TapTempoButton,
-  TransportRow,
-} from "../../components/ui/instrument";
+  BpmInputAccessory,
+  BPM_ACCESSORY_ID,
+} from "../../components/ui/bpmInputAccessory";
+import AmbientGlow from "../../components/ui/ambientGlow";
+import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import { DialGlowRings } from "../../components/ui/dialGlowRing";
+import BeatGlow, { BEAT_GLOW_SIZE } from "../../components/ui/beatGlow";
 import Slider from "../../components/ui/slider";
-import { COLORS, LAYOUT, SIZES } from "../../constants/theme";
-import { ChevronDown, Musicnote } from "../../components/icons";
+import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
+import {
+  AddCircle,
+  MinusCircle,
+  PlayFilled,
+  Stop,
+  ChevronDown,
+  Musicnote,
+} from "../../components/icons";
+import InfoButton from "../../components/ui/infoButton";
 import {
   SHEET_BACKGROUND,
   SHEET_HANDLE_INDICATOR,
@@ -111,18 +116,17 @@ export default function MetroScreen() {
   // amount and closes the same way.
   const renderBackdrop = useSheetBackdrop();
 
-  // Passed whole to the dial and the transport rather than picked apart here:
-  // they are the same set of controls on both instrument screens, and the shared
-  // components take the bundle.
-  const controls = useBpmControl({ bpm, setBpm, minBpm: MIN_BPM, maxBpm: MAX_BPM });
-
-  // The subdivision selector is indexed, so the options carry the index as
-  // their value and the long name as what a screen reader announces.
-  const feelOptions = PLAYBACK_FEELS.map((feel, index) => ({
-    value: index,
-    label: feel.short,
-    accessibilityLabel: feel.label,
-  }));
+  const {
+    bpmText,
+    handleBpmTextChange,
+    commitBpmText,
+    increase,
+    decrease,
+    startHoldIncrease,
+    startHoldDecrease,
+    endHold,
+    handleTapTempo,
+  } = useBpmControl({ bpm, setBpm, minBpm: MIN_BPM, maxBpm: MAX_BPM });
 
   // One row of the beat-grid: a labelled voice with a volume slider and a
   // tappable sound selector that opens that voice's picker. Figma node 102:724.
@@ -134,8 +138,8 @@ export default function MetroScreen() {
     onCommit: (v: number) => void,
     soundId: string
   ) => (
-    <View className="flex-row items-center w-full gap-2 px-3 py-4 bg-surface-muted rounded-lg">
-      <View className="items-center justify-center px-2 py-1 rounded-sm bg-black/50">
+    <View className="flex-row items-center w-full gap-[9px] px-[10px] py-4 bg-surface-muted rounded-lg">
+      <View className="items-center justify-center px-2 py-1 rounded-[8px] bg-[rgba(25,25,25,0.5)]">
         <Text className="text-white text-overline font-spaceBold">{badge}</Text>
       </View>
       <Slider
@@ -151,16 +155,17 @@ export default function MetroScreen() {
       <TouchableOpacity
         onPress={() => setEditingSound(voice)}
         accessibilityLabel={`${badge} sound`}
-        className="flex-row items-center justify-center gap-1 px-2 py-1.5 rounded-sm bg-surface-muted border border-hairline-segment"
+        className="flex-row items-center justify-center gap-1 px-2 py-[6px] rounded-[8px] bg-surface-muted border border-hairline-segment"
         style={{ width: 92 }}
       >
         <Text
-          className="text-label text-ink-muted font-satoshiMedium"
+          className="text-[13px] font-satoshiMedium"
+          style={{ color: "#D3D3D3" }}
           numberOfLines={1}
         >
           {soundLabel(soundId)}
         </Text>
-        <ChevronDown size={SIZES.rowIcon} color={COLORS.textMuted} />
+        <ChevronDown size={15} color="#D3D3D3" />
       </TouchableOpacity>
     </View>
   );
@@ -197,7 +202,7 @@ export default function MetroScreen() {
         handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
       >
         <BottomSheetView style={{ paddingBottom: 40 }}>
-          <View className="flex-row items-center justify-between px-screen py-2">
+          <View className="flex-row items-center justify-between px-5 py-2">
             <Text
               className="uppercase text-overline font-spaceBold text-white/70"
               style={{ letterSpacing: 0.72 }}
@@ -211,16 +216,16 @@ export default function MetroScreen() {
           <Picker
             selectedValue={currentId}
             onValueChange={(id) => setSound(id)}
-            itemStyle={{ color: COLORS.white }}
-            dropdownIconColor={COLORS.white}
-            style={{ width: "100%", color: COLORS.white }}
+            itemStyle={{ color: "#fff" }}
+            dropdownIconColor="#fff"
+            style={{ width: "100%", color: "#fff" }}
           >
             {METRONOME_SOUNDS.map((s) => (
               <Picker.Item
                 key={s.id}
                 label={s.label}
                 value={s.id}
-                color={COLORS.white}
+                color="#fff"
               />
             ))}
           </Picker>
@@ -246,14 +251,14 @@ export default function MetroScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           alignItems: "center",
-          paddingHorizontal: LAYOUT.screenPaddingX,
+          paddingHorizontal: 20,
           paddingTop: 4,
           paddingBottom: 40,
           gap: 25,
         }}
       >
         {/* Time signature categories: tap a chip to pick the meter. */}
-        <View className="w-full gap-2.5">
+        <View className="w-full gap-[10px]">
           {TIME_SIGNATURE_CATEGORIES.map((cat) => (
             <View key={cat.key} className="w-full gap-2">
               <Text
@@ -274,7 +279,7 @@ export default function MetroScreen() {
                           closeSheet();
                         }}
                         style={{ width: 71 }}
-                        className={`items-center justify-center px-2 py-2 rounded-sm border ${
+                        className={`items-center justify-center px-[9px] py-[7px] rounded-[10px] border ${
                           selected
                             ? "bg-white border-white"
                             : "border-hairline-segment"
@@ -282,7 +287,7 @@ export default function MetroScreen() {
                       >
                         <Text
                           className={`text-label font-spaceBold ${
-                            selected ? "text-ink-inverse" : "text-white"
+                            selected ? "text-[#151515]" : "text-white"
                           }`}
                         >
                           {ts.label}
@@ -297,7 +302,7 @@ export default function MetroScreen() {
         </View>
 
         {/* Beat grid: accent + beat volumes */}
-        <View className="w-full gap-1.5">
+        <View className="w-full gap-[5px]">
           {renderVolumeRow("accent", "Accent", accentVol, setAccentVol, setAccentVolume, accentSound)}
           {renderVolumeRow("beat", "BEATS", beatVol, setBeatVol, setBeatVolume, beatSound)}
         </View>
@@ -305,89 +310,242 @@ export default function MetroScreen() {
     </BottomSheetModal>
   );
 
+  // --- Beat Visuals ---
+  // A row of dots, one per beat. The downbeat lights up brand blue; secondary
+  // group accents (e.g. beat 4 of 6/8) light a dimmer blue, other beats
+  // white. Idle group-accent dots are slightly brighter so the meter's
+  // grouping is visible even before pressing play.
+  const renderBeatVisuals = () => {
+    const beats = [];
+    for (let i = 0; i < timeSignature.beats; i++) {
+      const isCurrent = i === currentBeat;
+      const isSecondaryAccent = i !== 0 && accents.includes(i);
+      const isAccent = i === 0 || isSecondaryAccent;
+      const activeColor =
+        i === 0 ? COLORS.brand : isSecondaryAccent ? COLORS.brandFrom : COLORS.text;
+      const idleColor = isSecondaryAccent
+        ? "rgba(0,139,194,0.3)"
+        : "rgba(255,255,255,0.15)";
+      const size = isCurrent ? 12 : 8;
+      // The halo marks the accent that is sounding, so it pulses along with
+      // the click rather than sitting on the accent dots permanently. Gated on
+      // isPlaying too: currentBeat resets to 0 on stop, and without this the
+      // downbeat would glow at a stopped metronome.
+      const showGlow = isPlaying && isCurrent && isAccent;
+      beats.push(
+        <View
+          key={i}
+          style={{
+            marginHorizontal: 3,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {showGlow && (
+            <BeatGlow
+              color={activeColor}
+              // Centres the painted box on the dot without it joining layout.
+              style={{
+                left: (size - BEAT_GLOW_SIZE) / 2,
+                top: (size - BEAT_GLOW_SIZE) / 2,
+              }}
+            />
+          )}
+          <View
+            style={{
+              width: size,
+              height: size,
+              borderRadius: 6,
+              backgroundColor: isCurrent ? activeColor : idleColor,
+            }}
+          />
+        </View>
+      );
+    }
+    return (
+      <View className="flex-row items-center justify-center" style={{ height: 12 }}>
+        {beats}
+      </View>
+    );
+  };
+
   return (
-    <Screen glows={["topLeftFar"]} className="items-center justify-start">
+    <SafeAreaView className="items-center justify-start flex-1 overflow-hidden bg-canvas">
+      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
+      {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
+
       <HeaderComponent />
 
-      {/* Scrolls only when it has to. The instrument is one screenful on a
-          modern phone and centres itself there; on a short one the content used
-          to be clipped by the tab bar with no way to reach it. flexGrow plus a
-          centred content container is what gives both behaviours from one
-          layout. */}
-      <ScrollView
-        className="w-full"
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View className="items-center justify-center w-full px-instrument">
-          {/* Time signature */}
-          <View className="items-center gap-3 mb-5">
-            <ControlLabel text="Time Signature" topic="timeSignature" />
-            <PickerButton
-              icon={Musicnote}
-              label={timeSignature.label}
-              onPress={openSheet}
-              accessibilityLabel={`Time signature, currently ${timeSignature.label}`}
-              style={{ width: SIZES.segmentWidth }}
-            />
+      <View className="items-center justify-center flex-1 w-full px-instrument">
+        {/* Time Signature */}
+        <View className="items-center gap-[10px] mb-[18px]">
+          <View className="flex-row items-center gap-[5px]">
+            <Text className="text-white text-label font-spaceBold">Time Signature</Text>
+            <InfoButton topic="timeSignature" />
           </View>
+          <TouchableOpacity
+            onPress={openSheet}
+            style={{ width: SIZES.segmentWidth }}
+            className="flex-row items-center justify-center gap-[8px] py-[7px] bg-white rounded-sm"
+          >
+            <Musicnote size={20} color={COLORS.black} />
+            <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
+            <Text className="text-black text-title font-spaceBold">
+              {timeSignature.label}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-          <BpmDial
-            controls={controls}
-            isPlaying={isPlaying}
+        {/* Dial */}
+        <View
+          className="items-center justify-center w-full mb-[18px]"
+          style={{ height: 249 }}
+        >
+          <DialGlowRings
             beat={currentBeat}
             isAccent={accents.includes(currentBeat)}
-          />
-
-          <BeatDots
-            count={timeSignature.beats}
-            currentBeat={currentBeat}
             isPlaying={isPlaying}
-            isAccent={accents.includes(currentBeat)}
-            accents={accents}
           />
+          <View
+            className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
+            style={{
+              width: SIZES.dial,
+              height: SIZES.dial,
+              borderWidth: 3,
+              ...SHADOWS.glow,
+            }}
+          >
+            <TextInput
+              className="p-0 text-center font-spaceBold"
+              style={{
+                minWidth: 110,
+                fontSize: 48,
+                color: isPlaying ? COLORS.brand : COLORS.white,
+              }}
+              value={bpmText}
+              onChangeText={handleBpmTextChange}
+              onEndEditing={commitBpmText}
+              keyboardType="numeric"
+              maxLength={3}
+              selectTextOnFocus
+              underlineColorAndroid="transparent"
+              inputAccessoryViewID={BPM_ACCESSORY_ID}
+            />
+            <Text className="uppercase text-label text-ink-muted font-satoshiBold">
+              BPM
+            </Text>
+          </View>
+        </View>
 
-          <TransportRow
-            controls={controls}
-            isPlaying={isPlaying}
-            blocked={isBlockedByOtherEngine}
-            playLabel="Start metronome"
-            stopLabel="Stop metronome"
-            onToggle={() => {
+        {renderBeatVisuals()}
+
+        {/* Transport: -/play-stop/+ */}
+        <View className="flex-row items-center gap-[10px] mt-[10px]">
+          <TouchableOpacity
+            accessibilityLabel="Decrease BPM"
+            onPress={decrease}
+            onLongPress={startHoldDecrease}
+            onPressOut={endHold}
+            className="p-2 rounded-lg bg-white/10"
+          >
+            <MinusCircle size={SIZES.transportSecondary} color={COLORS.white} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel={isPlaying ? "Stop metronome" : "Start metronome"}
+            // onPressIn, not onPress: onPress fires when the finger LIFTS, so
+            // the click (and its haptic) waited on the release rather than the
+            // tap. Transport should answer the moment you touch it.
+            onPressIn={() => {
               hapticImpact(prefs.haptics, "medium");
               if (isPlaying) stopMetronome();
               else startMetronome();
             }}
-          />
+            disabled={!isPlaying && isBlockedByOtherEngine}
+            style={
+              !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
+            }
+          >
+            {isPlaying ? (
+              <Stop size={SIZES.transportPrimary} />
+            ) : (
+              <PlayFilled size={SIZES.transportPrimary} />
+            )}
+          </TouchableOpacity>
 
-          <TapTempoButton onPress={controls.handleTapTempo} className="mt-5" />
+          <TouchableOpacity
+            accessibilityLabel="Increase BPM"
+            onPress={increase}
+            onLongPress={startHoldIncrease}
+            onPressOut={endHold}
+            className="p-2 rounded-lg bg-white/10"
+          >
+            <AddCircle size={SIZES.transportSecondary} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
 
-          <EngineNotice
-            show={isBlockedByOtherEngine}
-            message="Stop the Loop click track first"
-          />
+        {/* Tap tempo */}
+        <TouchableOpacity
+          // Tap tempo has to be onPressIn. The beat is where the finger lands,
+          // not where it lifts — timing off the release both felt late and
+          // measured the wrong thing, since how long a tap is held varies far
+          // more than when it starts.
+          onPressIn={handleTapTempo}
+          className="items-center justify-center mt-[18px] px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
+        >
+          <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
+        </TouchableOpacity>
 
-          {/* Subdivision */}
-          <View className="items-start w-full mt-5">
-            <ControlLabel
-              text="Subdivision"
-              topic="metroSubdivision"
-              className="mb-3"
-            />
-            <SegmentedControl
-              variant="row"
-              options={feelOptions}
-              value={feelIndex}
-              onChange={setFeelIndex}
-              respondOnPressIn
-            />
+
+        {/* Fixed-height slot so the notice appearing doesn't shift the
+            controls below it. */}
+        <View className="justify-center w-full mt-2 h-4">
+          {isBlockedByOtherEngine && (
+            <Text
+              numberOfLines={1}
+              className="text-xs text-center text-white/60 font-satoshiMedium"
+            >
+              Stop the Loop click track first
+            </Text>
+          )}
+        </View>
+
+        {/* Subdivision */}
+        <View className="items-start w-full mt-[18px]">
+          <View className="flex-row items-center gap-[5px] mb-[10px]">
+            <Text className="text-white text-label font-spaceBold">Subdivision</Text>
+            <InfoButton topic="metroSubdivision" />
+          </View>
+          <View className="flex-row items-center justify-between w-full">
+            {PLAYBACK_FEELS.map((feel, index) => {
+              const selected = index === feelIndex;
+              return (
+                <TouchableOpacity
+                  key={feel.label}
+                  accessibilityLabel={feel.label}
+                  onPressIn={() => setFeelIndex(index)}
+                  style={{ width: SIZES.segmentWidth }}
+                  className={`items-center justify-center py-[7px] rounded-sm ${selected
+                    ? "bg-white"
+                    : "bg-surface-muted border border-hairline-segment"
+                    }`}
+                >
+                  <Text
+                    className={`text-title font-spaceBold ${selected ? "text-black" : "text-white"}`}
+                  >
+                    {feel.short}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
-      </ScrollView>
+      </View>
 
       {renderTimeSignatureModal()}
       {renderSoundPickerModal()}
       <BpmInputAccessory />
-    </Screen>
+      <StatusBar barStyle="light-content" />
+    </SafeAreaView>
   );
 }
