@@ -13,10 +13,14 @@
  */
 
 const {
+  REPEAT_CHOICES,
   barAt,
   barLabel,
   barSpan,
   gridStepSeconds,
+  repeatChoiceLabel,
+  repeatDescription,
+  repeatLabel,
   secondsPerBar,
   secondsPerBeat,
   snapSeconds,
@@ -153,5 +157,90 @@ describe("snapSeconds — magnetic, not quantised", () => {
   it("is stable: snapping an already-snapped position changes nothing", () => {
     const once = snapSeconds(2.05, BPM, PX);
     expect(snapSeconds(once, BPM, PX)).toBe(once);
+  });
+});
+
+
+/**
+ * The section pad's repeat count.
+ *
+ * Nine values, picked from a list rather than cycled through — a ladder of
+ * doublings could not express a three-times chorus, and a tap-to-advance badge
+ * put "8" seven presses away from "1" on a chip inside the button that starts
+ * the song. What these check is that the list covers what a band actually gets
+ * asked for, and that every count can say what it does in all three places it
+ * has to: the badge, the picker, and out loud.
+ */
+describe("REPEAT_CHOICES — what a section can be asked to do", () => {
+  it("offers every count from one to eight, not just the doublings", () => {
+    expect([...REPEAT_CHOICES]).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 0]);
+  });
+
+  it("puts forever last, where it reads as the exception it is", () => {
+    expect(REPEAT_CHOICES[REPEAT_CHOICES.length - 1]).toBe(0);
+  });
+
+  it("has no duplicates, so nothing in the picker is unreachable", () => {
+    expect(new Set(REPEAT_CHOICES).size).toBe(REPEAT_CHOICES.length);
+  });
+});
+
+describe("repeatLabel — what the badge shows", () => {
+  it("draws the ordinary once-through as a dash, not as x1", () => {
+    // Labelling the default would make every pad in the grid look configured,
+    // and the eye would have to read all of them to find the one that isn't.
+    expect(repeatLabel(1)).toBe("–");
+    expect(repeatLabel(undefined)).toBe("–");
+  });
+
+  it("counts the rest", () => {
+    expect(repeatLabel(2)).toBe("×2");
+    expect(repeatLabel(5)).toBe("×5");
+    expect(repeatLabel(8)).toBe("×8");
+  });
+
+  it("draws forever as an infinity sign", () => {
+    expect(repeatLabel(0)).toBe("∞");
+  });
+});
+
+describe("repeatChoiceLabel — what the picker shows", () => {
+  it("spells out every option, the default included", () => {
+    // Unlike the badge, nothing here is hidden: the list is being read to make
+    // a choice, so "1" has to be as visible as "5".
+    expect(repeatChoiceLabel(1)).toBe("1");
+    expect(repeatChoiceLabel(5)).toBe("5");
+    expect(repeatChoiceLabel(0)).toBe("∞");
+  });
+
+  it("gives every choice a face", () => {
+    for (const choice of REPEAT_CHOICES) {
+      expect(repeatChoiceLabel(choice).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("repeatDescription — the count as a sentence", () => {
+  it("says what happens after the repeats, which is the non-obvious half", () => {
+    expect(repeatDescription(1)).toBe("Plays once, then the song carries on");
+    expect(repeatDescription(4)).toBe(
+      "Plays 4 times, then the song carries on"
+    );
+  });
+
+  it("treats an unset count as once", () => {
+    expect(repeatDescription(undefined)).toBe(repeatDescription(1));
+  });
+
+  it("describes forever as waiting for you rather than as a number", () => {
+    expect(repeatDescription(0)).toBe("Repeats until you hit something else");
+  });
+
+  it("describes every choice without saying 'undefined' or 'NaN'", () => {
+    for (const choice of REPEAT_CHOICES) {
+      const said = repeatDescription(choice);
+      expect(said).not.toMatch(/undefined|NaN/);
+      expect(said.length).toBeGreaterThan(0);
+    }
   });
 });

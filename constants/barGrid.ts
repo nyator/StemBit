@@ -21,6 +21,54 @@
 /** Steps a bar grid is allowed to thin out to, coarsest last. */
 export const BAR_STEPS = [1, 2, 4, 8, 16, 32, 64, 128];
 
+/**
+ * Every repeat count a section pad offers, in the order they're shown.
+ *
+ * All of 1 through 8, not the doublings this started as. Powers of two are the
+ * common case, not the only one -- a three-times chorus and a five-bar vamp are
+ * ordinary things to ask a band for, and a ladder that cannot express them
+ * makes the feature useless exactly when it is needed.
+ *
+ * Which is also why the badge stopped cycling. Nine values behind a
+ * tap-to-advance control is up to eight presses to reach one of them, on a
+ * chip the size of a thumbnail, on stage. They are picked from a list instead.
+ *
+ * 0 is last and means forever -- see SECTION_LOOP_FOREVER.
+ *
+ * Lives here with the bar maths because it is the same idea: a section is
+ * counted in repetitions of itself the way a song is counted in bars, and both
+ * are the units a musician thinks in rather than the seconds underneath.
+ */
+export const REPEAT_CHOICES = [1, 2, 3, 4, 5, 6, 7, 8, 0] as const;
+
+/**
+ * The badge's face for a repeat count.
+ *
+ * Once is drawn as a dash, not "×1". A pad that plays its section once and
+ * moves on is the ordinary case, and labelling the ordinary case makes every
+ * pad in the grid look like it has been configured -- the eye then has to read
+ * all of them to find the one that hasn't.
+ */
+export const repeatLabel = (repeats: number | undefined) =>
+  repeats === 0 ? "∞" : !repeats || repeats === 1 ? "–" : `×${repeats}`;
+
+/**
+ * A repeat count as the picker draws it, where every option is spelled out.
+ *
+ * Unlike the badge, nothing here is the default and nothing is hidden: the list
+ * is being read to make a choice, so "1" has to be as visible as "5".
+ */
+export const repeatChoiceLabel = (repeats: number) =>
+  repeats === 0 ? "∞" : String(repeats);
+
+/** The same count as a sentence, for a screen reader and the picker's caption. */
+export const repeatDescription = (repeats: number | undefined) =>
+  repeats === 0
+    ? "Repeats until you hit something else"
+    : !repeats || repeats === 1
+      ? "Plays once, then the song carries on"
+      : `Plays ${repeats} times, then the song carries on`;
+
 export const BEATS_PER_BAR = 4;
 
 const DEFAULT_BPM = 120;

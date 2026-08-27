@@ -284,6 +284,16 @@ export const TYPE = {
 
 // Fixed sizes the design repeats verbatim across screens.
 export const SIZES = {
+  /**
+   * The smallest any control is allowed to be, on either axis.
+   *
+   * 44pt is the platform floor on iOS and Android alike. It is not a formality
+   * on the performance screen, which is the one surface in the app operated at
+   * arm's length, in the dark, by someone looking at a band instead of at a
+   * phone -- so anything that ends up under it here is a control that gets
+   * missed during a song.
+   */
+  minTouch: 44,
   buttonHeight: 55,
   rowIcon: 20,
   navIcon: 24,

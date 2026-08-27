@@ -6,9 +6,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppState } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
+import type { ArrangementSpan } from "../constants/arrangement";
 import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
 import { METRONOME_SOUNDS, useMetronome } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
@@ -93,6 +95,24 @@ export type PlaySpan = {
   startSeconds: number;
   endSeconds?: number;
   loop?: boolean;
+  /**
+   * How many times through before the song carries on past this span.
+   *
+   * Absent means the engine falls back to `loop` -- which is how the timeline
+   * launches, and why this is optional rather than defaulted. Present, it wins:
+   * 1 plays once and continues, SECTION_LOOP_FOREVER (0) holds, and anything
+   * higher counts. See CueSection.repeats.
+   */
+  repeats?: number;
+  /**
+   * The song's sections, for a play-through that honours all of them.
+   *
+   * Sent by PLAY, which walks the whole arrangement rather than firing one
+   * section: the engine repeats each one as its own count says and carries on
+   * into the next. A section pad sends `repeats` instead -- it launches one
+   * span and has no opinion about what follows.
+   */
+  arrangement?: ArrangementSpan[];
 };
 
 type SessionPlaybackContextValue = {
@@ -346,6 +366,12 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       offset: section?.startSeconds ?? 0,
       endSeconds: section?.endSeconds ?? 0,
       loop: section?.loop ?? true,
+      // Sent through as-is, undefined included. The engine reads a present
+      // `repeats` as "a count was asked for" and an absent one as "use the
+      // old loop flag", so defaulting it here would rewrite every timeline
+      // seek into a counted launch.
+      repeats: section?.repeats,
+      arrangement: section?.arrangement,
     });
     setIsPlaying(true);
   }
@@ -501,6 +527,27 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       // Ignore malformed messages.
     }
   };
+
+  // Bring the engine's audio clock back when the app returns.
+  //
+  // The ONLY thing this listens for. Unlike the loop and metronome contexts
+  // there is no stop-on-background here, and there should not be: a song is
+  // minutes long and the whole point of a setlist is that it keeps running
+  // while you look away.
+  //
+  // What it fixes is the other half of that promise. Android suspends a
+  // WebView's AudioContext when the activity pauses -- pulling the notification
+  // shade down does exactly that -- and nothing brought it back, because every
+  // resume in the engine sits inside ensureContext, which only runs when a
+  // command arrives. Returning to the app is not a command, so the song stayed
+  // stopped until the next thing anyone pressed.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") postToEngine({ type: "resume" });
+    });
+    return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const restartEngine = () => {
     engineReadyRef.current = false;

@@ -1,6 +1,6 @@
 import { Animated, Text, TouchableOpacity, View } from "react-native";
 
-import { COLORS, TRACK_PALETTE } from "../../constants/theme";
+import { COLORS, SIZES, TRACK_PALETTE } from "../../constants/theme";
 
 // One stem, as something to hit.
 //
@@ -14,6 +14,17 @@ import { COLORS, TRACK_PALETTE } from "../../constants/theme";
 // is rarely "how loud is the bass" -- it is "is anything coming out of the bass
 // at all", asked in the half second after something sounds wrong. A moving bar
 // answers that; a name and a border don't.
+//
+// TWO CONTROLS, BOTH NAMED. The body solos, the strip along the bottom mutes.
+// That split used to be invisible: the body carried no verb at all, so the only
+// way to discover that tapping a tile solos it was to tap one mid-song and hear
+// everything else drop out. It now says SOLO on it. The strip already said
+// MUTE, and still does.
+//
+// Both of them also used to lie to a screen reader -- the body announced itself
+// as "Mute <track>" while calling solo, and the strip announced "Solo <track>"
+// while calling mute, so the two labels were exactly inverted against what the
+// buttons did. Whatever a control says out loud has to be what it does.
 
 /**
  * Channel colours, in the order stems get them. Defined in constants/theme.ts
@@ -26,7 +37,12 @@ export const TRACK_COLORS = TRACK_PALETTE;
 export const trackColor = (index: number) =>
   TRACK_COLORS[index % TRACK_COLORS.length];
 
-export const TILE_HEIGHT = 98;
+// The mute strip used to be about 28pt tall. See SIZES.minTouch for why that
+// matters more on this screen than anywhere else in the app.
+const MIN_TOUCH = SIZES.minTouch;
+
+const BODY_HEIGHT = 76;
+export const TILE_HEIGHT = BODY_HEIGHT + MIN_TOUCH;
 
 type TrackTileProps = {
   name: string;
@@ -60,6 +76,7 @@ export default function TrackTile({
   });
 
   const accent = isSolo ? COLORS.warning : color;
+  const status = isSolo ? "SOLO" : isSilent ? "MUTED" : "ON";
 
   return (
     <View
@@ -72,28 +89,54 @@ export default function TrackTile({
         // unreadable at the distance this gets used from.
         borderColor: isSilent ? COLORS.borderIdle : accent,
         backgroundColor: isSilent ? "transparent" : `${accent}1F`,
-        opacity: isSilent ? 0.5 : 1,
       }}
     >
       <TouchableOpacity
         onPress={onToggleSolo}
         activeOpacity={0.85}
-        accessibilityLabel={`${isSilent ? "Unmute" : "Mute"} ${name}`}
-        className="justify-between flex-1 px-3 pt-3 pb-2"
+        accessibilityRole="button"
+        accessibilityLabel={isSolo ? `Clear solo on ${name}` : `Solo ${name}`}
+        accessibilityHint={
+          isSolo
+            ? "Returns every other track to the mix."
+            : "Silences every other track until you clear it."
+        }
+        accessibilityState={{ selected: isSolo }}
+        className="justify-between px-3 pt-2.5 pb-2"
+        style={{ height: BODY_HEIGHT }}
       >
-        <Text
-          className="text-overline text-white font-satoshiBold"
-          numberOfLines={1}
-        >
-          {name}
-        </Text>
+        <View className="flex-row items-center justify-between">
+          <Text
+            // 14, not the 12 this was. A stem's name is the tile's whole
+            // identity and the thing you scan a grid of these for.
+            className="flex-1 mr-1 text-label font-satoshiBold"
+            style={{ color: isSilent ? COLORS.textSoft : COLORS.white }}
+            numberOfLines={1}
+          >
+            {name}
+          </Text>
+
+          {/* The tile's own verb, which it never had.
+              Solo is the destructive one here -- it silences everything else --
+              so it is the one that has to be legible before it is pressed, not
+              inferred afterwards. */}
+          <Text
+            className="text-micro font-spaceBold tracking-widest"
+            style={{ color: isSolo ? COLORS.warning : COLORS.textMuted }}
+          >
+            SOLO
+          </Text>
+        </View>
 
         <View>
           <Text
-            className="mb-1.5 text-nav font-spaceBold tracking-widest"
+            // 11 rather than 10: the design system calls 11 the floor for
+            // anything read while playing, and this is the line that says
+            // whether the track is coming out at all.
+            className="mb-1.5 text-micro font-spaceBold tracking-widest"
             style={{ color: isSilent ? COLORS.textMuted : accent }}
           >
-            {isSolo ? "SOLO" : isSilent ? "MUTED" : "ON"}
+            {status}
           </Text>
 
           {/* Along the bottom of the tile, the width of it -- a level is easier
@@ -110,27 +153,32 @@ export default function TrackTile({
         </View>
       </TouchableOpacity>
 
-      {/* Solo along the bottom edge rather than as a second tile: it is the
-          rarer action, and the tile's main body should stay the mute, which is
-          the one hit in a hurry. */}
-
-      {!isSolo &&
-        <TouchableOpacity
-          onPress={onToggleMute}
-          accessibilityLabel={`${isSolo ? "Clear solo" : "Solo"} ${name}`}
-          className="items-center py-2"
-          style={{
-            backgroundColor: isSolo ? COLORS.warning : "rgba(255,255,255,0.07)",
-          }}
+      {/* Mute along the bottom edge, always present.
+          It used to be hidden whenever the track was soloed, which left the one
+          track you could still hear with no way to silence it -- and took the
+          control away at exactly the moment the tile was the loudest thing in
+          the room. */}
+      <TouchableOpacity
+        onPress={onToggleMute}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={isSilent ? `Unmute ${name}` : `Mute ${name}`}
+        accessibilityState={{ selected: isSilent }}
+        className="items-center justify-center"
+        style={{
+          height: MIN_TOUCH,
+          backgroundColor: isSilent
+            ? "rgba(255,255,255,0.13)"
+            : "rgba(255,255,255,0.07)",
+        }}
+      >
+        <Text
+          className="text-micro font-spaceBold tracking-widest"
+          style={{ color: isSilent ? COLORS.white : COLORS.textMuted }}
         >
-          <Text
-            className="text-nav font-spaceBold tracking-widest"
-            style={{ color: isSolo ? COLORS.black : COLORS.textMuted }}
-          >
-            MUTE
-          </Text>
-        </TouchableOpacity>
-      }
+          {isSilent ? "UNMUTE" : "MUTE"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }

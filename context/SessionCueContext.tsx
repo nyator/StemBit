@@ -11,6 +11,7 @@ import { KEYS, usePadPlayback } from "./PadPlaybackContext";
 import { useLoopPlayback } from "./LoopPlaybackContext";
 import { useMetronome } from "./MetronomeContext";
 import { useSessionPlayback } from "./SessionPlaybackContext";
+import { arrangementFrom } from "../constants/arrangement";
 import { usePreferences, type PadLayer } from "./PreferencesContext";
 import { findPadPackByKey } from "../constants/pads";
 import { findLoopByKey } from "../constants/loops";
@@ -264,7 +265,19 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
       session.loadCue(item.id, tracks).catch((error) => {
         console.error("Failed to cue stems", error);
       });
-      session.play(tracks, item.bpm ?? 120);
+      // The song's shape goes with it, so a cue fired from a setlist row plays
+      // the arrangement the same way the performance screen's PLAY does.
+      // Without this the counts only worked from the one screen that happened
+      // to send them, which made the same song behave differently depending on
+      // where it was started from -- the worst kind of difference to discover
+      // on stage.
+      const sections = item.sections ?? [];
+      session.play(tracks, item.bpm ?? 120, 0, {
+        id: "song",
+        startSeconds: sections[0]?.startSeconds ?? 0,
+        loop: false,
+        arrangement: arrangementFrom(sections),
+      });
       return;
     }
 

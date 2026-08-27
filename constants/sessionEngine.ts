@@ -302,6 +302,133 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           }
         }
 
+        // What to do to the sources, and when, for a song played as its
+        // sections are configured rather than straight through.
+        //
+        // PLAY used to hand the engine one flat span from the top of the song
+        // to the end of the file, so every repeat count on every section did
+        // nothing unless that section's own pad was the thing that started it.
+        // This walks the arrangement instead.
+        //
+        // Nothing here stops or restarts a source. The stems are started once
+        // and play continuously; a section that repeats is done by pointing the
+        // SAME sources' loop window at it and taking the window away again
+        // afterwards, which is why the seams are silent -- there is no seek to
+        // hear. That also means the whole schedule can be computed up front,
+        // from spans and counts alone, instead of watching the playhead and
+        // reacting to it on a thread that has a beat to deliver.
+        //
+        // Each step carries the song position it corresponds to, so live can
+        // be re-based as it fires. Without that the reported position is the
+        // raw elapsed time, which runs ahead of the song the moment anything
+        // has looped -- every readout on the screen would drift further out
+        // with each repeat.
+        //
+        // Pure, and covered by tests: the timing is the whole of the risk here
+        // and none of it is visible until it is wrong in front of a room.
+        function planArrangement(sections, fromSeconds, atTime) {
+          var plan = [];
+          var cursorTime = atTime;
+          var position = fromSeconds;
+
+          for (var i = 0; i < sections.length; i++) {
+            var s = sections[i];
+            var start = s.startSeconds;
+            var end = s.endSeconds;
+            // A section with no length has no window to loop, and one already
+            // behind the playhead is not going to be reached.
+            if (!(end > start)) continue;
+            if (end <= position) continue;
+
+            // The first section can be entered partway through -- PLAY starts
+            // at the top of the song, but a pad launch lands mid-section.
+            var enterAt = position > start ? position : start;
+            var firstSpan = end - enterAt;
+            var span = end - start;
+            var plays = typeof s.repeats === "number" ? s.repeats : 1;
+
+            if (plays === 0) {
+              // A vamp. Loop it and schedule nothing after, because nothing
+              // after it is going to play until a pad is hit.
+              plan.push({
+                when: cursorTime + firstSpan / 2,
+                position: enterAt + firstSpan / 2,
+                looping: true,
+                loopStart: start,
+                loopEnd: end,
+              });
+              return plan;
+            }
+
+            if (plays >= 2) {
+              // On, halfway through the first pass: after the previous
+              // section's window was taken away, and well before this one's
+              // end is reached.
+              plan.push({
+                when: cursorTime + firstSpan / 2,
+                position: enterAt + firstSpan / 2,
+                looping: true,
+                loopStart: start,
+                loopEnd: end,
+              });
+              // Off, halfway through the last pass, so the source runs on past
+              // the boundary into whatever follows.
+              plan.push({
+                when: cursorTime + firstSpan + (plays - 1.5) * span,
+                position: start + span / 2,
+                looping: false,
+                loopStart: start,
+                loopEnd: end,
+              });
+              cursorTime += firstSpan + (plays - 1) * span;
+            } else {
+              // Played once: the audio already flows through it, so there is
+              // nothing to schedule.
+              cursorTime += firstSpan;
+            }
+
+            position = end;
+          }
+
+          return plan;
+        }
+
+        // One step of a planned arrangement, handed to a timer.
+        //
+        // Timed loosely on purpose: every step is aimed at the middle of a pass
+        // rather than at its edge, so a JS timer that wakes a few tens of
+        // milliseconds either side of its mark still lands inside the window it
+        // was meant for. What it must NOT do is use its own wake time as the
+        // truth -- live is re-based to the step's scheduled time, so the
+        // reported position stays right however late the timer actually ran.
+        function scheduleArrangementStep(step, sources, generation) {
+          var delay = (step.when - audioContext.currentTime) * 1000;
+          setTimeout(
+            function () {
+              // Another launch has replaced this one; these sources are either
+              // already stopped or belong to somebody else's plan.
+              if (generation !== launchGeneration) return;
+
+              for (var i = 0; i < sources.length; i++) {
+                if (step.looping) {
+                  sources[i].loopStart = step.loopStart;
+                  sources[i].loopEnd = step.loopEnd;
+                }
+                sources[i].loop = step.looping;
+              }
+
+              if (live) {
+                live.at = step.when;
+                live.offset = step.position;
+                live.loopStart = step.loopStart;
+                live.loopEnd = step.loopEnd;
+                live.looping = step.looping;
+              }
+            },
+            Math.max(0, delay)
+          );
+        }
+
         // Starts every track of a section on ONE time value. This is the whole
         // point of the engine: one shared start means the stems are locked to
         // each other by construction, not by being started close together.
@@ -319,14 +446,40 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           // also why they stay locked to each other across a jump.
           var offset = section.offset || 0;
           var end = section.endSeconds || 0;
-          // Looping is the section pads' behaviour -- hold on a chorus and it
-          // repeats. The timeline asks for it off, because playing from a point
-          // and having the song silently jump backwards is not what a playhead
-          // dragged onto bar 40 promises.
-          var looping = section.loop !== false;
+
+          // How many times through, and therefore which of three shapes this
+          // launch has.
+          //
+          //   repeats absent  -- the old two-state behaviour, kept for the
+          //                      timeline: loop unless told not to.
+          //   repeats === 0   -- round and round until something else is hit.
+          //   repeats === 1   -- play it once and carry on through the song.
+          //   repeats >= 2    -- N times round, then carry on through the song.
+          //
+          // The last two are the same thing to Web Audio, which has no notion
+          // of a repeat count: source.loop runs forever or not at all. So a
+          // count is done by starting the source looping and switching loop off
+          // partway through the final pass -- see the timer below.
+          // A whole song played as configured, rather than one span. The
+          // sources are set up exactly as for a single play-through -- the
+          // arrangement is applied by retuning them afterwards, never by
+          // starting them differently.
+          var arrangement =
+            section.arrangement && section.arrangement.length > 0
+              ? section.arrangement
+              : null;
+
+          var hasCount = arrangement ? true : typeof section.repeats === "number";
+          var repeats = arrangement ? 1 : hasCount ? section.repeats : null;
+          var loopsForever = hasCount ? repeats === 0 : section.loop !== false;
+          // Only ever true where a count was actually asked for; the timeline's
+          // launches never take this path.
+          var countsDown = hasCount && repeats >= 2;
+          var looping = loopsForever || countsDown;
 
           var boundary = 0;
           var last = null;
+          var loopingSources = [];
 
           for (var i = 0; i < section.tracks.length; i++) {
             var id = section.tracks[i];
@@ -345,6 +498,14 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               // an end the section runs to the end of the file.
               source.loopStart = offset;
               source.loopEnd = boundary;
+              source.connect(gainForTrack(id));
+              source.start(atTime, offset);
+              loopingSources.push(source);
+            } else if (hasCount) {
+              // Played once and left running. No duration cap, because the
+              // point of a count is that the song continues past the section
+              // rather than stopping at its edge.
+              source.loop = false;
               source.connect(gainForTrack(id));
               source.start(atTime, offset);
             } else {
@@ -368,11 +529,95 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             looping: looping,
           };
 
+          // Let a counted section out of its loop, so the song carries on.
+          //
+          // Web Audio can't be told "loop four times". What it can be told, at
+          // any moment, is to stop looping -- and a source whose loop is
+          // switched off mid-pass simply plays on past loopEnd into the rest of
+          // the file, which is exactly the handover wanted. So the count is a
+          // timer that flips the flag during the final pass.
+          //
+          // Aimed at the MIDDLE of that pass rather than at its edge. A timer
+          // in this WebView is not sample-accurate and doesn't need to be:
+          // anywhere inside the last time round does the same thing, so half a
+          // pass of slack either way turns a timing problem into a non-problem.
+          // Landing it late is the only real failure -- one pass late and the
+          // section plays N+1 times -- and half a span of margin is orders of
+          // magnitude more than the jitter.
+          // Walk the song's sections, retuning the loop window as the playhead
+          // crosses each boundary. Every step re-bases live as well as the
+          // sources, so the position the screen draws stays the song's own
+          // rather than raw elapsed time -- which runs ahead the moment
+          // anything has repeated.
+          if (arrangement) {
+            // Close any section left open. A section's end is optional and the
+            // last one usually has none -- it runs to wherever the song stops,
+            // and this is the only place that knows where that is, because this
+            // is where the decoded buffers live. The app cannot answer it: the
+            // performance screen happens to have measured the stems, and no
+            // other surface that fires a cue ever has.
+            var closed = [];
+            for (var a = 0; a < arrangement.length; a++) {
+              var wanted = arrangement[a];
+              var closeAt = wanted.endSeconds;
+              if (!(closeAt > wanted.startSeconds)) closeAt = boundary;
+              closed.push({
+                startSeconds: wanted.startSeconds,
+                endSeconds: closeAt,
+                repeats: wanted.repeats,
+              });
+            }
+
+            var steps = planArrangement(closed, offset, atTime);
+            var arrangementSources = [];
+            for (var p = 0; p < section.tracks.length; p++) {
+              var held = playing[section.tracks[p]];
+              if (held) arrangementSources.push(held.source);
+            }
+
+            for (var st = 0; st < steps.length; st++) {
+              scheduleArrangementStep(
+                steps[st],
+                arrangementSources,
+                generation
+              );
+            }
+          }
+
+          if (countsDown && loopingSources.length > 0) {
+            var span = boundary - offset;
+            if (span > 0) {
+              var releaseAt = atTime + (repeats - 0.5) * span;
+              var delayMs = (releaseAt - audioContext.currentTime) * 1000;
+              setTimeout(
+                function () {
+                  // Another launch has been and gone; these sources are either
+                  // already stopped or belong to nobody.
+                  if (generation !== launchGeneration) return;
+                  for (var s = 0; s < loopingSources.length; s++) {
+                    loopingSources[s].loop = false;
+                  }
+                  // The reported position wraps on this flag, so leaving it set
+                  // would keep the playhead folding back into the section long
+                  // after the audio had moved past it -- every readout on the
+                  // screen stuck in a bar the song has left.
+                  if (live) live.looping = false;
+                },
+                Math.max(0, delayMs)
+              );
+            }
+          }
+
           // Played straight, the transport stops when the audio runs out --
           // otherwise the counter keeps climbing over silence and the screen
           // insists the song is still going. One source carries this; they all
           // end on the same sample.
-          if (!looping && last) {
+          //
+          // Counted sections get it too: once the timer above releases the
+          // loop they run to the end of the file like any straight play, so
+          // they need the same tidy-up. A section looping forever never ends
+          // and never fires this.
+          if (!loopsForever && last) {
             last.onended = function () {
               if (generation !== launchGeneration) return;
               post({ type: "ended", sectionId: section.sectionId });
@@ -650,7 +895,16 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // launch that hasn't fired is deliberate: on stage, hitting a second
         // pad before the first lands means you changed your mind, and the last
         // thing pressed is what should play.
-        function armSection(sectionId, tracks, quantum, offset, endSeconds, loop) {
+        function armSection(
+          sectionId,
+          tracks,
+          quantum,
+          offset,
+          endSeconds,
+          loop,
+          repeats,
+          arrangement
+        ) {
           var ctx = ensureContext();
           if (!transportRunning) startTransport();
 
@@ -666,6 +920,15 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             offset: offset || 0,
             endSeconds: endSeconds || 0,
             loop: loop !== false,
+            // Carried through unchanged, undefined included: launch() tells a
+            // count that was asked for from one that was never mentioned, and
+            // an arm that defaulted it would turn every timeline seek into a
+            // counted section.
+            repeats: repeats,
+            // The whole song's shape, when PLAY sent one. Carried through an
+            // arm the same way a count is: what launches has to be what was
+            // asked for a bar ago, not what the screen looks like now.
+            arrangement: arrangement,
             atBeat: nextBoundary(fromBeat, q),
             scheduled: false,
           };
@@ -796,6 +1059,43 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           );
         }
 
+        // Bring the audio back when the app does.
+        //
+        // Android suspends a WebView AudioContext when the activity pauses,
+        // and pulling the notification shade down is a pause. Suspending stops
+        // the context clock, so everything scheduled against it stops with it
+        // -- the audio simply cuts out.
+        //
+        // Nothing used to bring it back. Every resume in this file lives inside
+        // ensureContext, which runs when a COMMAND arrives -- a load, a launch,
+        // a tempo change. Coming back to the app is not a command, so the audio
+        // stayed dead until the next thing the user pressed. A glance at a
+        // notification killed the song.
+        //
+        // Suspension pauses rather than tears down: the sources are still
+        // there and the clock picks up where it stopped, so this continues the
+        // song rather than restarting it.
+        function resumeAudio() {
+          if (!audioContext) return;
+          if (audioContext.state !== "suspended") return;
+          var resumed = audioContext.resume();
+          if (resumed && resumed.catch) {
+            resumed.catch(function () {
+              // Refused: the page is back but the OS has not handed the audio
+              // session over yet. ensureContext tries again on the next
+              // command, and the app re-sends this on the next foreground.
+            });
+          }
+        }
+
+        // Both, because neither is reliable alone. The page event is the fast
+        // path and needs no bridge; the explicit command covers the case where
+        // an offscreen WebView is never considered hidden in the first place,
+        // and so never fires one.
+        document.addEventListener("visibilitychange", function () {
+          if (!document.hidden) resumeAudio();
+        });
+
         function handleMessage(event) {
           var data;
           try {
@@ -862,11 +1162,16 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
                 data.quantum,
                 data.offset,
                 data.endSeconds,
-                data.loop
+                data.loop,
+                data.repeats,
+                data.arrangement
               );
               break;
             case "setTrack":
               setTrack(data.id, data.level, data.muted, data.pan);
+              break;
+            case "resume":
+              resumeAudio();
               break;
             case "ping":
               post({ type: "pong" });

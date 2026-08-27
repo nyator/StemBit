@@ -367,7 +367,14 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       }
       // Back on screen, so whatever took us away was brief.
       cancelPendingStop();
-      if (state === "active") checkEngineAlive();
+      if (state === "active") {
+        // The OS suspends the WebView audio clock when the app pauses, and
+        // nothing inside the page brings it back on its own -- see resumeAudio
+        // in the engine. Without this, a pulled-down notification shade left
+        // the audio stopped for good.
+        postToEngine({ type: "resume" });
+        checkEngineAlive();
+      }
     });
     return () => {
       subscription.remove();

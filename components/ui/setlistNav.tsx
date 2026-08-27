@@ -68,6 +68,7 @@ function Neighbour({
     <TouchableOpacity
       onPress={cue?.onPress}
       disabled={!enabled}
+      accessibilityRole="button"
       accessibilityLabel={
         enabled
           ? `Load ${title}`
@@ -75,6 +76,10 @@ function Neighbour({
             ? "No earlier cue to load"
             : "No later cue to load"
       }
+      // Loading is not playing, and at the ends of a set the button is dimmed
+      // rather than gone -- both worth knowing without being able to see it.
+      accessibilityHint={enabled ? "Loads it and stops there." : undefined}
+      accessibilityState={{ disabled: !enabled }}
       activeOpacity={0.7}
       className="flex-row items-center flex-1 px-3 border rounded-lg"
       style={{

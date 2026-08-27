@@ -1,6 +1,7 @@
 import { Animated, Text, TouchableOpacity, View } from "react-native";
 
-import { COLORS } from "../../constants/theme";
+import { COLORS, SIZES } from "../../constants/theme";
+import { repeatDescription, repeatLabel } from "../../constants/barGrid";
 
 // One section of a song, as a pad you hit.
 //
@@ -38,6 +39,16 @@ type SectionPadProps = {
   onPress: () => void;
   /** The shorter pad used inside a setlist row, where space is borrowed. */
   compact?: boolean;
+  /**
+   * How many times this section plays when hit. See CueSection.repeats.
+   *
+   * The badge only appears where there is somewhere to send the change. A
+   * compact pad in a setlist row has no room for a second target and no
+   * business editing the song, so it is left off there.
+   */
+  repeats?: number;
+  /** Opens the picker. The badge shows the count; it no longer changes it. */
+  onEditRepeats?: () => void;
 };
 
 /** mm:ss for the pad's idle line. */
@@ -54,8 +65,13 @@ export default function SectionPad({
   playheadSeconds,
   onPress,
   compact = false,
+  repeats,
+  onEditRepeats,
 }: SectionPadProps) {
   const hasSpan = endSeconds !== undefined && endSeconds > startSeconds;
+  const showBadge = !compact && !!onEditRepeats;
+  // Set apart from the ordinary once-through, which is what earns the colour.
+  const badgeIsSet = repeats === 0 || (!!repeats && repeats > 1);
 
   // Clamped at both ends, so a playhead before this section reads as empty
   // rather than as negative width, and a looped section that overshoots by a
@@ -121,10 +137,38 @@ export default function SectionPad({
         </>
       )}
 
+      {/* Launch and repeats sit side by side, sharing the pad's width.
+          Neither overlaps the other: they are two flex children of one row, so
+          which one a press lands on is decided by geometry rather than by
+          which view happens to paint last. The repeat control was an absolutely
+          positioned chip over this button's corner, which is exactly the
+          arrangement where a press can go to the wrong one -- or to neither. */}
+      <View className="flex-row flex-1">
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.85}
-        accessibilityLabel={`Launch ${name}`}
+        accessibilityRole="button"
+        // Everything the pad shows, said out loud in the same order.
+        // "Launch Chorus" was all this used to announce, which dropped the two
+        // things the pad exists to convey: where the section sits in the song,
+        // and whether it is the one currently running.
+        accessibilityLabel={[
+          name,
+          `section ${index + 1}`,
+          `starts at ${clock(startSeconds)}`,
+          repeats === 0
+            ? "repeats until stopped"
+            : repeats && repeats > 1
+              ? `plays ${repeats} times`
+              : null,
+          isLive ? "playing now" : isArmed ? "armed" : null,
+        ]
+          .filter(Boolean)
+          .join(", ")}
+        // The single most surprising thing about this screen, and until now it
+        // was written down nowhere a screen reader could reach: a section does
+        // not start under your finger, it starts on the next bar.
+        accessibilityHint="Starts on the next bar."
         accessibilityState={{ selected: isLive }}
         className={`justify-between flex-1 px-3 ${compact ? "py-1.5" : "py-2"}`}
       >
@@ -136,9 +180,13 @@ export default function SectionPad({
         </Text>
 
         {/* Whichever of three things is true: it's running, it's been hit and is
-            waiting for the bar, or -- most of the time -- where it starts. */}
+            waiting for the bar, or -- most of the time -- where it starts.
+
+            11, not the 10 this was: the design system calls 11 the floor for
+            anything a musician reads while playing, and this line is read
+            mid-song more than the name above it is. */}
         <Text
-          className="text-nav font-spaceBold tracking-widest"
+          className="text-micro font-spaceBold tracking-widest"
           style={{
             color: isLive
               ? COLORS.white
@@ -154,6 +202,49 @@ export default function SectionPad({
               : `${index + 1}  ·  ${clock(startSeconds)}`}
         </Text>
       </TouchableOpacity>
+
+      {/* Repeats: how many times this section plays before the song carries on.
+
+          A full-height strip down the right edge, the way the track tiles put
+          mute along their bottom -- a band of the pad that is unambiguously its
+          own control. It was a 38x26 chip floating over the launch button's
+          corner, which was too small to hit on stage and sat in the one place
+          where a miss starts the song.
+
+          It opens a picker rather than advancing the count. With nine values to
+          choose from, cycling meant up to eight presses to reach one of them. */}
+      {showBadge && (
+        <TouchableOpacity
+          onPress={onEditRepeats}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${name} repeats: ${repeatDescription(repeats).toLowerCase()}`}
+          accessibilityHint="Opens the repeat picker for this section."
+          className="items-center justify-center"
+          style={{
+            width: SIZES.minTouch,
+            borderLeftWidth: 1,
+            borderLeftColor: COLORS.border,
+            backgroundColor: badgeIsSet
+              ? COLORS.brand
+              : "rgba(255,255,255,0.06)",
+          }}
+        >
+          <Text
+            className="text-label font-spaceBold"
+            style={{ color: badgeIsSet ? COLORS.white : COLORS.textMuted }}
+          >
+            {repeatLabel(repeats)}
+          </Text>
+          <Text
+            className="mt-0.5 text-nav font-spaceBold tracking-widest"
+            style={{ color: badgeIsSet ? COLORS.white : COLORS.textMuted }}
+          >
+            REP
+          </Text>
+        </TouchableOpacity>
+      )}
+      </View>
     </View>
   );
 }

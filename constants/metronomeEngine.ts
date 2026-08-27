@@ -328,6 +328,43 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           currentBeatNumber = 0;
         }
 
+        // Bring the audio back when the app does.
+        //
+        // Android suspends a WebView AudioContext when the activity pauses,
+        // and pulling the notification shade down is a pause. Suspending stops
+        // the context clock, so everything scheduled against it stops with it
+        // -- the audio simply cuts out.
+        //
+        // Nothing used to bring it back. Every resume in this file lives inside
+        // ensureContext, which runs when a COMMAND arrives -- a load, a launch,
+        // a tempo change. Coming back to the app is not a command, so the audio
+        // stayed dead until the next thing the user pressed. A glance at a
+        // notification killed the song.
+        //
+        // Suspension pauses rather than tears down: the sources are still
+        // there and the clock picks up where it stopped, so this continues the
+        // song rather than restarting it.
+        function resumeAudio() {
+          if (!audioContext) return;
+          if (audioContext.state !== "suspended") return;
+          var resumed = audioContext.resume();
+          if (resumed && resumed.catch) {
+            resumed.catch(function () {
+              // Refused: the page is back but the OS has not handed the audio
+              // session over yet. ensureContext tries again on the next
+              // command, and the app re-sends this on the next foreground.
+            });
+          }
+        }
+
+        // Both, because neither is reliable alone. The page event is the fast
+        // path and needs no bridge; the explicit command covers the case where
+        // an offscreen WebView is never considered hidden in the first place,
+        // and so never fires one.
+        document.addEventListener("visibilitychange", function () {
+          if (!document.hidden) resumeAudio();
+        });
+
         function handleMessage(event) {
           var data;
           try {
@@ -360,6 +397,9 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             // Liveness check. The app pings after returning to the foreground:
             // if this page's process was reclaimed while backgrounded there is
             // nobody left to answer, and the app rebuilds the engine.
+            case "resume":
+              resumeAudio();
+              break;
             case "ping":
               post({ type: "pong" });
               break;

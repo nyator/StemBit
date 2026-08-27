@@ -68,12 +68,37 @@ export type CueTrack = {
  * carry it that way and because it is the honest answer for a section imported
  * from WAV cue markers, which are points rather than regions.
  */
+/**
+ * `repeats` value meaning "keep going round until I hit something else".
+ *
+ * Zero rather than Infinity because a section is persisted as JSON, and
+ * Infinity does not survive the round trip -- JSON.stringify writes it as null,
+ * which would come back as "no value" and quietly turn a held chorus into a
+ * section that plays once. Zero plays zero times under no sane reading, so it
+ * is free to mean something else.
+ */
+export const SECTION_LOOP_FOREVER = 0;
+
 export type CueSection = {
   id: string;
   /** "Verse 1", "Chorus", "Outro". */
   name: string;
   startSeconds: number;
   endSeconds?: number;
+  /**
+   * How many times the section plays when its pad is hit, then the song
+   * carries on into whatever follows.
+   *
+   * Undefined is once -- hit the pad, hear the chorus, and the song keeps
+   * going. That is a deliberate change from what section pads used to do, which
+   * was to loop every section forever with no way to say otherwise: the engine
+   * read a missing flag as "loop" (`section.loop !== false`), so the only way
+   * out of a chorus was to hit another pad or stop.
+   *
+   * SECTION_LOOP_FOREVER keeps that old behaviour for the sections that want
+   * it, which is what the pad's own badge sets it to.
+   */
+  repeats?: number;
 };
 
 export type SessionItem = {
