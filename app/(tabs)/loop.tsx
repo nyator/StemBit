@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
@@ -115,14 +115,13 @@ export default function LoopScreen() {
     <Screen glows={["topLeftFar"]} className="items-center justify-start">
       <HeaderComponent />
 
-      {/* Same scrolling-only-when-it-has-to container as the metronome, so the
-          two instruments behave identically on a short screen. */}
-      <ScrollView
-        className="w-full"
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View className="items-center justify-center w-full px-instrument">
+      {/* Fixed, not scrolling, and the same container the metronome uses.
+          An instrument surface is played by muscle memory: every control has to
+          stay where it was last time you reached for it, and a view that can
+          slide under the thumb is one where the tempo dial has moved by the
+          time you get there. Content that doesn't fit is a layout problem to
+          solve at this size, not something to hand to a scroll bar. */}
+      <View className="items-center justify-center flex-1 w-full px-instrument">
           {/* Which loop is loaded, and the way to change it */}
           <View className="items-center gap-3 mb-5">
             <ControlLabel text="Select Loop" topic="selectLoop" />
@@ -218,8 +217,7 @@ export default function LoopScreen() {
               respondOnPressIn
             />
           </View>
-        </View>
-      </ScrollView>
+      </View>
 
       <BpmInputAccessory />
     </Screen>

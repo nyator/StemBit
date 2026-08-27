@@ -114,8 +114,13 @@ function RootLayout() {
                                         <FeatureTour />
                                     </FeatureTourProvider>
                                     </SessionCueProvider>
-                                    </SessionPlaybackProvider>
+                                    {/* Inside SessionPlaybackProvider, not
+                                        below it: it reads all four engines,
+                                        and the session one is the whole point
+                                        -- a set runs longest with nobody
+                                        touching the phone. */}
                                     <KeepAwakeWhilePlaying />
+                                    </SessionPlaybackProvider>
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
                             </UserLoopsProvider>

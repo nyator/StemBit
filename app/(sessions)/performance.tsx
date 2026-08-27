@@ -66,9 +66,9 @@ import {
 import Screen from "../../components/ui/screen";
 import EmptyState from "../../components/ui/emptyState";
 import { COLORS, LAYOUT, SHADOWS } from "../../constants/theme";
+import { barLabel, barSpan } from "../../constants/barGrid";
 import {
   Musicnote,
-  Play,
   PlayFilled,
   SortPad,
   Stop,
@@ -241,6 +241,19 @@ function ImportStemsButton({
 const clock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
+/**
+ * Resolution of the flattened song shape behind PERFORM's transport bar.
+ *
+ * Far coarser than the 1200 each stem is measured at, because the bar it feeds
+ * is a phone's width -- a few hundred bars at most, and it downsamples again to
+ * fit. Merging at this size keeps the per-cue work small without costing
+ * anything visible.
+ */
+const SONG_PEAK_BUCKETS = 400;
+
+/** Stable identity, so an unmeasured cue doesn't rebuild the path every render. */
+const EMPTY_PEAKS: number[] = [];
+
 export default function PerformanceScreen() {
   const { sessionId, itemId, view: viewParam } = useLocalSearchParams<{
     sessionId?: string;
@@ -394,6 +407,11 @@ export default function PerformanceScreen() {
   // keys hold is the entire reason to have a timeline, and a single combined
   // waveform cannot show it.
   const [peaks, setPeaks] = useState<Record<string, number[]>>({});
+  // Each stem's own length. The timeline doesn't need this -- every lane is
+  // drawn against the same axis -- but flattening the stems into one envelope
+  // does, because a stem's buckets are spread across ITS duration and a vocal
+  // that stops early would otherwise be stretched over the whole song.
+  const [trackDurations, setTrackDurations] = useState<Record<string, number>>({});
   const [duration, setDuration] = useState(0);
   const [timelineWidth, setTimelineWidth] = useState(0);
 
@@ -446,6 +464,7 @@ export default function PerformanceScreen() {
   // time measuring against a song that isn't playing.
   useEffect(() => {
     setPeaks({});
+    setTrackDurations({});
     setDuration(0);
     setCursorSeconds(0);
     setSoloed(null);
@@ -527,6 +546,10 @@ export default function PerformanceScreen() {
           const measured = await session.getPeaks(track.id);
           if (cancelled) return;
           setPeaks((previous) => ({ ...previous, [track.id]: measured.peaks }));
+          setTrackDurations((previous) => ({
+            ...previous,
+            [track.id]: measured.duration,
+          }));
           setDuration((previous) => Math.max(previous, measured.duration));
         } catch {
           // No shape for one stem is survivable -- its lane draws empty and
@@ -540,6 +563,50 @@ export default function PerformanceScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.isReady, session.loadedCueId, cue?.id, tracks.length]);
+
+  /**
+   * The stems flattened to one envelope, for PERFORM's transport bar.
+   *
+   * The opposite call from the timeline's, and for the opposite reason. Down
+   * there the whole point is seeing the stems apart -- the drums dropping out
+   * under the bridge is the read. Up here there is one bar's worth of height and
+   * one question ("how far through are we"), so what's wanted is the song as the
+   * room hears it: one shape.
+   *
+   * The loudest stem per bucket, not the sum. Summing four stems that all hit on
+   * the downbeat pins the bar at full height for most of the song and flattens
+   * exactly the contrast that makes the shape recognisable; the max tracks
+   * whatever is carrying the moment, which is what you'd point at.
+   *
+   * Mapped through time rather than by bucket index, because a stem's buckets
+   * span its own length -- see trackDurations.
+   */
+  const songPeaks = useMemo(() => {
+    const measured = Object.entries(peaks).filter(
+      ([, shape]) => shape.length > 0
+    );
+    if (measured.length === 0 || duration <= 0) return EMPTY_PEAKS;
+
+    const merged = new Array<number>(SONG_PEAK_BUCKETS).fill(0);
+    for (const [trackId, shape] of measured) {
+      // A stem measured but not yet timed can only be assumed to run the whole
+      // song; it's the same length as the others in every ordinary case.
+      const span = trackDurations[trackId] ?? duration;
+      if (span <= 0) continue;
+      // What fraction of the song's timeline this stem covers, and therefore how
+      // much of the merged array it has any say over.
+      const reach = Math.min(1, span / duration);
+      const covered = Math.max(1, Math.round(SONG_PEAK_BUCKETS * reach));
+      for (let bucket = 0; bucket < covered; bucket++) {
+        const at = Math.min(
+          shape.length - 1,
+          Math.floor((bucket / covered) * shape.length)
+        );
+        if (shape[at] > merged[bucket]) merged[bucket] = shape[at];
+      }
+    }
+    return merged;
+  }, [peaks, trackDurations, duration]);
 
   /* ---------------------------------------------------------------------- */
   /* Mix                                                                     */
@@ -677,17 +744,29 @@ export default function PerformanceScreen() {
   };
 
   /**
-   * PERFORM's two transport buttons, which do one thing each.
+   * PERFORM's transport: one button, playing or stopped.
    *
-   * Deliberately not one button that changes meaning. A toggle is fine on a
-   * screen you are looking at; hit blind, halfway through a song, it is a coin
-   * toss on what the app thinks the state is -- and getting it wrong either
-   * kills the song or restarts it. Two fixed buttons can be found by position
-   * and pressed without checking.
+   * This was two fixed buttons, on the reasoning that a toggle hit blind is a
+   * coin toss on what state the app is in, and that getting it wrong either
+   * kills the song or restarts it from the top. What that argument missed is
+   * that the button is not the only thing saying which way round it is: it is
+   * directly under a transport bar whose waveform is either filling or it
+   * isn't, and under a title with a live dot beside it. Blind is the wrong
+   * model for a surface you are already looking at to know where you are in the
+   * song -- and paying for it with a permanent 76pt button that does nothing
+   * for the whole song is the wrong trade at this size.
+   *
+   * The press stays destructive, so it stays deliberate: STOP is the danger
+   * colour and PLAY is not, which is a difference you can catch in the corner
+   * of your eye without reading either word.
    */
-  const playFromTop = () => {
-    if (session.isPlaying || tracks.length === 0) return;
+  const togglePerformTransport = () => {
+    if (tracks.length === 0) return;
     hapticImpact(prefs.haptics, "heavy");
+    if (session.isPlaying) {
+      session.stop();
+      return;
+    }
     // From the top, or from the first section if the song has them -- and then
     // straight on through the song.
     //
@@ -701,11 +780,6 @@ export default function PerformanceScreen() {
       startSeconds: sections[0]?.startSeconds ?? 0,
       loop: false,
     });
-  };
-
-  const stopTransport = () => {
-    hapticImpact(prefs.haptics, "heavy");
-    session.stop();
   };
 
   // Sections launch on the next bar rather than under the finger. That's the
@@ -744,7 +818,7 @@ export default function PerformanceScreen() {
     if (item.id === cue?.id) return;
     hapticImpact(prefs.haptics, "medium");
     // Both transports, since the cue being left could have been running on
-    // either. The pad is left sounding on purpose -- see stopTransport.
+    // either. The pad is left sounding on purpose -- see togglePerformTransport.
     stopCueTransport();
     // Dropped here rather than in an effect: clearing it after the next render
     // would orphan the values the tiles are already holding, and their meters
@@ -1489,6 +1563,31 @@ export default function PerformanceScreen() {
                 >
                   {selectedSection.name}
                 </Text>
+                {/* Bars first, seconds under them.
+
+                    Which is the reverse of what this said before, and the
+                    reverse of what the data is. Nothing about a section is
+                    stored in bars -- the engine wants an offset in seconds and
+                    that is what a section holds -- but "8 BARS" is the number
+                    that tells you whether the chorus you just trimmed is the
+                    right length, and "12.0s" never was. The clock stays
+                    underneath because it is still what you match against a
+                    stopwatch or a click track. */}
+                <Text
+                  className="mt-0.5 text-nav text-white font-spaceBold"
+                  style={{ fontVariant: ["tabular-nums"] }}
+                >
+                  {selectedSection.endSeconds !== undefined
+                    ? `BAR ${barLabel(selectedSection.startSeconds, bpm)} → ${barLabel(
+                        selectedSection.endSeconds,
+                        bpm
+                      )}   ·   ${barSpan(
+                        selectedSection.startSeconds,
+                        selectedSection.endSeconds,
+                        bpm
+                      )} BARS`
+                    : `BAR ${barLabel(selectedSection.startSeconds, bpm)} → END`}
+                </Text>
                 <Text
                   className="mt-0.5 text-nav text-ink-muted font-spaceBold"
                   style={{ fontVariant: ["tabular-nums"] }}
@@ -1661,6 +1760,8 @@ export default function PerformanceScreen() {
               duration={duration}
               isPlaying={session.isPlaying}
               playheadSeconds={playheadValue}
+              peaks={songPeaks}
+              bpm={bpm}
               position={{
                 index: cueIndex + 1,
                 total: setlist?.items.length ?? 1,
@@ -1999,57 +2100,33 @@ export default function PerformanceScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          /* PERFORM's bar: stop, play, mute, each in a fixed place.
-             Stop on the left and mute on the right the way every show-page
-             transport arranges them -- the two things you reach for without
-             looking are also the two that live at the screen's edges, where a
-             thumb finds them by feel. Play keeps the middle and the size,
-             because it is the press with a downbeat attached to it. */
+          /* PERFORM's bar: the transport, and mute.
+             Mute stays hard right, where every show-page transport puts it and
+             where a thumb finds it by feel. The transport takes everything
+             else -- one button, the full width and the full 84pt, because it is
+             the press with a downbeat attached to it. */
           <View className="flex-row" style={{ height: 84 }}>
             <TouchableOpacity
-              onPress={stopTransport}
+              onPress={togglePerformTransport}
               disabled={tracks.length === 0}
-              accessibilityLabel="Stop"
+              accessibilityLabel={
+                session.isPlaying ? "Stop" : "Play from the top"
+              }
               activeOpacity={0.85}
-              className="items-center justify-center border-2 rounded-lg"
-              style={{
-                width: 76,
-                borderColor: session.isPlaying ? COLORS.danger : COLORS.border,
-                opacity: tracks.length === 0 ? 0.4 : 1,
-              }}
-            >
-              <Stop size={34} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={playFromTop}
-              disabled={tracks.length === 0 || session.isPlaying}
-              accessibilityLabel="Play from the top"
-              activeOpacity={0.85}
-              className="flex-row items-center justify-center flex-1 mx-2 rounded-lg"
+              className="flex-row items-center justify-center flex-1 mr-2 rounded-lg"
               style={{
                 backgroundColor: session.isPlaying
-                  ? COLORS.surface
+                  ? COLORS.danger
                   : COLORS.brand,
                 borderWidth: 2,
-                borderColor: COLORS.brand,
+                borderColor: session.isPlaying ? COLORS.danger : COLORS.brand,
                 opacity: tracks.length === 0 ? 0.4 : 1,
                 ...SHADOWS.float,
               }}
             >
-              {session.isPlaying ? (
-                <View
-                  className="mr-2 rounded-full"
-                  style={{ width: 10, height: 10, backgroundColor: COLORS.brand }}
-                />
-              ) : (
-                <Play size={30} color={COLORS.white} />
-              )}
-              <Text
-                className="ml-2 text-readout text-white font-spaceBold"
-                style={{ color: session.isPlaying ? COLORS.brand : COLORS.white }}
-              >
-                {session.isPlaying ? "PLAYING" : "PLAY"}
+              {session.isPlaying ? <Stop size={34} /> : <PlayFilled size={34} />}
+              <Text className="ml-3 text-readout text-white font-spaceBold">
+                {session.isPlaying ? "STOP" : "PLAY"}
               </Text>
             </TouchableOpacity>
 

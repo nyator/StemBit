@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G, Line, Path, Rect } from "react-native-svg";
 
 import { COLORS } from "../../constants/theme";
+import { BAR_STEPS, secondsPerBar, snapSeconds } from "../../constants/barGrid";
 import type { CueSection } from "../../context/SessionsContext";
 import type { TrackMix } from "../../context/SessionPlaybackContext";
 
@@ -42,9 +43,6 @@ const LANE_HEIGHT = 52;
 const LANE_GAP = 4;
 // Wide enough to grab a marker flag with a fingertip, on either side of it.
 const MARKER_TOUCH_WIDTH = 34;
-
-/** Steps a bar grid is allowed to snap to, coarsest last. */
-const BAR_STEPS = [1, 2, 4, 8, 16, 32, 64, 128];
 
 // Zoom stops for the buttons. 1 is the whole song across the screen; 32 is
 // about a bar and a half of a mid-tempo song, which is close enough to put a
@@ -195,6 +193,7 @@ export default function TrackTimeline({
   const stateRef = useRef({
     sections,
     duration,
+    bpm,
     laneWidth,
     contentWidth,
     viewport,
@@ -206,6 +205,7 @@ export default function TrackTimeline({
   stateRef.current = {
     sections,
     duration,
+    bpm,
     laneWidth,
     contentWidth,
     viewport,
@@ -222,6 +222,16 @@ export default function TrackTimeline({
     if (d <= 0 || content <= 0) return 0;
     return Math.max(0, Math.min(d, ((x + view.scrollX) / content) * d));
   };
+
+  /**
+   * How wide a second is on screen right now.
+   *
+   * Read off the content rather than the zoom level, so it already accounts for
+   * however far in the view happens to be -- which is what decides whether the
+   * grid a drag snaps to is beats, bars, or eight-bar phrases.
+   */
+  const pxPerSecondOf = (state: { duration: number; contentWidth: number }) =>
+    state.duration > 0 ? state.contentWidth / state.duration : 0;
 
   /* ---------------------------------------------------------------------- */
   /* Gestures                                                                */
@@ -263,6 +273,16 @@ export default function TrackTimeline({
   // it does on a desktop DAW -- one gesture per surface, so neither has to be
   // guessed at.
   const scrollStartRef = useRef(0);
+  /**
+   * How far the finger had already travelled when this responder was granted.
+   *
+   * The grant is deliberately late -- it waits for 4px of sideways movement to
+   * prove the drag is horizontal -- but `gesture.dx` is measured from where the
+   * finger first touched down, not from the grant. Subtracting the travel at
+   * grant is what makes the arrangement start moving from where it was, instead
+   * of jumping the threshold's worth of pixels the moment it takes over.
+   */
+  const grabDxRef = useRef(0);
   const laneResponder = useMemo(
     () =>
       PanResponder.create({
@@ -274,15 +294,27 @@ export default function TrackTimeline({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_event, gesture) =>
           Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-        onPanResponderGrant: () => {
+        // Once this drag is ours it stays ours, the way the marker band above
+        // already insists.
+        //
+        // The timeline sits inside STUDIO's vertical ScrollView, and without
+        // this that ScrollView can ask for the gesture back partway through a
+        // horizontal drag -- which it will, as soon as a drag across the lanes
+        // picks up any vertical component, i.e. on every real drag by a real
+        // thumb. Handing it over mid-move is what made scrolling the
+        // arrangement stick and jump: the lanes would follow the finger, stop
+        // dead, and the page would start moving underneath instead.
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (_event, gesture) => {
           scrollStartRef.current = stateRef.current.viewport.scrollX;
+          grabDxRef.current = gesture.dx;
         },
         onPanResponderMove: (_event, gesture) => {
           if (pinchingRef.current) return;
           setViewport((current) => ({
             ...current,
             scrollX: clampScroll(
-              scrollStartRef.current - gesture.dx,
+              scrollStartRef.current - (gesture.dx - grabDxRef.current),
               stateRef.current.laneWidth * current.zoom
             ),
           }));
@@ -360,7 +392,23 @@ export default function TrackTimeline({
           const held = draggingMarkerRef.current;
           const seconds = secondsFrom(event.nativeEvent.locationX);
           if (held) {
-            stateRef.current.onMoveSection(held.id, seconds, held.edge);
+            // Section edges snap to the grid; the playhead below does not.
+            //
+            // The asymmetry is the point. A section boundary is a musical
+            // decision -- it belongs on a downbeat, and dragging one onto
+            // 0:47.3 by hand was the thing that made trimming feel like
+            // aiming. Scrubbing is the opposite: you are looking for a sound,
+            // and a cursor that keeps sliding off the moment you are trying to
+            // hear would be fighting you.
+            stateRef.current.onMoveSection(
+              held.id,
+              snapSeconds(
+                seconds,
+                stateRef.current.bpm,
+                pxPerSecondOf(stateRef.current)
+              ),
+              held.edge
+            );
           } else {
             stateRef.current.onScrub(seconds);
           }
@@ -426,10 +474,10 @@ export default function TrackTimeline({
   // almost all of them off-screen, all of them costing layout. Only the bars in
   // view are built, so the cost of the ruler is the same at every zoom level.
   const grid = useMemo(() => {
-    const secondsPerBar = (60 / (bpm || 120)) * 4;
-    if (duration <= 0 || secondsPerBar <= 0) return null;
+    const perBar = secondsPerBar(bpm);
+    if (duration <= 0 || perBar <= 0) return null;
 
-    const bars = Math.ceil(duration / secondsPerBar);
+    const bars = Math.ceil(duration / perBar);
     const pxPerBar = contentWidth / bars;
     const stepFor = (minimumPx: number) =>
       BAR_STEPS.find((step) => step * pxPerBar >= minimumPx) ??

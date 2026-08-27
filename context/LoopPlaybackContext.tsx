@@ -42,7 +42,16 @@ const ENGINE_PONG_TIMEOUT_MS = 2000;
 
 // How long playback survives after the app reports it went to the background
 // before it's actually stopped. See the AppState handler for why this exists.
-const BACKGROUND_STOP_GRACE_MS = 5000;
+//
+// A minute, not the five seconds this started at. Android reports a pulled-down
+// notification shade as "background" -- identical to actually leaving the app --
+// and behind that shade the activity is only paused, so the loop is still
+// audible and still correct. Five seconds meant that glancing at a notification
+// for longer than a glance killed a running loop, which is worse than anything
+// this timer is protecting against: the engine it eventually stops is a
+// suspended WebView that has already gone silent on its own, so waiting longer
+// costs nothing but a stale isPlaying flag that coming back clears anyway.
+const BACKGROUND_STOP_GRACE_MS = 60000;
 
 // Loop-click pan preference -> StereoPanner value (-1 left .. 0 .. 1 right).
 const CLICK_PAN_VALUE: Record<string, number> = {
