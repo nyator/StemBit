@@ -49,9 +49,10 @@ import ScreenHeader from "../../components/ui/screenHeader";
 import TrackTimeline from "../../components/ui/trackTimeline";
 import { BrandInput } from "../../components/ui/brandInput";
 import MixerStrip from "../../components/ui/mixerStrip";
-import TrackTile, { trackColor } from "../../components/ui/trackTile";
 import TransportReadout from "../../components/ui/transportReadout";
-import RepeatPicker from "../../components/ui/repeatPicker";
+import RepeatPicker, {
+  type RepeatPickerHandle,
+} from "../../components/ui/repeatPicker";
 import CueReadout from "../../components/ui/cueReadout";
 import CueElements, {
   CueSummary,
@@ -249,6 +250,14 @@ const clock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
 /**
+ * One full-width SectionPad's footprint on PERFORM: its own height plus the
+ * `mb-2` under it. Used to compute where a pad sits without measuring it, so
+ * the list can be scrolled to a section the instant it goes live rather than
+ * waiting on a layout pass.
+ */
+const SECTION_PAD_ROW_HEIGHT = 66 + 8;
+
+/**
  * Resolution of the flattened song shape behind PERFORM's transport bar.
  *
  * Far coarser than the 1200 each stem is measured at, because the bar it feeds
@@ -260,52 +269,6 @@ const SONG_PEAK_BUCKETS = 400;
 
 /** Stable identity, so an unmeasured cue doesn't rebuild the path every render. */
 const EMPTY_PEAKS: number[] = [];
-
-/**
- * A group heading in PERFORM, with how many things are under it.
- *
- * Marked as a header rather than left as loose text, so a screen reader can
- * jump between the two groups on this screen instead of walking every pad and
- * every tile to get from one to the other -- which on a nine-section song is
- * about twenty stops.
- */
-function SectionHeading({
-  label,
-  count,
-  /** Mix state that no individual tile can show. Optional. */
-  note,
-  noteColor,
-}: {
-  label: string;
-  count: number;
-  note?: string;
-  noteColor?: string;
-}) {
-  return (
-    <View
-      className="flex-row items-center mb-2"
-      accessibilityRole="header"
-      accessibilityLabel={`${label}, ${count}${note ? `, ${note.toLowerCase()}` : ""}`}
-    >
-      <Text className="text-ink font-spaceMedium text-label">{label}</Text>
-      <Text
-        className="ml-2 text-micro text-ink-muted font-spaceBold"
-        style={{ fontVariant: ["tabular-nums"] }}
-      >
-        {count}
-      </Text>
-
-      {note && (
-        <Text
-          className="flex-1 text-right text-micro font-spaceBold tracking-widest"
-          style={{ color: noteColor ?? COLORS.textMuted }}
-        >
-          {note}
-        </Text>
-      )}
-    </View>
-  );
-}
 
 export default function PerformanceScreen() {
   const { sessionId, itemId, view: viewParam } = useLocalSearchParams<{
@@ -423,6 +386,25 @@ export default function PerformanceScreen() {
     arm: armSection,
   } = useLiveSections(sections);
 
+  // PERFORM's section list follows the song instead of being scrolled by
+  // hand -- a long arrangement you have to drag to keep up with is fighting
+  // you at the one moment there's no spare hand for it. It jumps to whichever
+  // pad just went live on its own; see the effect below and the disabled
+  // scroll on the list itself.
+  const performSectionsRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (!liveSectionId) return;
+    const index = sections.findIndex((section) => section.id === liveSectionId);
+    if (index < 0) return;
+    // One row short of the target, so the live pad lands just under the top
+    // edge with the one before it still showing -- landing it flush at the
+    // very top would cut off the context of what just finished.
+    performSectionsRef.current?.scrollTo({
+      y: Math.max(0, (index - 1) * SECTION_PAD_ROW_HEIGHT),
+      animated: true,
+    });
+  }, [liveSectionId, sections]);
+
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   // The running order, over the top of the performance screen.
   //
@@ -440,25 +422,16 @@ export default function PerformanceScreen() {
   // else on this screen draws from.
   const [repeatsFor, setRepeatsFor] = useState<string | null>(null);
   const repeatSection = sections.find((section) => section.id === repeatsFor);
+  const repeatPickerRef = useRef<RepeatPickerHandle>(null);
 
-  // TEMPORARY DIAGNOSTIC -- remove once the picker is confirmed working.
-  //
-  // The press is now known to land. What is not known is whether the state it
-  // sets survives the render that follows: the guard above clears repeatsFor
-  // whenever the section cannot be found, and a picker that is opened and
-  // closed in the same tick looks exactly like one that never opened.
-  const openRepeats = (sectionId: string, _from: string) => {
+  // present() is called here, synchronously, rather than from an effect
+  // reacting to `visible` the way every other sheet in this app is driven --
+  // see the note on RepeatPickerHandle for why. Setting the state still
+  // matters: it's what the picker reads to know which section it's showing.
+  const openRepeats = (sectionId: string) => {
     setRepeatsFor(sectionId);
+    repeatPickerRef.current?.present();
   };
-
-  useEffect(() => {
-    if (!repeatsFor) return;
-    Alert.alert(
-      "2. state after press",
-      `id: ${repeatsFor}\nsection found: ${repeatSectionExists}\nsections: ${sections.length}`
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repeatsFor]);
 
   // The sheet is driven imperatively and this screen thinks in state, so the
   // two are bridged here. Dismissing an already-dismissed sheet is a no-op.
@@ -1748,7 +1721,7 @@ export default function PerformanceScreen() {
                   other view -- so anyone setting a song up looked for it here,
                   did not find it, and reasonably concluded it was broken. */}
               <TouchableOpacity
-                onPress={() => openRepeats(selectedSection.id, "STUDIO row")}
+                onPress={() => openRepeats(selectedSection.id)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={`Repeats: ${repeatDescription(
@@ -1939,11 +1912,8 @@ export default function PerformanceScreen() {
               isPlaying={session.isPlaying}
               playheadSeconds={playheadValue}
               peaks={songPeaks}
+              sections={sections}
               bpm={bpm}
-              position={{
-                index: cueIndex + 1,
-                total: setlist?.items.length ?? 1,
-              }}
               prev={neighbour(prevCue)}
               next={neighbour(nextCue)}
             />
@@ -1955,30 +1925,25 @@ export default function PerformanceScreen() {
           />
 
           <ScrollView
+            ref={performSectionsRef}
+            // Not a surface you drag: see the effect that owns this ref.
+            scrollEnabled={false}
             className="flex-1 px-screen"
             contentContainerStyle={{ paddingBottom: 16 }}
           >
-            {/* Section pads. No waveform here: it is a tool for placing things
-                precisely, which is what STUDIO is for -- on stage it would be a
-                picture you cannot act on, taking the space the pads want.
-
-                Wide and short: a name has to be readable at a glance, and you
-                hit these with a thumb while looking at the band. */}
-            {/* Headings carry their count.
-
-                A grid of pads that has scrolled halfway up the screen gives no
-                clue how much of it is above or below the fold, and on stage the
-                useful question is "are all nine sections here" rather than
-                "what is this group called". The count answers it without
-                scrolling; the label alone never could. */}
-            <SectionHeading label="Sections" count={sections.length} />
-
+            {/* Section pads, and nothing above them. No waveform here: it is
+                a tool for placing things precisely, which is what STUDIO is
+                for -- on stage it would be a picture you cannot act on,
+                taking the space the pads want. No heading either: what's on
+                screen is what's on screen, and a musician can count pads
+                faster than they can read a number telling them how many
+                there are. */}
             {sections.length === 0 ? (
               <Text className="mb-4 text-micro text-ink-muted font-satoshiRegular">
                 No sections yet — mark them on the timeline in STUDIO.
               </Text>
             ) : (
-              <View className="flex-row flex-wrap justify-between mb-4">
+              <View className="mb-4">
                 {sections.map((section, index) => (
                   <SectionPad
                     key={section.id}
@@ -1994,37 +1959,12 @@ export default function PerformanceScreen() {
                     playheadSeconds={playheadValue}
                     onPress={() => launchSection(section)}
                     repeats={section.repeats}
-                    onEditRepeats={() => openRepeats(section.id, "PERFORM pad")}
+                    onEditRepeats={() => openRepeats(section.id)}
+                    fullWidth
                   />
                 ))}
               </View>
             )}
-
-            <SectionHeading
-              label="Tracks"
-              count={tracks.length}
-              // The one piece of mix state that isn't visible on any tile: a
-              // soloed track makes every other tile read MUTED, which looks
-              // identical to having muted them all by hand.
-              note={soloed ? "SOLOING" : masterMuted ? "ALL MUTED" : undefined}
-              noteColor={soloed ? COLORS.warning : COLORS.danger}
-            />
-
-            <View className="flex-row flex-wrap justify-between">
-              {tracks.map((track, index) => (
-                <TrackTile
-                  key={track.id}
-                  name={track.name}
-                  color={trackColor(index)}
-                  meter={meterFor(track.id)}
-                  isSilent={isSilent(track.id)}
-                  isSolo={soloed === track.id}
-                  onToggleMute={() => toggleMute(track.id)}
-                  onToggleSolo={() => toggleSolo(track.id)}
-                />
-              ))}
-            </View>
-
           </ScrollView>
         </>
       ) : view === "studio" ? (
@@ -2082,12 +2022,6 @@ export default function PerformanceScreen() {
               subtitle={describeCue(cue)}
               isPlaying={cueIsLive}
               phase={loopPhase}
-              bpm={cue.bpm ?? loop?.bpm}
-              keyLabel={
-                songKey
-                  ? `${songKey} ${songMode === "minor" ? "min" : "maj"}`
-                  : undefined
-              }
               position={{
                 index: cueIndex + 1,
                 total: setlist?.items.length ?? 1,
@@ -2119,105 +2053,109 @@ export default function PerformanceScreen() {
         </>
       )}
 
-      {/* Key and pad, above the transport and in both views. The pad is a stage
-          control (bring it in under the outro) and a studio one (hear the key
-          while you place markers), so it does not belong to either view. */}
-      <View className="flex-row items-center px-screen mb-2">
-        <TouchableOpacity
-          onPress={togglePad}
-          disabled={!padPack}
-          accessibilityRole="button"
-          accessibilityLabel={
-            padIsLive
-              ? "Stop the pad"
-              : songKey
-                ? `Play a ${songKey} ${songMode} pad`
-                : "Set the song key"
-          }
-          // It is a toggle that stays on for as long as you leave it on, and it
-          // was the only one in this row not saying so.
-          accessibilityState={{ selected: padIsLive, disabled: !padPack }}
-          activeOpacity={0.85}
-          className="flex-row items-center justify-center flex-1 py-3 mr-2 border-2 rounded-lg"
-          style={{
-            minHeight: SIZES.minTouch,
-            backgroundColor: padIsLive ? COLORS.brand : "transparent",
-            borderColor: padIsLive ? COLORS.brand : COLORS.border,
-            // Disabled was drawn identically to enabled, so a cue with no pad
-            // pack gave a button that looked pressable and did nothing.
-            opacity: padPack ? 1 : 0.45,
-          }}
-        >
-          <Text
-            className="text-micro font-spaceBold"
-            style={{ color: padIsLive ? COLORS.white : COLORS.textMuted }}
-          >
-            {songKey
-              ? `PAD · ${songKey} ${songMode === "minor" ? "MIN" : "MAJ"}`
-              : "SET KEY"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* The click, beside the pad because they are the same kind of thing:
-            something you bring in over the song rather than part of it, and
-            something you reach for mid-set rather than beforehand.
-
-            Only over stems. A loop cue's click is the loop engine's own and is
-            already switched on in Settings; a second button here meaning a
-            different click on the same screen would be two switches for one
-            sound. What it plays, how loud, and where it sits are the metronome's
-            settings either way -- this is only whether. */}
-        {isStemCue && (
+      {/* Key, pad and click: STUDIO only, all three. Setting the song's key is
+          a table job, done once with time to work it out by ear, and the click
+          is a rehearsal tool for finding where things land -- neither belongs
+          on a stage screen that is otherwise just the pads and the transport. */}
+      {view === "studio" && (
+        <View className="flex-row items-center px-screen mb-2">
           <TouchableOpacity
-            onPress={() => {
-              hapticImpact(prefs.haptics, "medium");
-              setPref("stemClick", !prefs.stemClick);
-            }}
+            onPress={togglePad}
+            disabled={!padPack}
             accessibilityRole="button"
             accessibilityLabel={
-              prefs.stemClick ? "Turn the click off" : "Play a click with the song"
+              padIsLive
+                ? "Stop the pad"
+                : songKey
+                  ? `Play a ${songKey} ${songMode} pad`
+                  : "Set the song key"
             }
-            accessibilityState={{ selected: prefs.stemClick }}
-            activeOpacity={0.8}
-            className="items-center justify-center px-4 py-3 mr-2 border-2 rounded-lg"
+            // It is a toggle that stays on for as long as you leave it on, and it
+            // was the only one in this row not saying so.
+            accessibilityState={{ selected: padIsLive, disabled: !padPack }}
+            activeOpacity={0.85}
+            className="flex-row items-center justify-center flex-1 py-3 mr-2 border-2 rounded-lg"
             style={{
               minHeight: SIZES.minTouch,
-              backgroundColor: prefs.stemClick ? COLORS.brand : "transparent",
-              borderColor: prefs.stemClick ? COLORS.brand : COLORS.border,
+              backgroundColor: padIsLive ? COLORS.brand : "transparent",
+              borderColor: padIsLive ? COLORS.brand : COLORS.border,
+              // Disabled was drawn identically to enabled, so a cue with no pad
+              // pack gave a button that looked pressable and did nothing.
+              opacity: padPack ? 1 : 0.45,
             }}
           >
             <Text
               className="text-micro font-spaceBold"
-              style={{
-                color: prefs.stemClick ? COLORS.white : COLORS.textMuted,
-              }}
+              style={{ color: padIsLive ? COLORS.white : COLORS.textMuted }}
             >
-              CLICK
+              {songKey
+                ? `PAD · ${songKey} ${songMode === "minor" ? "MIN" : "MAJ"}`
+                : "SET KEY"}
             </Text>
           </TouchableOpacity>
-        )}
 
-        <TouchableOpacity
-          onPress={() => {
-            hapticImpact(prefs.haptics, "light");
-            setEditingKey(true);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Change the song key"
-          accessibilityHint={
-            songKey
-              ? `Currently ${songKey} ${songMode}.`
-              : "No key set for this song yet."
-          }
-          activeOpacity={0.8}
-          // border-2 to match the two beside it. At 1px it read as a different
-          // class of control sitting in the same row as its own neighbours.
-          className="items-center justify-center px-4 py-3 border-2 rounded-lg"
-          style={{ minHeight: SIZES.minTouch, borderColor: COLORS.border }}
-        >
-          <Text className="text-micro text-ink-muted font-spaceBold">KEY</Text>
-        </TouchableOpacity>
-      </View>
+          {/* The click, beside the pad because they are the same kind of thing:
+              something you bring in over the song rather than part of it, and
+              something you reach for while working the song out rather than
+              performing it.
+
+              Only over stems. A loop cue's click is the loop engine's own and is
+              already switched on in Settings; a second button here meaning a
+              different click on the same screen would be two switches for one
+              sound. What it plays, how loud, and where it sits are the metronome's
+              settings either way -- this is only whether. */}
+          {isStemCue && (
+            <TouchableOpacity
+              onPress={() => {
+                hapticImpact(prefs.haptics, "medium");
+                setPref("stemClick", !prefs.stemClick);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                prefs.stemClick ? "Turn the click off" : "Play a click with the song"
+              }
+              accessibilityState={{ selected: prefs.stemClick }}
+              activeOpacity={0.8}
+              className="items-center justify-center px-4 py-3 mr-2 border-2 rounded-lg"
+              style={{
+                minHeight: SIZES.minTouch,
+                backgroundColor: prefs.stemClick ? COLORS.brand : "transparent",
+                borderColor: prefs.stemClick ? COLORS.brand : COLORS.border,
+              }}
+            >
+              <Text
+                className="text-micro font-spaceBold"
+                style={{
+                  color: prefs.stemClick ? COLORS.white : COLORS.textMuted,
+                }}
+              >
+                CLICK
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            onPress={() => {
+              hapticImpact(prefs.haptics, "light");
+              setEditingKey(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Change the song key"
+            accessibilityHint={
+              songKey
+                ? `Currently ${songKey} ${songMode}.`
+                : "No key set for this song yet."
+            }
+            activeOpacity={0.8}
+            // border-2 to match the two beside it. At 1px it read as a different
+            // class of control sitting in the same row as its own neighbours.
+            className="items-center justify-center px-4 py-3 border-2 rounded-lg"
+            style={{ minHeight: SIZES.minTouch, borderColor: COLORS.border }}
+          >
+            <Text className="text-micro text-ink-muted font-spaceBold">KEY</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* The transport spans the screen. It's the control most likely to be
           hit in a hurry, and the one where a miss is heard by the room. */}
@@ -2477,6 +2415,7 @@ export default function PerformanceScreen() {
           above -- one memoised component handed to two modals -- and opened
           onto nothing, which read as a button that did nothing. */}
       <RepeatPicker
+        ref={repeatPickerRef}
         visible={!!repeatsFor}
         sectionName={repeatSection?.name}
         repeats={repeatSection?.repeats}

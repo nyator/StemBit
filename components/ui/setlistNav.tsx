@@ -81,14 +81,15 @@ function Neighbour({
       accessibilityHint={enabled ? "Loads it and stops there." : undefined}
       accessibilityState={{ disabled: !enabled }}
       activeOpacity={0.7}
-      className="flex-row items-center flex-1 px-3 border rounded-lg"
+      className="flex-row items-center flex-1 px-3 border-2 rounded-lg"
       style={{
-        minHeight: 48,
-        borderColor: COLORS.border,
+        minHeight: 56,
+        backgroundColor: COLORS.surface,
+        borderColor: enabled ? COLORS.border : COLORS.borderSegment,
         opacity: enabled ? 1 : 0.4,
       }}
     >
-      {isPrev && <ArrowLeft size={16} color={arrowColor} />}
+      {isPrev && <ArrowLeft size={20} color={arrowColor} />}
 
       <View className={isPrev ? "flex-1 ml-2" : "flex-1 mr-2"}>
         <Text
@@ -98,7 +99,7 @@ function Neighbour({
           {isPrev ? "PREV" : "NEXT"}
         </Text>
         <Text
-          className="mt-0.5 text-label font-satoshiBold"
+          className="mt-0.5 text-body font-spaceBold"
           numberOfLines={1}
           style={{
             color: cue ? COLORS.white : COLORS.textMuted,
@@ -109,7 +110,7 @@ function Neighbour({
         </Text>
       </View>
 
-      {!isPrev && <ArrowRight size={16} color={arrowColor} />}
+      {!isPrev && <ArrowRight size={20} color={arrowColor} />}
     </TouchableOpacity>
   );
 }

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Text, View, type LayoutChangeEvent } from "react-native";
-import Svg, { Line, Path } from "react-native-svg";
+import Svg, { Line, Path, Rect } from "react-native-svg";
 
-import { COLORS } from "../../constants/theme";
+import { COLORS, TRACK_PALETTE } from "../../constants/theme";
 import { BAR_STEPS, barAt, secondsPerBar } from "../../constants/barGrid";
 import { useSessionPlayback } from "../../context/SessionPlaybackContext";
+import type { CueSection } from "../../context/SessionsContext";
 import SetlistNav, { type NeighbourCue } from "./setlistNav";
 
 // What's playing, how far in, how much is left, and what's either side of it.
@@ -129,11 +130,32 @@ function buildBarTicks(bpm: number, duration: number, width: number) {
   return { xs, step };
 }
 
-const clock = (seconds: number) => {
-  const whole = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(whole / 60);
-  return `${String(minutes).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
-};
+/**
+ * The song's sections as tinted bands under the waveform, one colour per
+ * section so the arrangement reads at a glance -- the same reason a section
+ * gets its own pad in PERFORM rather than a name in a list.
+ *
+ * Coloured by index rather than anything about the section itself: there is
+ * no meaning to "verse is teal", the point is only that the band before it
+ * and the band after it are never the same colour.
+ */
+function buildSectionBands(
+  sections: CueSection[],
+  duration: number,
+  width: number
+) {
+  if (width <= 0 || duration <= 0 || sections.length === 0) return [];
+  return sections.map((section, index) => {
+    const end = Math.min(section.endSeconds ?? duration, duration);
+    const start = Math.min(section.startSeconds, end);
+    return {
+      id: section.id,
+      x: (start / duration) * width,
+      width: Math.max(0, ((end - start) / duration) * width),
+      color: TRACK_PALETTE[index % TRACK_PALETTE.length],
+    };
+  });
+}
 
 type TransportReadoutProps = {
   /** The cue being performed. */
@@ -149,10 +171,11 @@ type TransportReadoutProps = {
    * second or two after a cue is opened; the bar is drawn plain until then.
    */
   peaks?: number[];
-  /** The cue's tempo, for the bar ruling under the waveform. */
+  /** The song's arrangement, drawn as coloured bands under the waveform. */
+  sections?: CueSection[];
+  /** The cue's tempo, for the bar ruling under the waveform and the bar count
+   *  beside the title. */
   bpm?: number;
-  /** Place in the running order, 1-based, and how long the set is. */
-  position?: { index: number; total: number };
   /** Unset at the ends of the set, where there is nothing to step to. */
   prev?: NeighbourCue;
   next?: NeighbourCue;
@@ -164,32 +187,18 @@ export default function TransportReadout({
   isPlaying,
   playheadSeconds,
   peaks,
+  sections,
   bpm,
-  position,
   prev,
   next,
 }: TransportReadoutProps) {
   const session = useSessionPlayback();
 
-  // The one number on this screen that has to go through React.
+  // Which bar the song is in, tracked off the transport's reports.
   //
-  // The transport reports sixteen times a second and everything else here is
-  // driven from an Animated.Value to keep that traffic off the render path, but
-  // a formatted time can't be interpolated -- it has to be a string, which means
-  // state. So it is kept to a leaf component that re-renders on its own, and
-  // only when the displayed value actually changes: whole seconds, which is once
-  // a second rather than sixteen times.
-  const [elapsed, setElapsed] = useState(0);
-  const shownRef = useRef(-1);
-
-  // Which bar the song is in, tracked off the same reports.
-  //
-  // Derived here rather than from `elapsed`, even though that is right there
-  // and already ticking. A bar at 120bpm is two seconds, so a bar number
-  // computed from a second-resolution clock is wrong for up to half a bar --
-  // which is exactly the half where you are deciding whether to come in. Off
-  // the raw position it changes on the downbeat, and it re-renders less often
-  // than the seconds beside it at any tempo under 240.
+  // Off the raw position rather than a once-a-second clock: a bar number
+  // computed from second-resolution timing is wrong for up to half a bar --
+  // exactly the half where you are deciding whether to come in.
   const [bar, setBar] = useState(1);
   const shownBarRef = useRef(-1);
   // Read inside a subscription that outlives any one render.
@@ -201,12 +210,6 @@ export default function TransportReadout({
       session.subscribePosition((next) => {
         if (next.seconds === null) return;
 
-        const whole = Math.floor(next.seconds);
-        if (whole !== shownRef.current) {
-          shownRef.current = whole;
-          setElapsed(whole);
-        }
-
         const tempo = bpmRef.current;
         if (!tempo) return;
         const atBar = Math.floor(barAt(next.seconds, tempo)) + 1;
@@ -217,14 +220,12 @@ export default function TransportReadout({
     [session]
   );
 
-  // Stopped is 00:00 and bar 1, not wherever the song happened to be cut off.
-  // This is the "what will happen when I press play" readout, and in the
-  // performance view play starts from the top.
+  // Stopped is bar 1, not wherever the song happened to be cut off. This is
+  // the "what will happen when I press play" readout, and in the performance
+  // view play starts from the top.
   useEffect(() => {
     if (isPlaying) return;
-    shownRef.current = -1;
     shownBarRef.current = -1;
-    setElapsed(0);
     setBar(1);
   }, [isPlaying]);
 
@@ -261,6 +262,16 @@ export default function TransportReadout({
         ? buildBarTicks(bpm, duration, waveWidth)
         : null,
     [hasWave, bpm, duration, waveWidth]
+  );
+
+  // The arrangement, as bands under the shape. Built off the measured width
+  // like the ticks above, so a band's edge lines up with the bar it starts on.
+  const sectionBands = useMemo(
+    () =>
+      hasWave && sections && sections.length > 0 && duration > 0
+        ? buildSectionBands(sections, duration, waveWidth)
+        : [],
+    [hasWave, sections, duration, waveWidth]
   );
 
   return (
@@ -316,6 +327,20 @@ export default function TransportReadout({
         {hasWave ? (
           <>
             <Svg width={waveWidth} height={WAVE_HEIGHT}>
+              {/* The arrangement, tinted behind everything else -- it is a
+                  backdrop to place the shape against, not a thing to read on
+                  its own, so it sits under both the ruling and the bars. */}
+              {sectionBands.map((band) => (
+                <Rect
+                  key={band.id}
+                  x={band.x}
+                  y={0}
+                  width={band.width}
+                  height={WAVE_HEIGHT}
+                  fill={band.color}
+                  opacity={0.16}
+                />
+              ))}
               {/* Ruling first, so it sits behind the shape rather than across
                   it -- it is there to be counted against, not to be read. */}
               {barTicks?.xs.map((x) => (
@@ -363,67 +388,12 @@ export default function TransportReadout({
         )}
       </View>
 
-      <View className="flex-row items-start mt-3">
-        <Cell label="ELAPSED" value={clock(elapsed)} />
-        <Cell
-          label="REMAINING"
-          // Dashes rather than 00:00 until the stems have been measured: a zero
-          // reads as "the song is over", which is the opposite of the truth.
-          value={duration > 0 ? `-${clock(duration - elapsed)}` : "--:--"}
-          muted
-        />
-
-        {/* How far through the night you are, which is the question the two
-            clocks beside it can't answer -- they are both about this one song,
-            and "two to go" is the one that decides whether you talk. */}
-        {position && (
-          <Cell
-            label="IN SET"
-            value={`${position.index} / ${position.total}`}
-            muted
-            align="end"
-          />
-        )}
-      </View>
-
       {/* Both dead with the transport up, which is the safe reading and the
           useful one at once: the moment you want either is the few seconds
           after a song ends, and loading a cue's stems takes long enough that
           starting it there rather than walking back to the setlist is most of
           the gap between songs. */}
       <SetlistNav prev={prev} next={next} />
-    </View>
-  );
-}
-
-function Cell({
-  label,
-  value,
-  muted,
-  align,
-}: {
-  label: string;
-  value: string;
-  muted?: boolean;
-  /** Pushed to the right edge, for the last cell in the row. */
-  align?: "end";
-}) {
-  return (
-    <View className={align === "end" ? "items-end flex-1" : "mr-4"}>
-      <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
-        {label}
-      </Text>
-      <Text
-        className="mt-1 text-readout font-spaceBold"
-        style={{
-          color: muted ? COLORS.textMuted : COLORS.white,
-          // Digits of equal width, so a counter doesn't shuffle its own
-          // neighbours sideways every time it ticks.
-          fontVariant: ["tabular-nums"],
-        }}
-      >
-        {value}
-      </Text>
     </View>
   );
 }

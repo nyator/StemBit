@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   PanResponder,
   ScrollView,
   Text,
@@ -17,10 +18,8 @@ import {
 } from "../../context/SessionsContext";
 import { removeStems } from "../../utils/importStems";
 import { useSessionCue } from "../../context/SessionCueContext";
-import { useLoopPhase } from "../../context/LoopPlaybackContext";
 import { useSessionPlayback } from "../../context/SessionPlaybackContext";
 import { useLiveSections } from "../../hooks/useLiveSections";
-import LoopFillBar from "../../components/ui/loopFillBar";
 import SectionPad from "../../components/ui/sectionPad";
 import { usePreferences } from "../../context/PreferencesContext";
 import { hapticImpact } from "../../utils/haptics";
@@ -64,16 +63,71 @@ import {
 // while you used it. So + creates the cue and opens it, and this screen went
 // back to being the running order.
 
+/**
+ * A row, armed and waiting on the next downbeat.
+ *
+ * Replaces what used to be said in words -- "Starts on the next bar" printed
+ * under the title -- with the same idea SectionPad's fill carries: a wash
+ * pulsing at a fixed rate regardless of tempo. Over the whole card rather
+ * than just the transport button, so it's caught out of the corner of an eye
+ * wherever on the row that happens to land, not only on one 68pt circle.
+ */
+function ArmedPulse({ active }: { active: boolean }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // TEMPORARY DIAGNOSTIC -- remove once the loop-swap pulse is confirmed working.
+    console.log("[ArmedPulse] active:", active, Date.now());
+    if (!active) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      pulse.setValue(0);
+    };
+  }, [active, pulse]);
+
+  if (!active) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 50,
+        backgroundColor: COLORS.brandFrom,
+        opacity: pulse.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.15, 0.5],
+        }),
+      }}
+    />
+  );
+}
+
 export default function SetlistScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
   const { findSession, addItem, removeItem, reorderItems } = useSessions();
   const { prefs } = usePreferences();
   const { play, stop, endSession, liveItemId, armedItemId } = useSessionCue();
-  // Retained rather than read off the context: the row's fill bar is the only
-  // thing here that draws it, so the engine reports its position for exactly as
-  // long as this screen is up. See useLoopPhase.
-  const loopPhase = useLoopPhase();
   // Stem songs run on their own engine -- multi-track and sample-locked, which
   // only works inside one AudioContext -- so firing one from here means talking
   // to that engine directly rather than through the cue context.
@@ -281,9 +335,15 @@ export default function SetlistScreen() {
       return;
     }
 
-    // One cue at a time. A loop cue left running underneath is two cues from
-    // the same setlist sounding at once, which is never what the press meant.
-    stop();
+    // One cue at a time -- except when the section belongs to the song
+    // already running. That's not a new cue starting, it's the same one
+    // moving, and stop() resets the engine's transport, which is exactly the
+    // running clock the quantised launch below needs to land on the next bar.
+    // Stopping it first is what was turning every "wait for the bar" launch
+    // into an instant one. A loop cue left running underneath a *different*
+    // song is still worth guarding against, so this only skips the stop for
+    // the one case where there's nothing else that could be sounding.
+    if (!(section && isRunning)) stop();
 
     // Returns immediately for a song already decoded, so re-firing the live one
     // doesn't stall. play() holds until the stems are in either way.
@@ -486,16 +546,16 @@ export default function SetlistScreen() {
                     : undefined
                 }
               >
+                {/* The whole card, not just the transport button -- armed is a
+                    state of the row (it's this cue that's about to take over),
+                    and confining the pulse to one 68pt circle made it easy to
+                    miss on a screen with several rows on it. */}
+                <ArmedPulse active={armed} />
+
                 <View
                   className="flex-row items-center p-3"
                   style={{ minHeight: 84 }}
                 >
-                  {/* Behind the row's content, and only while a loop cue is
-                      live: fills across in time with the loop and restarts each
-                      pass. A stem song's progress is carried by its section
-                      pads instead, which know where they are in the song. */}
-                  {!isStemCue && live && <LoopFillBar phase={loopPhase} />}
-
                   {/* One tap: load the loop at its tempo, arm the pad at its
                       key, and go. Between songs there is no time for anything
                       else. */}
@@ -520,7 +580,8 @@ export default function SetlistScreen() {
                       // Filled while live so the thing you need to hit next --
                       // stop -- is the brightest object on the row. Armed gets
                       // the paler fill: pressed and coming, but not the thing
-                      // making the sound.
+                      // making the sound. The pulse itself now lives on the row
+                      // as a whole, not this button -- see below.
                       backgroundColor: live
                         ? COLORS.brand
                         : armed
@@ -562,11 +623,11 @@ export default function SetlistScreen() {
                             isLoading || armed ? COLORS.brand : COLORS.textMuted,
                         }}
                       >
-                        {isLoading
-                          ? "Loading stems…"
-                          : armed
-                            ? "Starts on the next bar"
-                            : describeCue(item)}
+                        {/* Armed no longer overrides this with "Starts on the
+                            next bar" -- the pulse on the transport button says
+                            that now, and this line keeps saying what the cue
+                            actually holds instead of losing it for a beat. */}
+                        {isLoading ? "Loading stems…" : describeCue(item)}
                       </Text>
                     </View>
 

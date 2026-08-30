@@ -60,5 +60,20 @@ target 'StemBit' do
         end
       end
     end
+
+    # Some CP-User script phases (expo-constants, expo-updates) shell out via
+    # `bash -l -c "$PODS_TARGET_SRCROOT/../scripts/foo.sh"`. Because this repo
+    # lives under a path containing a space ("React Native Projects"), the
+    # inner `bash -c` re-splits that unquoted path on the space and fails with
+    # "No such file or directory". Wrap the path in an extra layer of quotes
+    # so it survives the inner shell's parsing.
+    installer.pods_project.targets.each do |target|
+      target.build_phases.each do |phase|
+        next unless phase.respond_to?(:shell_script) && phase.shell_script
+        phase.shell_script = phase.shell_script.gsub(
+          /bash -l -c "(\$PODS_TARGET_SRCROOT\/[^"]+)"/
+        ) { "bash -l -c \"\\\"#{$1}\\\"\"" }
+      end
+    end
   end
 end

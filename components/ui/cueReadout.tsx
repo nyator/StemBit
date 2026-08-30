@@ -20,16 +20,12 @@ import SetlistNav, { type NeighbourCue } from "./setlistNav";
 type CueReadoutProps = {
   /** The cue's name on the night. */
   title: string;
-  /** What it holds -- the loop's name, the pad's pack. */
+  /** What it holds -- the loop's name and tempo, the pad's pack and key. */
   subtitle: string;
   /** Whether this cue is the one sounding. */
   isPlaying: boolean;
   /** 0–1 through the current loop pass, from LoopPlaybackContext. */
   phase: Animated.Value;
-  /** The tempo it plays at, which for a loop cue is the cue's own or the loop's. */
-  bpm?: number;
-  /** "C maj", or undefined for a cue with no pad. */
-  keyLabel?: string;
   /** Place in the running order, 1-based, and how long the set is. */
   position?: { index: number; total: number };
   prev?: NeighbourCue;
@@ -41,8 +37,6 @@ export default function CueReadout({
   subtitle,
   isPlaying,
   phase,
-  bpm,
-  keyLabel,
   position,
   prev,
   next,
@@ -71,6 +65,17 @@ export default function CueReadout({
             style={{ width: 6, height: 6, backgroundColor: COLORS.brand }}
           />
         )}
+
+        {/* Where in the night this cue sits. Opposite the label, the same
+            corner the bar count takes on a stem song's readout. */}
+        {position && (
+          <Text
+            className="flex-1 text-right text-micro text-ink-muted font-spaceBold tracking-widest"
+            style={{ fontVariant: ["tabular-nums"] }}
+          >
+            {position.index} / {position.total}
+          </Text>
+        )}
       </View>
 
       <Text className="text-heading text-white font-satoshiBold" numberOfLines={1}>
@@ -97,56 +102,10 @@ export default function CueReadout({
         )}
       </View>
 
-      <View className="flex-row items-start mt-3">
-        {/* No elapsed or remaining here -- a loop has neither. Tempo takes the
-            place they held, because it is the number you actually check on a
-            loop cue and the one most likely to be wrong. */}
-        <Cell label="TEMPO" value={bpm ? String(bpm) : "--"} />
-        <Cell label="KEY" value={keyLabel ?? "--"} muted />
-
-        {position && (
-          <Cell
-            label="IN SET"
-            value={`${position.index} / ${position.total}`}
-            muted
-            align="end"
-          />
-        )}
-      </View>
-
+      {/* No TEMPO/KEY/IN SET row -- the subtitle line above already carries
+          the loop's tempo and the pad's key (see describeCue), and repeating
+          them here was three numbers nobody read twice. */}
       <SetlistNav prev={prev} next={next} />
-    </View>
-  );
-}
-
-function Cell({
-  label,
-  value,
-  muted,
-  align,
-}: {
-  label: string;
-  value: string;
-  muted?: boolean;
-  /** Pushed to the right edge, for the last cell in the row. */
-  align?: "end";
-}) {
-  return (
-    <View className={align === "end" ? "items-end flex-1" : "mr-4"}>
-      <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
-        {label}
-      </Text>
-      <Text
-        className="mt-1 text-readout font-spaceBold"
-        style={{
-          color: muted ? COLORS.textMuted : COLORS.white,
-          // Digits of equal width, so a counter doesn't shuffle its own
-          // neighbours sideways every time it ticks.
-          fontVariant: ["tabular-nums"],
-        }}
-      >
-        {value}
-      </Text>
     </View>
   );
 }

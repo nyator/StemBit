@@ -378,9 +378,20 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
       ? findLoopByKey(item.loopKey)
       : null;
 
+    // TEMPORARY DIAGNOSTIC -- remove once the loop-swap arm is confirmed working.
+    console.log("[SessionCue] play()", {
+      itemId: item.id,
+      hasLoop: !!loop,
+      loopPlaying: loopPlayingRef.current,
+      liveItemId: liveItemIdRef.current,
+    });
+
     if (loop && loopPlayingRef.current && liveItemIdRef.current !== item.id) {
       captureTabState();
-      if (queueLoopSwap(loop, item.bpm ?? loop.bpm)) {
+      const queued = queueLoopSwap(loop, item.bpm ?? loop.bpm);
+      // TEMPORARY DIAGNOSTIC -- remove once the loop-swap arm is confirmed working.
+      console.log("[SessionCue] queueLoopSwap ->", queued);
+      if (queued) {
         pendingCueRef.current = item;
         setArmedItemId(item.id);
         armCueFallback();

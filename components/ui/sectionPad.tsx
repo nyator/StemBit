@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Animated, Text, TouchableOpacity, View } from "react-native";
 
 import { COLORS, SIZES } from "../../constants/theme";
@@ -39,6 +40,8 @@ type SectionPadProps = {
   onPress: () => void;
   /** The shorter pad used inside a setlist row, where space is borrowed. */
   compact?: boolean;
+  /** PERFORM's own row, one pad wide -- see the note by its call site. */
+  fullWidth?: boolean;
   /**
    * How many times this section plays when hit. See CueSection.repeats.
    *
@@ -65,6 +68,7 @@ export default function SectionPad({
   playheadSeconds,
   onPress,
   compact = false,
+  fullWidth = false,
   repeats,
   onEditRepeats,
 }: SectionPadProps) {
@@ -82,11 +86,38 @@ export default function SectionPad({
     extrapolate: "clamp",
   });
 
+  // Armed has no position to show a fill against -- the launch hasn't landed
+  // yet, so there's no "how far in" to draw. A pulse across the whole pad says
+  // the other thing that matters: this one is about to go, on the next bar.
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isArmed) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      pulse.setValue(0);
+    };
+  }, [isArmed, pulse]);
+
   return (
     <View
       className="mb-2 overflow-hidden border-2 rounded-lg"
       style={{
-        width: "48.5%",
+        width: fullWidth ? "100%" : "48.5%",
         height: compact ? 52 : 66,
         backgroundColor: COLORS.surface,
         borderColor: isLive
@@ -137,6 +168,27 @@ export default function SectionPad({
         </>
       )}
 
+      {/* Armed but not yet live: a full-width pulse rather than a fill, since
+          there is nothing to measure "how far in" against until the launch
+          actually lands on the next bar. */}
+      {isArmed && !isLive && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: COLORS.brandFrom,
+            opacity: pulse.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.12, 0.4],
+            }),
+          }}
+        />
+      )}
+
       {/* Launch and repeats sit side by side, sharing the pad's width.
           Neither overlaps the other: they are two flex children of one row, so
           which one a press lands on is decided by geometry rather than by
@@ -173,14 +225,15 @@ export default function SectionPad({
         className={`justify-between flex-1 px-3 ${compact ? "py-1.5" : "py-2"}`}
       >
         <Text
-          className={`text-white font-satoshiBold ${compact ? "text-label" : "text-body"}`}
+          className={`text-white font-spaceBold ${compact ? "text-title" : "text-heading"}`}
           numberOfLines={1}
         >
           {name}
         </Text>
 
-        {/* Whichever of three things is true: it's running, it's been hit and is
-            waiting for the bar, or -- most of the time -- where it starts.
+        {/* Its place in the song. Live and armed already read off the fill,
+            the pulse and the border colour -- spelling either out here too
+            would be saying the same thing twice.
 
             11, not the 10 this was: the design system calls 11 the floor for
             anything a musician reads while playing, and this line is read
@@ -195,11 +248,7 @@ export default function SectionPad({
                 : COLORS.textMuted,
           }}
         >
-          {isLive
-            ? "PLAYING"
-            : isArmed
-              ? "ARMED"
-              : `${index + 1}  ·  ${clock(startSeconds)}`}
+          {`${index + 1}  ·  ${clock(startSeconds)}`}
         </Text>
       </TouchableOpacity>
 

@@ -11,6 +11,8 @@ import {
   SettingSection,
 } from "../../components/ui/settingRow";
 import { usePreferences } from "../../context/PreferencesContext";
+import { useSessionCue } from "../../context/SessionCueContext";
+import { useMetronome } from "../../context/MetronomeContext";
 import { logoutUser } from "../../lib/appwrite";
 import {
   ProfileCircle,
@@ -38,6 +40,8 @@ const BUILD =
 const SettingsScreen = () => {
   const router = useRouter();
   const { prefs, setPref } = usePreferences();
+  const { endSession } = useSessionCue();
+  const { stopMetronome } = useMetronome();
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -46,6 +50,13 @@ const SettingsScreen = () => {
         text: "Log Out",
         style: "destructive",
         onPress: async () => {
+          // The engines behind a session (loop, pad, stems) and the standalone
+          // metronome all live above the navigator specifically so they
+          // survive normal screen changes -- signing out is the one screen
+          // change that has to be the exception, or the next person to pick
+          // up the phone hears whatever the last one left running.
+          endSession();
+          stopMetronome();
           try {
             await logoutUser();
           } catch {
