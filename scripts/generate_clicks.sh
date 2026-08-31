@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Regenerates the metronome click kits in assets/audio/clicks from the raw DAW
-# recordings. Each kit ships two voices: `beat` (the DAW's normal Metronome.wav)
+# Regenerates the metronome click kit in assets/audio/clicks from the raw DAW
+# recordings. The kit ships two voices: `beat` (the DAW's normal Metronome.wav)
 # and `accent` (its MetronomeUp.wav). Output is mono 44.1kHz/16-bit WAV.
+#
+# One kit — Ableton. The app shipped ten of them behind a picker once; MAP below
+# still shows where the other nine came from, should one ever be wanted again.
 #
 # WAV, not m4a: the metronome engine decodes each click with Web Audio's
 # decodeAudioData (constants/metronomeEngine.ts). AAC prepends ~1-2k samples of
 # priming silence, which would offset each click's onset inconsistently and smear
 # timing. WAV/PCM has zero priming delay and decodes identically everywhere.
 #
-# Every click is peak-normalized to PEAK_DBFS so the kits sit at a consistent
-# loudness with each other and with the "Basic" synthetic clicks (which peak
-# near 0). Peak (not LUFS/RMS) because these clicks are far shorter than the
+# Every click is peak-normalized to PEAK_DBFS so the two voices sit at a
+# consistent loudness. Peak (not LUFS/RMS) because these clicks are shorter than the
 # 400ms EBU R128 gating window — integrated LUFS reads -inf for most of them —
 # and peak normalization preserves the transient attack that IS the click,
 # instead of pumping up decay tails and noise floors the way RMS matching would.
@@ -47,16 +49,15 @@ normalize() {
 }
 
 # kit id : source subdirectory
-MAP="ableton|Ableton (DEFAULT)
-cubase|Cubase
-fl|FL Studio
-logic|Logic
-maschine|Maschine
-mpc|MPC
-protools|Pro Tools/Default
-marimba|Pro Tools/Marimba
-reason|Reason
-sonar|Sonar"
+#
+# The kits this once also rendered, kept as a record of where they came from:
+#   cubase|Cubase          fl|FL Studio               logic|Logic
+#   maschine|Maschine      mpc|MPC                    reason|Reason
+#   protools|Pro Tools/Default                        sonar|Sonar
+#   marimba|Pro Tools/Marimba
+# MPC's clicks are ultra-short (~1-6ms) impulses that silence-trimming eats, so
+# restoring that one also means rendering it with trim="notrim".
+MAP="ableton|Ableton (DEFAULT)"
 
 render() { # in-file  out-file  use_trim
   local af=""
@@ -65,9 +66,7 @@ render() { # in-file  out-file  use_trim
 }
 
 echo "$MAP" | while IFS='|' read -r kit sub; do
-  # MPC clicks are ultra-short (~1-6ms) impulses; silence-trimming eats them, so
-  # they're converted without the trim.
-  trim="trim"; [ "$kit" = "mpc" ] && trim="notrim"
+  trim="trim"
   render "$SRC/$sub/Metronome.wav"   "$OUT/${kit}_beat.wav"   "$trim"
   render "$SRC/$sub/MetronomeUp.wav" "$OUT/${kit}_accent.wav" "$trim"
   normalize "$OUT/${kit}_beat.wav"

@@ -12,7 +12,12 @@ import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
 import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
-import { METRONOME_SOUNDS, useMetronome } from "./MetronomeContext";
+import {
+  ACCENT_SOUND_ID,
+  BEAT_SOUND_ID,
+  METRONOME_SOUNDS,
+  useMetronome,
+} from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
 import type { CueTrack } from "./SessionsContext";
 
@@ -35,7 +40,7 @@ const CLICK_PAN_VALUE: Record<string, number> = {
 };
 
 // Asset id -> bundled asset module, from the shared metronome sound registry.
-// The stem click follows the metronome's chosen sounds, as the loop click does.
+// The stem click is the metronome's click, as the loop click is.
 const soundAsset = (id: string) =>
   METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
 
@@ -269,7 +274,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Everything about the click except whether it is on comes from the same
-  // preferences the loop click reads -- which samples, how loud each voice is,
+  // place the loop click reads -- the same two samples, how loud each voice is,
   // where it sits in the stereo field, and the metronome's own master. Only the
   // on/off is its own (prefs.stemClick), because a song and a loop want a count
   // at different times.
@@ -277,14 +282,14 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   // Note the level: the metronome master, not the loop or pad volume. The click
   // is the metronome, layered over a song rather than played on its own.
   useEffect(() => {
-    loadClickSound(prefs.accentSound);
-    loadClickSound(prefs.beatSound);
+    loadClickSound(ACCENT_SOUND_ID);
+    loadClickSound(BEAT_SOUND_ID);
     postToEngine({
       type: "setClick",
       enabled: prefs.stemClick,
       pan: CLICK_PAN_VALUE[prefs.loopClickPan] ?? 0,
-      accentId: prefs.accentSound,
-      beatId: prefs.beatSound,
+      accentId: ACCENT_SOUND_ID,
+      beatId: BEAT_SOUND_ID,
       accentVolume: prefs.accentVolume * prefs.metronomeVolume,
       beatVolume: prefs.beatVolume * prefs.metronomeVolume,
     });
@@ -292,8 +297,6 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   }, [
     prefs.stemClick,
     prefs.loopClickPan,
-    prefs.accentSound,
-    prefs.beatSound,
     prefs.accentVolume,
     prefs.beatVolume,
     prefs.metronomeVolume,

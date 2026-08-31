@@ -23,6 +23,8 @@ import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
 import { useUserLoops } from "./UserLoopsContext";
 import {
+  ACCENT_SOUND_ID,
+  BEAT_SOUND_ID,
   METRONOME_SOUNDS,
   PLAYBACK_FEELS,
   DEFAULT_FEEL_INDEX,
@@ -61,8 +63,8 @@ const CLICK_PAN_VALUE: Record<string, number> = {
 };
 
 // Asset id -> bundled asset module, from the shared metronome sound registry.
-// The loop click "follows the metronome's sound", so it plays whichever
-// accent/beat samples the Metronome is set to.
+// The loop click is the metronome's click: the same two samples every other
+// engine plays.
 const soundAsset = (id: string) =>
   METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
 
@@ -345,17 +347,17 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Push the current loop-click config (from preferences) to the engine. The
-  // click follows the metronome's selected sounds + per-voice volumes, and its
-  // overall level tracks the metronome master (Settings -> Metronome Volume) —
-  // NOT the Loop Volume, which governs the backing track. Plus its own enable +
-  // pan preferences.
+  // click follows the metronome's per-voice volumes, and its overall level
+  // tracks the metronome master (Settings -> Metronome Volume) — NOT the Loop
+  // Volume, which governs the backing track. Plus its own enable + pan
+  // preferences.
   const postClickConfig = () => {
     postToEngine({
       type: "setClick",
       enabled: prefs.loopClick,
       pan: CLICK_PAN_VALUE[prefs.loopClickPan] ?? 0,
-      accentId: prefs.accentSound,
-      beatId: prefs.beatSound,
+      accentId: ACCENT_SOUND_ID,
+      beatId: BEAT_SOUND_ID,
       accentVolume: prefs.accentVolume * prefs.metronomeVolume,
       beatVolume: prefs.beatVolume * prefs.metronomeVolume,
     });
@@ -625,8 +627,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         // The WebView's decoded click buffers + master gain are wiped on
         // reload too: re-send the click samples, config, and loop volume.
         clickLoadedRef.current.clear();
-        loadClickSound(prefs.accentSound);
-        loadClickSound(prefs.beatSound);
+        loadClickSound(ACCENT_SOUND_ID);
+        loadClickSound(BEAT_SOUND_ID);
         postClickConfig();
         postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
       } else if (data.type === "swapped") {
@@ -781,15 +783,13 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // mount (queued until the engine is ready) and whenever any click-relevant
   // preference changes; the engine reacts live if a loop is already playing.
   useEffect(() => {
-    loadClickSound(prefs.accentSound);
-    loadClickSound(prefs.beatSound);
+    loadClickSound(ACCENT_SOUND_ID);
+    loadClickSound(BEAT_SOUND_ID);
     postClickConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     prefs.loopClick,
     prefs.loopClickPan,
-    prefs.accentSound,
-    prefs.beatSound,
     prefs.accentVolume,
     prefs.beatVolume,
     prefs.metronomeVolume,

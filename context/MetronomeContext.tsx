@@ -94,64 +94,30 @@ export const PLAYBACK_FEELS = [
 
 export const DEFAULT_FEEL_INDEX = 1; // Normal
 
-// Metronome click sounds, one entry per selectable sample.
+// The metronome's two click voices: `accent` sounds the downbeat and any group
+// accents, `beat` sounds everything else. Both come from the Ableton kit, which
+// is the only kit — there is no sound picker, and nothing anywhere chooses
+// between samples at runtime.
 //
-// Sounds are categorized by `group`: each DAW kit (Ableton, Logic, ...) supplies
-// a `beat` voice (its normal click) and an `accent` voice (its accented/downbeat
-// click). `role` marks which one so each voice's picker can lean toward the
-// matching variant, though any voice may play any sound. `label` is what the
-// picker renders.
-//
-// Extend by dropping WAVs into assets/audio/clicks, registering them in
-// constants/audio.js, and adding entries here: the engine decodes every id up
-// front (see MetronomeAssets in constants/metronomeEngine.ts) and each voice's
-// picker lists these labels.
+// The ids are what the loop, stem and loop-preview engines key their decoded
+// click buffers by (they load clicks lazily and by id, unlike the metronome's
+// own engine, which bakes both samples into its page). They are shared here so
+// every engine in the app is provably clicking with the same two samples.
 export type MetronomeSoundRole = "accent" | "beat";
 export type MetronomeSound = {
   id: string;
-  group: string;
   role: MetronomeSoundRole;
-  label: string;
   asset: number;
 };
 
-// Kits render in this order; each expands into an accent + beat entry below.
-const METRONOME_KITS: { id: string; group: string }[] = [
-  { id: "ableton", group: "Ableton" },
-  { id: "cubase", group: "Cubase" },
-  { id: "fl", group: "FL Studio" },
-  { id: "logic", group: "Logic" },
-  { id: "maschine", group: "Maschine" },
-  { id: "mpc", group: "MPC" },
-  { id: "protools", group: "Pro Tools" },
-  { id: "marimba", group: "Pro Tools Marimba" },
-  { id: "reason", group: "Reason" },
-  { id: "sonar", group: "Sonar" },
-];
+export const ACCENT_SOUND_ID = "ableton_accent";
+export const BEAT_SOUND_ID = "ableton_beat";
 
 const clicks = audio.clicks as Record<string, number>;
 
 export const METRONOME_SOUNDS: MetronomeSound[] = [
-  ...METRONOME_KITS.flatMap(({ id, group }): MetronomeSound[] => [
-    {
-      id: `${id}_accent`,
-      group,
-      role: "accent",
-      label: `${group} · Accent`,
-      asset: clicks[`${id}_accent`],
-    },
-    {
-      id: `${id}_beat`,
-      group,
-      role: "beat",
-      label: `${group} · Beat`,
-      asset: clicks[`${id}_beat`],
-    },
-  ]),
-  // Original synthetic clicks, kept so saved preferences referencing them stay
-  // valid.
-  { id: "bright", group: "Basic", role: "accent", label: "Basic · Bright", asset: audio.metronome_bright },
-  { id: "low", group: "Basic", role: "beat", label: "Basic · Low", asset: audio.metronome_low },
+  { id: ACCENT_SOUND_ID, role: "accent", asset: clicks[ACCENT_SOUND_ID] },
+  { id: BEAT_SOUND_ID, role: "beat", asset: clicks[BEAT_SOUND_ID] },
 ];
 
 type MetronomeContextValue = {
@@ -170,12 +136,6 @@ type MetronomeContextValue = {
   /** Metronome regular-click gain, 0–1 (persisted). */
   beatVolume: number;
   setBeatVolume: (value: number) => void;
-  /** Sound id the accent voice plays (persisted). See METRONOME_SOUNDS. */
-  accentSound: string;
-  setAccentSound: (id: string) => void;
-  /** Sound id the regular-beat voice plays (persisted). See METRONOME_SOUNDS. */
-  beatSound: string;
-  setBeatSound: (id: string) => void;
   engineReady: boolean;
   isBlockedByOtherEngine: boolean;
   startMetronome: () => void;
@@ -218,11 +178,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   // Master metronome level (Settings -> Metronome Volume); the engine scales
   // both voices by it.
   const masterVolume = prefs.metronomeVolume;
-  // Per-voice sound choices also persist; the effect below pushes live changes.
-  const accentSound = prefs.accentSound;
-  const beatSound = prefs.beatSound;
-  const setAccentSound = (id: string) => setPref("accentSound", id);
-  const setBeatSound = (id: string) => setPref("beatSound", id);
   // Preference: group accents in compound/odd meters (settings -> Playback).
   // Off = only the downbeat is accented, in any meter.
   const effectiveAccents = prefs.meterAccents ? timeSignature.accents : [0];
@@ -254,15 +209,15 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
 
     const loadEngine = async () => {
       try {
-        const encoded = await Promise.all(
+        // METRONOME_SOUNDS is [accent, beat], in that order.
+        const [accent, beat] = await Promise.all(
           METRONOME_SOUNDS.map((s) => loadAssetBase64(s.asset))
         );
 
         if (!isMounted) return;
-        const sounds = Object.fromEntries(
-          METRONOME_SOUNDS.map((s, i) => [s.id, encoded[i]])
-        );
-        setEngineHtml(buildMetronomeHtml({ sounds }));
+        // Keyed by voice, not by sound id: the engine plays one fixed sample
+        // per voice, so the page never has to look a selection up.
+        setEngineHtml(buildMetronomeHtml({ sounds: { accent, beat } }));
       } catch (error) {
         console.error("Failed to load metronome engine", error);
       }
@@ -438,8 +393,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       accentVolume,
       beatVolume,
       masterVolume,
-      accentSound,
-      beatSound,
     });
 
     isPlayingRef.current = true;
@@ -485,14 +438,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accentVolume, beatVolume, masterVolume]);
 
-  // Live sound changes likewise switch the voices mid-playback.
-  useEffect(() => {
-    if (isPlaying) {
-      postToEngine({ type: "setSounds", accentSound, beatSound });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accentSound, beatSound]);
-
   useEffect(() => {
     return () => {
       stopMetronome();
@@ -516,10 +461,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
         setAccentVolume,
         beatVolume,
         setBeatVolume,
-        accentSound,
-        setAccentSound,
-        beatSound,
-        setBeatSound,
         engineReady,
         isBlockedByOtherEngine,
         startMetronome,

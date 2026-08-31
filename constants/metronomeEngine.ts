@@ -13,12 +13,12 @@ import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 
 export type MetronomeAssets = {
   /**
-   * Map of sound id -> base64-encoded audio, e.g. `{ bright: "...", low: "..." }`.
-   * Every registered click sound (see METRONOME_SOUNDS in MetronomeContext) is
-   * decoded up front; the accent and beat voices then each play whichever id
-   * their picker selected.
+   * The two click samples, base64-encoded and keyed by voice:
+   * `{ accent: "...", beat: "..." }` (see METRONOME_SOUNDS in
+   * MetronomeContext). Both are decoded when the page loads; each voice always
+   * plays its own sample, so there is nothing to select at runtime.
    */
-  sounds: Record<string, string>;
+  sounds: Record<"accent" | "beat", string>;
 };
 
 export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE html>
@@ -29,7 +29,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
       (function () {
         var AudioContextClass = window.AudioContext || window.webkitAudioContext;
         var audioContext = null;
-        // Decoded AudioBuffers keyed by sound id.
+        // Decoded AudioBuffers keyed by voice ("accent" / "beat").
         var buffers = {};
 
         var isPlaying = false;
@@ -58,10 +58,6 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         // Multiplied with each voice's gain, so the accent/beat sliders keep
         // setting the relative mix and this sets the overall level.
         var masterVolume = 1.0;
-        // Which loaded sound each voice plays (set from the per-voice pickers);
-        // default to the first/second loaded sound until told otherwise.
-        var accentSoundId = null;
-        var beatSoundId = null;
         var currentBeatNumber = 0;
         var nextNoteTime = 0.0;
         // Minimum lead when scheduling on the audio clock. Web Audio rejects
@@ -103,8 +99,6 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         function decodeBuffers() {
           var ctx = ensureContext();
           var ids = Object.keys(sounds);
-          if (accentSoundId === null) accentSoundId = ids[0];
-          if (beatSoundId === null) beatSoundId = ids.length > 1 ? ids[1] : ids[0];
           var pending = ids.length;
           if (pending === 0) {
             post({ type: "ready" });
@@ -129,10 +123,11 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           });
         }
 
-        // The buffer a voice should play, falling back to any loaded sound if
-        // the selected id somehow failed to decode.
+        // The buffer a voice should play, falling back to the other voice's
+        // sample if this one somehow failed to decode -- a click in the wrong
+        // colour beats a bar with a hole in it.
         function bufferForVoice(isAccent) {
-          var id = isAccent ? accentSoundId : beatSoundId;
+          var id = isAccent ? "accent" : "beat";
           return buffers[id] || buffers[Object.keys(buffers)[0]] || null;
         }
 
@@ -142,8 +137,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var isSecondaryAccent =
             !isPrimaryAccent && accents.indexOf(beatNumber) !== -1;
           var isAccentVoice = isPrimaryAccent || isSecondaryAccent;
-          // The accent voice plays accentSoundId; every other beat plays
-          // beatSoundId.
+          // The accent voice plays the accent sample; every other beat plays
+          // the beat sample.
           var buffer = bufferForVoice(isAccentVoice);
           // Group accents keep their 0.6 "lift" relative to the downbeat, then
           // the whole accent voice is scaled by accentVolume; other clicks by
@@ -225,16 +220,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
         }
 
-        function setSounds(nextAccentSound, nextBeatSound) {
-          if (typeof nextAccentSound === "string" && buffers[nextAccentSound]) {
-            accentSoundId = nextAccentSound;
-          }
-          if (typeof nextBeatSound === "string" && buffers[nextBeatSound]) {
-            beatSoundId = nextBeatSound;
-          }
-        }
-
-        function start(nextTempo, nextMultiplier, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextMasterVolume, nextAccentSound, nextBeatSound) {
+        function start(nextTempo, nextMultiplier, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextMasterVolume) {
           if (isPlaying) return;
           if (nextTempo) tempo = nextTempo;
           if (typeof nextMultiplier === "number") speedMultiplier = nextMultiplier;
@@ -242,7 +228,6 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (nextBeats) beatsPerMeasure = nextBeats;
           if (nextAccents) setAccents(nextAccents);
           setVolumes(nextAccentVolume, nextBeatVolume, nextMasterVolume);
-          setSounds(nextAccentSound, nextBeatSound);
           var ctx = ensureContext();
           startKeepAlive(); // see silentModeKeepAlive.ts
           currentBeatNumber = 0;
@@ -374,7 +359,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           switch (data.type) {
             case "start":
-              start(data.bpm, data.multiplier, data.beats, data.accents, data.accentVolume, data.beatVolume, data.masterVolume, data.accentSound, data.beatSound);
+              start(data.bpm, data.multiplier, data.beats, data.accents, data.accentVolume, data.beatVolume, data.masterVolume);
               break;
             case "stop":
               stop();
@@ -384,9 +369,6 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               break;
             case "setVolumes":
               setVolumes(data.accentVolume, data.beatVolume, data.masterVolume);
-              break;
-            case "setSounds":
-              setSounds(data.accentSound, data.beatSound);
               break;
             case "setTempo":
               setTempo(data.bpm);

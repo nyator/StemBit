@@ -14,8 +14,6 @@ import * as FileSystem from "expo-file-system";
 //   meterAccents  -> metronome accent grouping in compound/odd meters
 //   accentVolume  -> gain of the metronome's accent clicks, 0–1
 //   beatVolume    -> gain of the metronome's regular clicks, 0–1
-//   accentSound   -> id of the click sound the accent voice plays
-//   beatSound     -> id of the click sound the regular-beat voice plays
 //   metronomeVolume -> master gain for the metronome, scales accent+beat, 0–2
 //   padVolume     -> master gain for the pad instrument, 0–1
 //   loopVolume    -> master gain for the loop's backing track, 0–1
@@ -42,8 +40,6 @@ export type Preferences = {
   meterAccents: boolean;
   accentVolume: number;
   beatVolume: number;
-  accentSound: string;
-  beatSound: string;
   metronomeVolume: number;
   padVolume: number;
   loopVolume: number;
@@ -94,10 +90,12 @@ const DEFAULTS: Preferences = {
   meterAccents: true,
   accentVolume: DEFAULT_ACCENT_VOLUME,
   beatVolume: DEFAULT_BEAT_VOLUME,
-  // Ids from METRONOME_SOUNDS (context/MetronomeContext.tsx). Default to the
-  // Ableton kit's accent/beat voices.
-  accentSound: "ableton_accent",
-  beatSound: "ableton_beat",
+  // Which samples those two voices play isn't a preference: every engine
+  // clicks with the Ableton kit's accent/beat pair (see METRONOME_SOUNDS in
+  // context/MetronomeContext.tsx). Files written before the sound picker was
+  // removed still carry accentSound/beatSound keys; they are spread in below
+  // and simply go unread.
+  //
   // Per-engine master levels (Settings -> Audio Output / Volume).
   //
   // The metronome's runs to 2 where the others stop at 1, and 1 is its default:

@@ -8,7 +8,11 @@ import {
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import { buildLoopEngineHtml } from "../constants/loopEngine";
-import { METRONOME_SOUNDS } from "../context/MetronomeContext";
+import {
+  ACCENT_SOUND_ID,
+  BEAT_SOUND_ID,
+  METRONOME_SOUNDS,
+} from "../context/MetronomeContext";
 import { usePreferences } from "../context/PreferencesContext";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 
@@ -174,26 +178,24 @@ export const LoopPreviewEngine = forwardRef<
       });
   };
 
-  // The click follows the user's metronome sounds and levels, exactly as the
-  // Loop tab's does — it's here to check the trim and tempo against, so it has
-  // to be the same click they'll hear later.
+  // The click uses the same samples and levels as the Loop tab's — it's here to
+  // check the trim and tempo against, so it has to be the same click they'll
+  // hear later.
   useEffect(() => {
-    loadClickSound(prefs.accentSound);
-    loadClickSound(prefs.beatSound);
+    loadClickSound(ACCENT_SOUND_ID);
+    loadClickSound(BEAT_SOUND_ID);
     post({
       type: "setClick",
       enabled: clickEnabled,
       pan: 0,
-      accentId: prefs.accentSound,
-      beatId: prefs.beatSound,
+      accentId: ACCENT_SOUND_ID,
+      beatId: BEAT_SOUND_ID,
       accentVolume: prefs.accentVolume * prefs.metronomeVolume,
       beatVolume: prefs.beatVolume * prefs.metronomeVolume,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     clickEnabled,
-    prefs.accentSound,
-    prefs.beatSound,
     prefs.accentVolume,
     prefs.beatVolume,
     prefs.metronomeVolume,
