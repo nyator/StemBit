@@ -6,13 +6,14 @@ import {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 
-import { COLORS, LAYOUT } from "../../constants/theme";
+import { COLORS } from "../../constants/theme";
 import { TickCircle } from "../icons";
 import { BrandInput } from "./brandInput";
 import Chip from "./chip";
 import {
   MAX_SHEET_HEIGHT,
   SHEET_BACKGROUND,
+  SHEET_CONTENT,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "./sheet";
@@ -159,11 +160,7 @@ export default function CuePicker({
           shut. A plain ScrollView here swallows it and the sheet won't drag. */}
       <BottomSheetScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingHorizontal: LAYOUT.screenPaddingX,
-          paddingTop: 4,
-          paddingBottom: 40,
-        }}
+        contentContainerStyle={SHEET_CONTENT}
       >
         <Text className="mb-3 text-white font-satoshiBold text-title">
           {title}

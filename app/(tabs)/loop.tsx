@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
@@ -10,6 +10,9 @@ import {
 import { useBpmControl } from "../../hooks/useBpmControl";
 import { usePreferences } from "../../context/PreferencesContext";
 import { hapticImpact } from "../../utils/haptics";
+import { confirm } from "../../utils/confirm";
+import { findLoopByKey } from "../../constants/loops";
+import { useSaveLoopAsMine } from "../../hooks/useSaveLoopAsMine";
 
 import { PLAYBACK_FEELS } from "../../context/MetronomeContext";
 
@@ -29,6 +32,7 @@ import {
 } from "../../components/ui/instrument";
 import { COLORS, SIZES } from "../../constants/theme";
 import {
+  Edit2,
   Folder,
   MetronomeFill,
   MetronomeOutline,
@@ -50,6 +54,7 @@ export default function LoopScreen() {
     isPlaying,
     isBlockedByOtherEngine,
     selectedTitle,
+    selectedKey,
     nativeBpm,
     beatsPerBar,
     feelIndex,
@@ -111,20 +116,47 @@ export default function LoopScreen() {
     accessibilityLabel: feel.label,
   }));
 
+  // The loaded loop itself, not just its title: whether it is one of ours or
+  // one of theirs decides what the button beside the picker does.
+  const selectedLoop = findLoopByKey(selectedKey ?? undefined);
+  const { saveAsMine } = useSaveLoopAsMine();
+
+  /**
+   * Edit the loaded loop -- taking a copy first when it is one the app ships.
+   *
+   * A shipped loop cannot be renamed or re-metered; the only thing an edit can
+   * move is its tempo and trim. So the copy is not an extra step on the way to
+   * editing, it is the only way to get at the rest -- and it is asked for
+   * rather than done quietly, because it puts a second row in the browser.
+   */
+  const editThisLoop = async () => {
+    if (!selectedLoop) return;
+
+    if (!selectedLoop.userAdded) {
+      const ok = await confirm({
+        title: `Save ${selectedLoop.title} as your own?`,
+        message:
+          "You get your own copy to rename and re-tempo. The original stays in the catalogue as it is.",
+        confirmLabel: "Save a copy",
+      });
+      if (!ok) return;
+    }
+
+    hapticImpact(prefs.haptics, "light");
+    saveAsMine(selectedLoop);
+  };
+
   return (
     <Screen glows={["topLeftFar"]} className="items-center justify-start">
       <HeaderComponent />
 
-      {/* Fixed, not scrolling, and the same container the metronome uses.
-          An instrument surface is played by muscle memory: every control has to
-          stay where it was last time you reached for it, and a view that can
-          slide under the thumb is one where the tempo dial has moved by the
-          time you get there. Content that doesn't fit is a layout problem to
-          solve at this size, not something to hand to a scroll bar. */}
       <View className="items-center justify-center flex-1 w-full px-instrument">
-          {/* Which loop is loaded, and the way to change it */}
-          <View className="items-center gap-3 mb-5">
-            <ControlLabel text="Select Loop" topic="selectLoop" />
+        {/* Which loop is loaded, and the two things you can do to it: swap it,
+            or make it your own. */}
+        <View className="items-center gap-1 mb-5">
+          {/* <ControlLabel text="Select Loop" topic="selectLoop" /> */}
+          <Text className="text-white text-label font-spaceBold">Select Loop</Text>
+          <View className="flex-row items-center gap-2">
             <PickerButton
               icon={Folder}
               label={selectedTitle ? selectedTitle : "SELECT LOOP"}
@@ -134,89 +166,108 @@ export default function LoopScreen() {
                   ? `Select loop, currently ${selectedTitle}`
                   : "Select a loop"
               }
-              style={{ maxWidth: 220 }}
+              // Shrinks rather than pushing the button beside it off the row --
+              // a long title ellipsises instead.
+              style={{ maxWidth: 220, flexShrink: 1 }}
             />
+
+            {/* The same thing the browser's long press offers, where you are
+                actually listening to the loop -- which is where wanting your
+                own version of it tends to occur, not while scrolling a list. */}
+            {selectedLoop && (
+              <TouchableOpacity
+                onPress={editThisLoop}
+                accessibilityLabel={
+                  selectedLoop.userAdded
+                    ? `Edit ${selectedLoop.title}`
+                    : `Save ${selectedLoop.title} as my loop`
+                }
+                className="p-2 rounded-full bg-white/10"
+              >
+                <Edit2 size={SIZES.rowIcon} color={COLORS.white} />
+              </TouchableOpacity>
+            )}
           </View>
+        </View>
 
-          <BpmDial
-            controls={controls}
-            isPlaying={isPlaying}
-            beat={currentBeat}
-            isAccent={isAccent}
-          />
+        <BpmDial
+          controls={controls}
+          isPlaying={isPlaying}
+          beat={currentBeat}
+          isAccent={isAccent}
+        />
 
-          {/* One bar of the loop's own time signature, downbeat accented. No
-              meter here, so no group accents to pass. */}
-          <BeatDots
-            count={beatsPerBar}
-            currentBeat={currentBeat}
-            isPlaying={isPlaying}
-            isAccent={isAccent}
-          />
+        <BeatDots
+          count={beatsPerBar}
+          currentBeat={currentBeat}
+          isPlaying={isPlaying}
+          isAccent={isAccent}
+        />
 
-          <TransportRow
-            controls={controls}
-            isPlaying={isPlaying}
-            blocked={isBlockedByOtherEngine}
-            playLabel="Start loop"
-            stopLabel="Stop loop"
-            onToggle={() => {
-              hapticImpact(prefs.haptics, "medium");
-              if (isPlaying) stopLoop();
-              else startLoop();
+        <TransportRow
+          controls={controls}
+          isPlaying={isPlaying}
+          blocked={isBlockedByOtherEngine}
+          playLabel="Start loop"
+          stopLabel="Stop loop"
+          onToggle={() => {
+            hapticImpact(prefs.haptics, "medium");
+            if (isPlaying) stopLoop();
+            else startLoop();
+          }}
+        />
+
+        <EngineNotice
+          show={isBlockedByOtherEngine}
+          message="Stop the Metronome first"
+        />
+
+        {/* Reset tempo | tap tempo | click on/off */}
+        <View className="flex-row items-center justify-center gap-3 mt-5">
+          <InstrumentIconButton
+            accessibilityLabel="Reset loop tempo"
+            disabled={!canResetBpm}
+            onPress={() => {
+              hapticImpact(prefs.haptics, "light");
+              resetBpm();
             }}
+          >
+            <Reset size={SIZES.rowIcon} color={COLORS.white} />
+          </InstrumentIconButton>
+
+          <TapTempoButton onPress={controls.handleTapTempo} />
+
+          <InstrumentIconButton
+            accessibilityLabel={
+              prefs.loopClick ? "Disable loop click" : "Enable loop click"
+            }
+            active={prefs.loopClick}
+            onPress={() => setPref("loopClick", !prefs.loopClick)}
+          >
+            {prefs.loopClick ? (
+              <MetronomeFill size={SIZES.rowIcon} color={COLORS.black} />
+            ) : (
+              <MetronomeOutline size={SIZES.rowIcon} color={COLORS.white} />
+            )}
+          </InstrumentIconButton>
+        </View>
+
+        {/* Subdivision */}
+        <View className="items-start w-full gap-1 mt-5">
+          {/* <ControlLabel
+            text="Subdivision"
+            topic="loopSubdivision"
+            className="mb-3"
+          /> */}
+          <Text className="text-white text-label font-spaceBold">Subdivision</Text>
+          <SegmentedControl
+            variant="row"
+            options={feelOptions}
+            value={feelIndex}
+            onChange={setFeelIndex}
+            respondOnPressIn
           />
-
-          <EngineNotice
-            show={isBlockedByOtherEngine}
-            message="Stop the Metronome first"
-          />
-
-          {/* Reset tempo | tap tempo | click on/off */}
-          <View className="flex-row items-center justify-center gap-3 mt-5">
-            <InstrumentIconButton
-              accessibilityLabel="Reset loop tempo"
-              disabled={!canResetBpm}
-              onPress={() => {
-                hapticImpact(prefs.haptics, "light");
-                resetBpm();
-              }}
-            >
-              <Reset size={SIZES.rowIcon} color={COLORS.white} />
-            </InstrumentIconButton>
-
-            <TapTempoButton onPress={controls.handleTapTempo} />
-
-            <InstrumentIconButton
-              accessibilityLabel={
-                prefs.loopClick ? "Disable loop click" : "Enable loop click"
-              }
-              active={prefs.loopClick}
-              onPress={() => setPref("loopClick", !prefs.loopClick)}
-            >
-              {prefs.loopClick ? (
-                <MetronomeFill size={SIZES.rowIcon} color={COLORS.black} />
-              ) : (
-                <MetronomeOutline size={SIZES.rowIcon} color={COLORS.white} />
-              )}
-            </InstrumentIconButton>
-          </View>
-
-          {/* Subdivision */}
-          <View className="items-start w-full mt-5">
-            <ControlLabel
-              text="Subdivision"
-              topic="loopSubdivision"
-              className="mb-3"
-            />
-            <SegmentedControl
-              variant="row"
-              options={feelOptions}
-              value={feelIndex}
-              onChange={setFeelIndex}
-              respondOnPressIn
-            />
-          </View>
+        </View>
       </View>
 
       <BpmInputAccessory />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Metro from '../../app/(tabs)/metro';
 import { MetronomeProvider, METRONOME_SOUNDS } from '../../context/MetronomeContext';
 import { PlaybackLockProvider } from '../../context/PlaybackLockContext';
@@ -41,18 +42,30 @@ jest.mock('expo-file-system', () => ({
 describe('<Metro />', () => {
   it('should start at 120 BPM and allow increasing the tempo', async () => {
     render(
-      // The metro screen's sound/volume sheet is a BottomSheetModal, which
-      // throws ("BottomSheetModalInternalContext cannot be null") without this
-      // provider (app/_layout.tsx supplies it at the app root).
-      <BottomSheetModalProvider>
-        <PreferencesProvider>
-          <PlaybackLockProvider>
-            <MetronomeProvider>
-              <Metro />
-            </MetronomeProvider>
-          </PlaybackLockProvider>
-        </PreferencesProvider>
-      </BottomSheetModalProvider>
+      // Screen reads the safe-area insets through useSafeAreaInsets, which
+      // throws without a provider rather than quietly reporting zero -- so the
+      // test tree needs the one the app root supplies. Fixed metrics rather
+      // than none: that is what the app passes too, and it is what stops a
+      // screen drawing once unpadded and then dropping into place.
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 47, left: 0, right: 0, bottom: 34 },
+        }}
+      >
+        {/* The metro screen's sound/volume sheet is a BottomSheetModal, which
+            throws ("BottomSheetModalInternalContext cannot be null") without
+            this provider (app/_layout.tsx supplies it at the app root). */}
+        <BottomSheetModalProvider>
+          <PreferencesProvider>
+            <PlaybackLockProvider>
+              <MetronomeProvider>
+                <Metro />
+              </MetronomeProvider>
+            </PlaybackLockProvider>
+          </PreferencesProvider>
+        </BottomSheetModalProvider>
+      </SafeAreaProvider>
     );
     await waitFor(() => {
       // The engine decodes every registered click up front, one Asset.fromModule

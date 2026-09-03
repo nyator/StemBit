@@ -20,6 +20,7 @@ export const COLORS = {
   surfaceGlass: "rgba(15,20,22,0.52)", // floating nav bar
   surfaceField: "#17181F", // input / text-field fill
   surfaceSheet: "#090B10", // bottom-sheet panel, darker than the canvas
+  surfaceBadge: "rgba(25,25,25,0.5)", // label chip recessed into a surface row
 
   // The one hue the design derives its depth from: separators, the dial's
   // shadow, and the ambient corner glow are all this teal-navy at low alpha.
@@ -37,6 +38,11 @@ export const COLORS = {
 
   // Slider track behind the filled portion.
   track: "#2D3332",
+  // The unfilled part of a progress bar, which sits on a coloured surface
+  // rather than the canvas and so has to be an alpha rather than a flat grey.
+  // Shared by the setlist's live row and the section pad -- the two draw the
+  // same bar at two heights, and this keeps them the same colour while they do.
+  progressTrack: "rgba(255,255,255,0.10)",
 
   // Brand. It's a gradient, not a flat color -- prefer GRADIENTS.brand and
   // reach for these only where a single value is required.

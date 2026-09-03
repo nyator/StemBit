@@ -85,6 +85,14 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // the lookahead scheduler's cursor.
         var clickBuffers = {};
         var clickEnabled = false;
+        // Subdivision, as a multiplier on how often the click sounds: 0.5 is
+        // half time, 1 every beat, 2 eighths.
+        //
+        // It moves the CLICK only. The playback rate, the beat grid, the dots
+        // and the accent are all untouched, because the loop's tempo is what
+        // the BPM dial is for and a second control that also changed it would
+        // just be the dial again. See the note on beatScheduler.
+        var clickFeel = 1;
         var clickPan = 0; // -1 left .. 0 center .. +1 right
         var clickAccentId = null;
         var clickBeatId = null;
@@ -993,10 +1001,24 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // beat lands. The only number that can't drift from the click is the
         // one the click is scheduled from.
 
-        // Real seconds between beats at the current warp (= 60 / userBpm).
-        function beatSeconds() {
+        // Real seconds between the loop's own beats at the current warp
+        // (= 60 / userBpm). The music's beat, unaffected by the subdivision --
+        // bar lines are measured in these.
+        function musicalBeatSeconds() {
           if (!active || !active.nativeBpm) return 0;
           return 60 / (active.nativeBpm * currentRate);
+        }
+
+        // Real seconds between grid ticks: the click's interval, and the rate
+        // the dots move at.
+        //
+        // The grid ticks at the subdivision, and barBeats() ticks of it make an
+        // accent cycle -- exactly what the metronome does, where double time
+        // doubles the click rate and still accents every fourth click. So 2x on
+        // a 4/4 loop gives a b b b a b b b, not one accent stranded in eight.
+        function beatSeconds() {
+          var musical = musicalBeatSeconds();
+          return musical > 0 ? musical / clickFeel : 0;
         }
 
         // Put the grid on the loop's next beat boundary as of atTime, with the
@@ -1007,7 +1029,10 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (!playing || !active || active.loopBeats < 1) return;
           var beatSec = beatSeconds();
           if (beatSec <= 0) return;
-          var beatFloat = phaseAt(playing, atTime) * active.loopBeats;
+          // In GRID ticks, not musical beats: at 2x there are two of them per
+          // beat, and the grid has to be seeded in the units it advances in or
+          // the first tick lands in the wrong place.
+          var beatFloat = phaseAt(playing, atTime) * active.loopBeats * clickFeel;
           var nextBeat = Math.ceil(beatFloat - 1e-6);
           var bpb = barBeats();
           gridBeatIndex = ((nextBeat % bpb) + bpb) % bpb;
@@ -1241,20 +1266,30 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         //                  out at exactly T, both already prepared.
         var pendingSwap = null;
 
-        /** The audio-clock time of the next bar line, or null if there isn't one. */
+        /** The audio-clock time of the next bar line, or null if there isn't one.
+         *
+         * Worked out from the loop's own position rather than from the click
+         * grid, because the two stopped being the same thing when the
+         * subdivision arrived: at 2x the grid accents twice a bar, and reading
+         * the next accent off it would swap cues half a bar early. A bar line
+         * is a fact about the music, so it is measured in the music's beats.
+         */
         function nextDownbeatTime() {
-          if (!playing || !active) return null;
-          var spb = beatSeconds();
+          if (!playing || !active || active.loopBeats < 1) return null;
+          var spb = musicalBeatSeconds();
           if (spb <= 0) return null;
           var bpb = barBeats();
-          // gridNextTime is the next beat the grid will fire and gridBeatIndex
-          // is which beat of the bar that is, so the next bar line is however
-          // many beats short of the top of the bar it currently stands.
-          var beatsToBar = (bpb - gridBeatIndex) % bpb;
-          var at = gridNextTime + beatsToBar * spb;
+
+          var now = audioContext.currentTime;
+          // Where the loop stands, in its own beats.
+          var beatFloat = phaseAt(playing, now) * active.loopBeats;
+          // The next whole bar at or after that.
+          var nextBar = Math.ceil(beatFloat / bpb - 1e-6) * bpb;
+          var at = now + (nextBar - beatFloat) * spb;
+
           // Never a boundary that has already gone by while this was being
           // worked out; take the following bar instead.
-          var floor = audioContext.currentTime + MIN_SCHEDULE_LEAD;
+          var floor = now + MIN_SCHEDULE_LEAD;
           while (at < floor) at += bpb * spb;
           return at;
         }
@@ -1391,6 +1426,21 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             stopSource(playing, 0.008); // tiny fade: no click on stop
             playing = null;
           }
+        }
+
+        // The subdivision. Changes the grid's spacing, so the grid has to be
+        // re-laid from the loop's current position -- beats already queued are
+        // on the old spacing, and leaving them would put the first tick of the
+        // new feel wherever the last one of the old feel happened to land.
+        //
+        // Nothing about the audio moves: the rate, the buffer and the phase are
+        // all untouched, so this is only ever a re-timing of the click and the
+        // dots. That is the whole point of the control.
+        function setClickFeel(multiplier) {
+          if (typeof multiplier !== "number" || !(multiplier > 0)) return;
+          if (multiplier === clickFeel) return;
+          clickFeel = multiplier;
+          if (playing) startBeatGrid(null);
         }
 
         function setRate(rate) {
@@ -1549,6 +1599,9 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               break;
             case "stop":
               stop();
+              break;
+            case "setClickFeel":
+              setClickFeel(data.multiplier);
               break;
             case "setRate":
               setRate(data.rate);

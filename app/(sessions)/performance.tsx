@@ -43,6 +43,7 @@ import { useLiveSections } from "../../hooks/useLiveSections";
 import { PAD_PACKS } from "../../constants/pads";
 import { findLoopByKey } from "../../constants/loops";
 import { hapticImpact } from "../../utils/haptics";
+import { confirm } from "../../utils/confirm";
 import { describeCue } from "../../utils/describeCue";
 
 import ScreenHeader from "../../components/ui/screenHeader";
@@ -63,12 +64,13 @@ import SectionPad from "../../components/ui/sectionPad";
 import {
   MAX_SHEET_HEIGHT,
   SHEET_BACKGROUND,
+  SHEET_CONTENT,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "../../components/ui/sheet";
 import Screen from "../../components/ui/screen";
 import EmptyState from "../../components/ui/emptyState";
-import { COLORS, LAYOUT, SHADOWS, SIZES } from "../../constants/theme";
+import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
 import {
   barLabel,
   barSpan,
@@ -1056,6 +1058,9 @@ export default function PerformanceScreen() {
   // have since been replaced is dropped rather than applied to the wrong song.
   const detectKeyRef = useRef<string | null>(null);
 
+  const SHEET_SNAP_POINTS = ["50%"];
+
+
   /**
    * Read the tempo off one of the stems just imported.
    *
@@ -1103,6 +1108,34 @@ export default function PerformanceScreen() {
       const picked = await importStems();
       if (picked.length === 0) return; // cancelled, or nothing readable
 
+      // Asked here rather than before the file picker: only now is there
+      // anything to describe. Choosing files is not the decision -- what they
+      // do to the cue is, and that is only knowable once they are chosen.
+      const displacedLoop = cue.loopKey ? findLoopByKey(cue.loopKey) : undefined;
+      const ok = await confirm({
+        title: `Add ${picked.length} ${picked.length === 1 ? "stem" : "stems"}?`,
+        message: [
+          tracks.length > 0
+            ? `They join the ${tracks.length} already in this cue.`
+            : `This cue becomes a stem song.`,
+          // The one consequence that is genuinely surprising: a cue is stems OR
+          // a loop, so importing into a loop cue quietly drops the loop.
+          displacedLoop
+            ? `${displacedLoop.title} is removed — a cue plays stems or a loop, not both.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        confirmLabel: "Add",
+      });
+      if (!ok) {
+        // The files were copied into app storage before we got here, so they
+        // have to be cleaned up -- otherwise a declined import silently leaves
+        // its audio on the device with nothing naming it.
+        removeStems(picked);
+        return;
+      }
+
       // Added to what's there, so a song can be built up in more than one pass
       // -- stems often live in more than one folder.
       const nextTracks = [...tracks, ...picked];
@@ -1149,10 +1182,24 @@ export default function PerformanceScreen() {
     }
   };
 
-  const removeTrack = (trackId: string) => {
+  const removeTrack = async (trackId: string) => {
     if (!sessionId || !itemId) return;
-    hapticImpact(prefs.haptics, "light");
     const removed = tracks.find((track) => track.id === trackId);
+
+    // The only edit here that destroys something. removeStems below deletes the
+    // copied file, and once the cue stops naming it nothing else can reach it --
+    // so this is one tap away from audio the user cannot get back, and the
+    // question says so rather than being a polite "are you sure".
+    const ok = await confirm({
+      title: `Remove ${removed?.name ?? "this stem"}?`,
+      message:
+        "Its audio is deleted from the app for good. The original file on your device isn't touched.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    hapticImpact(prefs.haptics, "light");
     const nextTracks = tracks.filter((track) => track.id !== trackId);
     // Engine before cue, for the reason spelled out in pickStems.
     reloadStems(nextTracks);
@@ -1187,13 +1234,39 @@ export default function PerformanceScreen() {
     });
   };
 
-  const setCueLoop = (key: string | undefined) => {
+  const setCueLoop = async (key: string | undefined) => {
     if (!sessionId || !itemId || !cue) return;
     const picked = key ? findLoopByKey(key) : undefined;
     // The loop's own tempo comes with it, the way it does in the cue editor.
     // Keeping the old one would leave the new loop warped by however far the
     // last one's tempo had been pushed, which is never what picking meant.
     const changes = { loopKey: key, bpm: picked?.bpm ?? cue.bpm };
+
+    // Asked, because this writes to the setlist the moment it is chosen and
+    // there is no undo. The tempo is named in the question rather than left to
+    // be discovered: a cue nudged to 96 by ear silently jumping to the new
+    // loop's 124 is the part of this nobody expects.
+    const replacing = cue.loopKey ? findLoopByKey(cue.loopKey) : undefined;
+    const tempoMoves = picked && picked.bpm !== cue.bpm;
+    const ok = await confirm({
+      title: key
+        ? replacing
+          ? `Replace ${replacing.title}?`
+          : `Use ${picked?.title ?? "this loop"}?`
+        : "Remove the loop?",
+      message: key
+        ? [
+            `This cue will play ${picked?.title ?? "the selected loop"}.`,
+            tempoMoves ? `Its tempo goes to ${picked.bpm} BPM.` : null,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        : "The cue keeps everything else, but has nothing to play.",
+      confirmLabel: key ? (replacing ? "Replace" : "Use it") : "Remove",
+      destructive: !key,
+    });
+    if (!ok) return;
+
     updateItem(sessionId, itemId, changes);
 
     // A cue that is sounding follows the change, rather than carrying on with
@@ -2334,6 +2407,7 @@ export default function PerformanceScreen() {
       <BottomSheetModal
         ref={setlistSheetRef}
         enableDynamicSizing
+        snapPoints={SHEET_SNAP_POINTS}
         maxDynamicContentSize={MAX_SHEET_HEIGHT}
         onDismiss={() => setBrowsingSet(false)}
         backdropComponent={renderBackdrop}
@@ -2344,11 +2418,7 @@ export default function PerformanceScreen() {
             both read the same vertical drag, and only this one hands it back at
             the top of its content so the sheet can be pulled shut. */}
         <BottomSheetScrollView
-          contentContainerStyle={{
-            paddingHorizontal: LAYOUT.screenPaddingX,
-            paddingTop: 4,
-            paddingBottom: 40,
-          }}
+          contentContainerStyle={SHEET_CONTENT}
         >
           <Text className="mb-3 text-white font-satoshiBold text-title">
             {setlist?.title ?? "Setlist"}

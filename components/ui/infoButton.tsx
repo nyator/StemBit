@@ -5,10 +5,11 @@ import { BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Information } from "../icons";
 import {
   SHEET_BACKGROUND,
+  SHEET_CONTENT,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "./sheet";
-import { COLORS, LAYOUT } from "../../constants/theme";
+import { COLORS } from "../../constants/theme";
 import { INFO_TOPICS, type InfoTopicKey } from "../../constants/infoCopy";
 
 // The Information icons next to the instrument labels were decorative -- they
@@ -65,13 +66,9 @@ export default function InfoButton({
       >
         <BottomSheetScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: LAYOUT.screenPaddingX,
-            paddingTop: 8,
-            paddingBottom: 44,
-          }}
+          contentContainerStyle={SHEET_CONTENT}
         >
-          <Text className="mb-3 text-white text-heading font-spaceBold">
+          <Text className="mb-3 text-white font-satoshiBold text-title">
             {title}
           </Text>
 

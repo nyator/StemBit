@@ -9,7 +9,11 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+// The legacy entrypoint, not the package root. SDK 54 ships
+// expo-file-system 19, where the root export is the new File/Directory API
+// and the path-and-string API this file uses moved behind /legacy. Importing
+// from the root leaves EncodingType undefined and makes every read throw.
+import * as FileSystem from "expo-file-system/legacy";
 
 import {
   LOOP_CATEGORIES,

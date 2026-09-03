@@ -79,7 +79,7 @@ export default function LoopFillBar({ phase }: LoopFillBarProps) {
           right: 0,
           bottom: 0,
           height: BAR_HEIGHT,
-          backgroundColor: "rgba(255,255,255,0.10)",
+          backgroundColor: COLORS.progressTrack,
         }}
       >
         <Animated.View

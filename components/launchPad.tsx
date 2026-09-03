@@ -9,6 +9,19 @@ type LaunchPadComponentProp = {
   isPlaying: boolean;
   /** Border/glow tint while playing -- major vs. minor mode. */
   activeColor?: string;
+  /**
+   * Edge length in points, worked out by the screen from the window width.
+   *
+   * A number rather than the "30% wide, square by aspect ratio" this used to
+   * be. Both of those resolve against the parent's MEASURED width, and a tab
+   * that has been hidden with display:none is laid out from scratch when it
+   * comes back -- so the twelve pads spent a frame at the wrong size and
+   * visibly snapped into place on every switch to this tab. A fixed size is
+   * settled in Yoga's first pass, with nothing to measure first.
+   */
+  size: number;
+  /** Gap around each pad, likewise in points. */
+  gap: number;
   onPress: () => void;
 };
 
@@ -23,6 +36,8 @@ export default function LaunchPadComponent({
   selectKey,
   isPlaying,
   activeColor = COLORS.glow,
+  size,
+  gap,
   onPress,
 }: LaunchPadComponentProp) {
   const gradientId = `padGlow-${useId()}`;
@@ -31,9 +46,11 @@ export default function LaunchPadComponent({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      className="w-[30%] m-[1.5%] items-center justify-center overflow-hidden rounded-lg border active:scale-95"
+      className="items-center justify-center overflow-hidden border rounded-lg active:scale-95"
       style={{
-        aspectRatio: 1,
+        width: size,
+        height: size,
+        margin: gap,
         borderColor: isPlaying ? withAlpha(activeColor, 0.5) : "rgba(25,25,25,0.5)",
         backgroundColor: isPlaying ? undefined : "rgba(0,0,0,0.5)",
         boxShadow: isPlaying

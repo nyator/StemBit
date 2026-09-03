@@ -6,7 +6,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import * as FileSystem from "expo-file-system";
+// The legacy entrypoint, not the package root. SDK 54 ships
+// expo-file-system 19, where the root export is the new File/Directory API
+// and the path-and-string API this file uses moved behind /legacy. Importing
+// from the root leaves EncodingType undefined and makes every read throw.
+import * as FileSystem from "expo-file-system/legacy";
 
 // App-wide user preferences, persisted on device. Every preference here is
 // real — it changes actual behavior somewhere in the app:

@@ -18,6 +18,16 @@ import { repeatDescription, repeatLabel } from "../../constants/barGrid";
 // the solid bar along the bottom edge is the precise one for when you actually
 // look down.
 
+/**
+ * Thinner than the setlist row's 6pt bar.
+ *
+ * Not drift: that bar spans a full-width row and this one spans a pad in a
+ * grid, so the same thickness would read as a heavier line here. The colour is
+ * shared (COLORS.progressTrack) precisely so the height can differ on purpose
+ * without the two bars also quietly diverging in tone.
+ */
+const BAR_HEIGHT = 4;
+
 type SectionPadProps = {
   name: string;
   /** Its place in the song, shown when there's nothing more urgent to say. */
@@ -153,8 +163,8 @@ export default function SectionPad({
               left: 0,
               right: 0,
               bottom: 0,
-              height: 4,
-              backgroundColor: "rgba(255,255,255,0.10)",
+              height: BAR_HEIGHT,
+              backgroundColor: COLORS.progressTrack,
             }}
           >
             <Animated.View

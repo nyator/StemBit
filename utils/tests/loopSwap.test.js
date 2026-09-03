@@ -36,14 +36,17 @@ const fnSource = script.match(
 /**
  * Run it against one arrangement of engine state.
  *
- * `gridNextTime` is the audio time of the next beat the grid will fire and
- * `gridBeatIndex` is which beat of the bar that is -- the pair the click
- * scheduler keeps.
+ * The inputs are the LOOP's position, not the click grid's: `phase` is where
+ * the loop stands (0..1) and `loopBeats` how many of its own beats it holds.
+ * That is the whole point of the function -- it used to read the grid cursor,
+ * and once the subdivision could tick that grid at 2x, "the next accent" and
+ * "the next bar line" stopped being the same instant. A cue is quantised to the
+ * music, so it is measured against the music.
  */
 const nextDownbeat = ({
   now = 10,
-  gridNextTime = 10.25,
-  gridBeatIndex = 0,
+  phase = 0,
+  loopBeats = 8,
   beatSeconds = 0.5,
   barBeats = 4,
   playing = true,
@@ -54,71 +57,69 @@ const nextDownbeat = ({
     "state",
     `
       var playing = state.playing ? {} : null;
-      var active = state.active ? {} : null;
-      var gridNextTime = state.gridNextTime;
-      var gridBeatIndex = state.gridBeatIndex;
+      var active = state.active ? { loopBeats: state.loopBeats } : null;
       var audioContext = { currentTime: state.now };
       var MIN_SCHEDULE_LEAD = 0.002;
-      function beatSeconds() { return state.beatSeconds; }
+      function musicalBeatSeconds() { return state.beatSeconds; }
       function barBeats() { return state.barBeats; }
+      function phaseAt() { return state.phase; }
       ${fnSource}
       return nextDownbeatTime();
     `
-  )({ now, gridNextTime, gridBeatIndex, beatSeconds, barBeats, playing, active });
+  )({ now, phase, loopBeats, beatSeconds, barBeats, playing, active });
+
+/** Phase of a loop `loopBeats` long, standing `beat` beats in. */
+const atBeat = (beat, loopBeats = 8) => beat / loopBeats;
 
 describe("nextDownbeatTime — where a queued cue lands", () => {
-  it("is the next beat itself when that beat is the downbeat", () => {
-    // Nothing to wait through: the grid's next beat IS beat 1 of the bar.
-    expect(nextDownbeat({ gridNextTime: 10.25, gridBeatIndex: 0 })).toBeCloseTo(
-      10.25,
-      6
-    );
+  it("lands on the bar line the loop is about to reach", () => {
+    // A tenth of a beat short of beat 4 of an 8-beat 4/4 loop: 0.05s away at
+    // half a second a beat.
+    expect(nextDownbeat({ phase: atBeat(3.9) })).toBeCloseTo(10 + 0.05, 6);
   });
 
   it("waits out the rest of the bar from anywhere inside it", () => {
-    // 4/4 at 120: half a second a beat. On beat 2, three beats left to run.
-    expect(nextDownbeat({ gridNextTime: 10.25, gridBeatIndex: 1 })).toBeCloseTo(
-      10.25 + 1.5,
-      6
-    );
-    expect(nextDownbeat({ gridNextTime: 10.25, gridBeatIndex: 2 })).toBeCloseTo(
-      10.25 + 1.0,
-      6
-    );
-    expect(nextDownbeat({ gridNextTime: 10.25, gridBeatIndex: 3 })).toBeCloseTo(
-      10.25 + 0.5,
-      6
-    );
+    // 4/4 at 120: half a second a beat. One beat in, three left to run.
+    expect(nextDownbeat({ phase: atBeat(1) })).toBeCloseTo(10 + 1.5, 6);
+    expect(nextDownbeat({ phase: atBeat(2) })).toBeCloseTo(10 + 1.0, 6);
+    expect(nextDownbeat({ phase: atBeat(3) })).toBeCloseTo(10 + 0.5, 6);
   });
 
   it("counts the bar in the loop's own meter", () => {
-    // 3/4: on beat 2, two beats left rather than three.
+    // 3/4: one beat in, two left rather than three.
     expect(
-      nextDownbeat({ gridNextTime: 10.25, gridBeatIndex: 1, barBeats: 3 })
-    ).toBeCloseTo(10.25 + 1.0, 6);
+      nextDownbeat({ phase: atBeat(1, 6), loopBeats: 6, barBeats: 3 })
+    ).toBeCloseTo(10 + 1.0, 6);
   });
 
-  it("never returns a boundary that has already gone by", () => {
-    // The press landed so late in the bar that the downbeat is now behind us --
-    // scheduling into it would be dropped by Web Audio and the cue would never
-    // sound. The following bar is the answer instead.
-    const at = nextDownbeat({
-      now: 12,
-      gridNextTime: 10.25,
-      gridBeatIndex: 0,
-      beatSeconds: 0.5,
-      barBeats: 4,
-    });
-    expect(at).toBeGreaterThan(12);
-    // Still ON the grid: a whole number of bars past where it started.
-    expect(((at - 10.25) / 2) % 1).toBeCloseTo(0, 6);
+  it("takes the bar after the one it is standing on", () => {
+    // Exactly on a bar line, which is unusable: by the time anything reaches
+    // the audio clock the instant has gone. The next one is a whole bar away.
+    expect(nextDownbeat({ phase: atBeat(4) })).toBeCloseTo(10 + 2.0, 6);
   });
 
   it("leaves room to schedule rather than landing on the instant", () => {
-    // A boundary exactly at `now` is already unusable by the time anything is
-    // handed to the audio clock.
-    const at = nextDownbeat({ now: 10.25, gridNextTime: 10.25, gridBeatIndex: 0 });
-    expect(at).toBeGreaterThan(10.25);
+    const at = nextDownbeat({ phase: 0 });
+    expect(at).toBeGreaterThan(10 + 0.002);
+  });
+
+  /**
+   * The regression this function was rewritten for.
+   *
+   * The subdivision ticks the click grid at 0.5x, 1x or 2x, and the old
+   * implementation read its cursor -- so at 2x it returned the next ACCENT,
+   * which is half a bar early, and a queued cue swapped mid-bar. Reading the
+   * loop's own position instead means the answer cannot move: none of the
+   * inputs here have anything to do with the click.
+   */
+  it("is unmoved by the subdivision", () => {
+    const answers = [0.5, 1, 2].map(() =>
+      // Nothing in the signature to vary: the feel is not an input any more,
+      // which is the point. Same state, same answer, whatever the click does.
+      nextDownbeat({ phase: atBeat(1) })
+    );
+    expect(new Set(answers).size).toBe(1);
+    expect(answers[0]).toBeCloseTo(10 + 1.5, 6);
   });
 
   it("has nothing to answer when the loop isn't running", () => {
@@ -128,5 +129,9 @@ describe("nextDownbeatTime — where a queued cue lands", () => {
 
   it("has nothing to answer at a tempo that yields no beat length", () => {
     expect(nextDownbeat({ beatSeconds: 0 })).toBeNull();
+  });
+
+  it("has nothing to answer for a loop with no beats in it", () => {
+    expect(nextDownbeat({ loopBeats: 0 })).toBeNull();
   });
 });

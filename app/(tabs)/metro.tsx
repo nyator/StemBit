@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, StatusBar, TouchableOpacity, TextInput } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
-import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useMetronome,
   TIME_SIGNATURES,
@@ -22,32 +21,42 @@ import {
 import { hapticImpact } from "../../utils/haptics";
 
 import HeaderComponent from "../../components/headerComponent";
+// The instrument furniture, shared with the Loop screen. Everything below the
+// header is one of these on both, in the same order, so the two read as the
+// same instrument with a different engine behind it.
 import {
-  BpmInputAccessory,
-  BPM_ACCESSORY_ID,
-} from "../../components/ui/bpmInputAccessory";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
-import { DialGlowRings } from "../../components/ui/dialGlowRing";
-import BeatGlow, { BEAT_GLOW_SIZE } from "../../components/ui/beatGlow";
+  BeatDots,
+  BpmDial,
+  EngineNotice,
+  PickerButton,
+  TapTempoButton,
+  TransportRow,
+} from "../../components/ui/instrument";
+import SegmentedControl from "../../components/ui/segmentedControl";
+import { BpmInputAccessory } from "../../components/ui/bpmInputAccessory";
+import Screen from "../../components/ui/screen";
 import Slider from "../../components/ui/slider";
-import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
-import {
-  AddCircle,
-  MinusCircle,
-  PlayFilled,
-  Stop,
-  Musicnote,
-} from "../../components/icons";
-import InfoButton from "../../components/ui/infoButton";
+import { COLORS, SIZES, SPACING } from "../../constants/theme";
+import { Musicnote } from "../../components/icons";
 import {
   SHEET_BACKGROUND,
+  SHEET_CONTENT,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "../../components/ui/sheet";
 
 // The picker sheet opens to ~60% of the screen; content scrolls within.
 const SHEET_SNAP_POINTS = ["50%"];
+
+/**
+ * One meter chip, held to a fixed width rather than sized to its label.
+ *
+ * "4/4" and "12/8" are different widths of text, and left to themselves the
+ * chips make a ragged grid that is harder to scan than the six meters in it
+ * deserve. They still wrap, so a narrow phone gets three to a row instead of
+ * four rather than a row that overflows.
+ */
+const METER_CHIP_WIDTH = 71;
 
 export default function MetroScreen() {
   const {
@@ -90,17 +99,26 @@ export default function MetroScreen() {
   // amount and closes the same way.
   const renderBackdrop = useSheetBackdrop();
 
-  const {
-    bpmText,
-    handleBpmTextChange,
-    commitBpmText,
-    increase,
-    decrease,
-    startHoldIncrease,
-    startHoldDecrease,
-    endHold,
-    handleTapTempo,
-  } = useBpmControl({ bpm, setBpm, minBpm: MIN_BPM, maxBpm: MAX_BPM });
+  // Kept as the object rather than destructured: the shared dial and transport
+  // take the whole of it, the same way the Loop screen hands over its own.
+  const controls = useBpmControl({
+    bpm,
+    setBpm,
+    minBpm: MIN_BPM,
+    maxBpm: MAX_BPM,
+  });
+
+  // The beat now sounding is an accent if the meter groups on it -- beat 0
+  // always, plus the group starts in compound and odd meters (6/8 is 3+3).
+  const isAccentBeat = accents.includes(currentBeat);
+
+  // Built the same way the Loop screen builds its own, so the two subdivision
+  // rows are one control rather than two that resemble each other.
+  const feelOptions = PLAYBACK_FEELS.map((feel, index) => ({
+    value: index,
+    label: feel.short,
+    accessibilityLabel: feel.label,
+  }));
 
   // One row of the beat-grid: a labelled voice with a volume slider.
   // Figma node 102:724.
@@ -111,8 +129,8 @@ export default function MetroScreen() {
     onSlide: (v: number) => void,
     onCommit: (v: number) => void
   ) => (
-    <View className="flex-row items-center w-full gap-[9px] px-[10px] py-4 bg-surface-muted rounded-lg">
-      <View className="items-center justify-center px-2 py-1 rounded-[8px] bg-[rgba(25,25,25,0.5)]">
+    <View className="flex-row items-center w-full gap-2 px-3 py-4 bg-surface-muted rounded-lg">
+      <View className="items-center justify-center px-2 py-1 rounded-sm bg-surface-badge">
         <Text className="text-white text-overline font-spaceBold">{badge}</Text>
       </View>
       <Slider
@@ -144,15 +162,13 @@ export default function MetroScreen() {
       <BottomSheetScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
+          ...SHEET_CONTENT,
           alignItems: "center",
-          paddingHorizontal: 20,
-          paddingTop: 4,
-          paddingBottom: 40,
-          gap: 25,
+          gap: SPACING["2xl"],
         }}
       >
         {/* Time signature categories: tap a chip to pick the meter. */}
-        <View className="w-full gap-[10px]">
+        <View className="w-full gap-3">
           {TIME_SIGNATURE_CATEGORIES.map((cat) => (
             <View key={cat.key} className="w-full gap-2">
               <Text
@@ -172,17 +188,15 @@ export default function MetroScreen() {
                           setTimeSignature(ts);
                           closeSheet();
                         }}
-                        style={{ width: 71 }}
-                        className={`items-center justify-center px-[9px] py-[7px] rounded-[10px] border ${
-                          selected
-                            ? "bg-white border-white"
-                            : "border-hairline-segment"
-                        }`}
+                        style={{ width: METER_CHIP_WIDTH }}
+                        className={`items-center justify-center px-2 py-2 rounded-sm border ${selected
+                          ? "bg-white border-white"
+                          : "border-hairline-segment"
+                          }`}
                       >
                         <Text
-                          className={`text-label font-spaceBold ${
-                            selected ? "text-[#151515]" : "text-white"
-                          }`}
+                          className={`text-label font-spaceBold ${selected ? "text-[#151515]" : "text-white"
+                            }`}
                         >
                           {ts.label}
                         </Text>
@@ -196,7 +210,7 @@ export default function MetroScreen() {
         </View>
 
         {/* Beat grid: accent + beat volumes */}
-        <View className="w-full gap-[5px]">
+        <View className="w-full gap-1">
           {renderVolumeRow("accent", "Accent", accentVol, setAccentVol, setAccentVolume)}
           {renderVolumeRow("beat", "BEATS", beatVol, setBeatVol, setBeatVolume)}
         </View>
@@ -204,241 +218,84 @@ export default function MetroScreen() {
     </BottomSheetModal>
   );
 
-  // --- Beat Visuals ---
-  // A row of dots, one per beat. The downbeat lights up brand blue; secondary
-  // group accents (e.g. beat 4 of 6/8) light a dimmer blue, other beats
-  // white. Idle group-accent dots are slightly brighter so the meter's
-  // grouping is visible even before pressing play.
-  const renderBeatVisuals = () => {
-    const beats = [];
-    for (let i = 0; i < timeSignature.beats; i++) {
-      const isCurrent = i === currentBeat;
-      const isSecondaryAccent = i !== 0 && accents.includes(i);
-      const isAccent = i === 0 || isSecondaryAccent;
-      const activeColor =
-        i === 0 ? COLORS.brand : isSecondaryAccent ? COLORS.brandFrom : COLORS.text;
-      const idleColor = isSecondaryAccent
-        ? "rgba(0,139,194,0.3)"
-        : "rgba(255,255,255,0.15)";
-      const size = isCurrent ? 12 : 8;
-      // The halo marks the accent that is sounding, so it pulses along with
-      // the click rather than sitting on the accent dots permanently. Gated on
-      // isPlaying too: currentBeat resets to 0 on stop, and without this the
-      // downbeat would glow at a stopped metronome.
-      const showGlow = isPlaying && isCurrent && isAccent;
-      beats.push(
-        <View
-          key={i}
-          style={{
-            marginHorizontal: 3,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {showGlow && (
-            <BeatGlow
-              color={activeColor}
-              // Centres the painted box on the dot without it joining layout.
-              style={{
-                left: (size - BEAT_GLOW_SIZE) / 2,
-                top: (size - BEAT_GLOW_SIZE) / 2,
-              }}
-            />
-          )}
-          <View
-            style={{
-              width: size,
-              height: size,
-              borderRadius: 6,
-              backgroundColor: isCurrent ? activeColor : idleColor,
-            }}
-          />
-        </View>
-      );
-    }
-    return (
-      <View className="flex-row items-center justify-center" style={{ height: 12 }}>
-        {beats}
-      </View>
-    );
-  };
-
   return (
-    <SafeAreaView className="items-center justify-start flex-1 overflow-hidden bg-canvas">
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
-
+    <Screen glows={["topLeftFar"]} className="items-center justify-start">
       <HeaderComponent />
 
       <View className="items-center justify-center flex-1 w-full px-instrument">
-        {/* Time Signature */}
-        <View className="items-center gap-[10px] mb-[18px]">
-          <View className="flex-row items-center gap-[5px]">
-            <Text className="text-white text-label font-spaceBold">Time Signature</Text>
-            <InfoButton topic="timeSignature" />
-          </View>
-          <TouchableOpacity
+        {/* Time Signature — the same picker the Loop screen names its loop
+            with, kept to segmentWidth so it lines up with the dial above it. */}
+        <View className="items-center gap-1 mb-5">
+          <Text className="text-white text-label font-spaceBold">Time Signature</Text>
+          <PickerButton
+            icon={Musicnote}
+            label={timeSignature.label}
             onPress={openSheet}
             style={{ width: SIZES.segmentWidth }}
-            className="flex-row items-center justify-center gap-[8px] py-[7px] bg-white rounded-sm"
-          >
-            <Musicnote size={20} color={COLORS.black} />
-            <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
-            <Text className="text-black text-title font-spaceBold">
-              {timeSignature.label}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Dial */}
-        <View
-          className="items-center justify-center w-full mb-[18px]"
-          style={{ height: 249 }}
-        >
-          <DialGlowRings
-            beat={currentBeat}
-            isAccent={accents.includes(currentBeat)}
-            isPlaying={isPlaying}
+            accessibilityLabel={`Time signature, currently ${timeSignature.label}`}
           />
-          <View
-            className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
-            style={{
-              width: SIZES.dial,
-              height: SIZES.dial,
-              borderWidth: 3,
-              ...SHADOWS.glow,
-            }}
-          >
-            <TextInput
-              className="p-0 text-center font-spaceBold"
-              style={{
-                minWidth: 110,
-                fontSize: 48,
-                color: isPlaying ? COLORS.brand : COLORS.white,
-              }}
-              value={bpmText}
-              onChangeText={handleBpmTextChange}
-              onEndEditing={commitBpmText}
-              keyboardType="numeric"
-              maxLength={3}
-              selectTextOnFocus
-              underlineColorAndroid="transparent"
-              inputAccessoryViewID={BPM_ACCESSORY_ID}
-            />
-            <Text className="uppercase text-label text-ink-muted font-satoshiBold">
-              BPM
-            </Text>
-          </View>
         </View>
 
-        {renderBeatVisuals()}
+        <BpmDial
+          controls={controls}
+          isPlaying={isPlaying}
+          beat={currentBeat}
+          isAccent={isAccentBeat}
+        />
 
-        {/* Transport: -/play-stop/+ */}
-        <View className="flex-row items-center gap-[10px] mt-[10px]">
-          <TouchableOpacity
-            accessibilityLabel="Decrease BPM"
-            onPress={decrease}
-            onLongPress={startHoldDecrease}
-            onPressOut={endHold}
-            className="p-2 rounded-lg bg-white/10"
-          >
-            <MinusCircle size={SIZES.transportSecondary} color={COLORS.white} />
-          </TouchableOpacity>
+        <BeatDots
+          count={timeSignature.beats}
+          currentBeat={currentBeat}
+          isPlaying={isPlaying}
+          isAccent={isAccentBeat}
+          accents={accents}
+        />
 
-          <TouchableOpacity
-            accessibilityLabel={isPlaying ? "Stop metronome" : "Start metronome"}
-            // onPressIn, not onPress: onPress fires when the finger LIFTS, so
-            // the click (and its haptic) waited on the release rather than the
-            // tap. Transport should answer the moment you touch it.
-            onPressIn={() => {
-              hapticImpact(prefs.haptics, "medium");
-              if (isPlaying) stopMetronome();
-              else startMetronome();
-            }}
-            disabled={!isPlaying && isBlockedByOtherEngine}
-            style={
-              !isPlaying && isBlockedByOtherEngine ? { opacity: 0.4 } : undefined
-            }
-          >
-            {isPlaying ? (
-              <Stop size={SIZES.transportPrimary} />
-            ) : (
-              <PlayFilled size={SIZES.transportPrimary} />
-            )}
-          </TouchableOpacity>
+        <TransportRow
+          controls={controls}
+          isPlaying={isPlaying}
+          blocked={isBlockedByOtherEngine}
+          playLabel="Start metronome"
+          stopLabel="Stop metronome"
+          onToggle={() => {
+            hapticImpact(prefs.haptics, "medium");
+            if (isPlaying) stopMetronome();
+            else startMetronome();
+          }}
+        />
 
-          <TouchableOpacity
-            accessibilityLabel="Increase BPM"
-            onPress={increase}
-            onLongPress={startHoldIncrease}
-            onPressOut={endHold}
-            className="p-2 rounded-lg bg-white/10"
-          >
-            <AddCircle size={SIZES.transportSecondary} color={COLORS.white} />
-          </TouchableOpacity>
-        </View>
+        {/* Directly under the transport, as on the Loop screen: the notice is
+            about the transport being blocked, so it belongs next to it rather
+            than below the tap tempo. Fixed height, so it appearing doesn't
+            shift everything under it. */}
+        <EngineNotice
+          show={isBlockedByOtherEngine}
+          message="Stop the Loop click track first"
+        />
 
-        {/* Tap tempo */}
-        <TouchableOpacity
-          // Tap tempo has to be onPressIn. The beat is where the finger lands,
-          // not where it lifts — timing off the release both felt late and
-          // measured the wrong thing, since how long a tap is held varies far
-          // more than when it starts.
-          onPressIn={handleTapTempo}
-          className="items-center justify-center mt-[18px] px-[12px] py-[10px] border-2 border-hairline-strong rounded-sm"
-        >
-          <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
-        </TouchableOpacity>
-
-
-        {/* Fixed-height slot so the notice appearing doesn't shift the
-            controls below it. */}
-        <View className="justify-center w-full mt-2 h-4">
-          {isBlockedByOtherEngine && (
-            <Text
-              numberOfLines={1}
-              className="text-xs text-center text-white/60 font-satoshiMedium"
-            >
-              Stop the Loop click track first
-            </Text>
-          )}
+        {/* Tap tempo sits in a centred row at the same offset the Loop screen
+            puts its own -- there it is flanked by reset-tempo and click-toggle
+            buttons, which the metronome has no equivalent of, so here it stands
+            alone in the same slot. */}
+        <View className="flex-row items-center justify-center gap-3 mt-5">
+          <TapTempoButton onPress={controls.handleTapTempo} />
         </View>
 
         {/* Subdivision */}
-        <View className="items-start w-full mt-[18px]">
-          <View className="flex-row items-center gap-[5px] mb-[10px]">
-            <Text className="text-white text-label font-spaceBold">Subdivision</Text>
-            <InfoButton topic="metroSubdivision" />
-          </View>
-          <View className="flex-row items-center justify-between w-full">
-            {PLAYBACK_FEELS.map((feel, index) => {
-              const selected = index === feelIndex;
-              return (
-                <TouchableOpacity
-                  key={feel.label}
-                  accessibilityLabel={feel.label}
-                  onPressIn={() => setFeelIndex(index)}
-                  style={{ width: SIZES.segmentWidth }}
-                  className={`items-center justify-center py-[7px] rounded-sm ${selected
-                    ? "bg-white"
-                    : "bg-surface-muted border border-hairline-segment"
-                    }`}
-                >
-                  <Text
-                    className={`text-title font-spaceBold ${selected ? "text-black" : "text-white"}`}
-                  >
-                    {feel.short}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        <View className="items-start w-full gap-1 mt-5">
+          <Text className="text-white text-label font-spaceBold">Subdivision</Text>
+          <SegmentedControl
+            variant="row"
+            options={feelOptions}
+            value={feelIndex}
+            onChange={setFeelIndex}
+            respondOnPressIn
+          />
         </View>
       </View>
 
       {renderTimeSignatureModal()}
       <BpmInputAccessory />
-      <StatusBar barStyle="light-content" />
-    </SafeAreaView>
+    </Screen>
   );
 }

@@ -13,6 +13,7 @@ import Screen from "../../components/ui/screen";
 import EmptyState from "../../components/ui/emptyState";
 import {
   SHEET_BACKGROUND,
+  SHEET_CONTENT,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "../../components/ui/sheet";
@@ -108,14 +109,8 @@ export default function SessionsScreen() {
         backgroundStyle={SHEET_BACKGROUND}
         handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
       >
-        <BottomSheetView
-          style={{
-            paddingHorizontal: LAYOUT.screenPaddingX,
-            paddingTop: 8,
-            paddingBottom: 44,
-          }}
-        >
-          <Text className="mb-4 text-white text-heading font-spaceBold">
+        <BottomSheetView style={SHEET_CONTENT}>
+          <Text className="mb-3 text-white font-satoshiBold text-title">
             New session
           </Text>
 
@@ -160,59 +155,64 @@ export default function SessionsScreen() {
         </BottomSheetView>
       </BottomSheetModal>
 
-      <ScrollView
-        className="flex-1 px-screen"
-        // Empty, the invitation sits in the middle of the screen rather than
-        // clinging to the top of an otherwise blank page. flexGrow is what lets
-        // a scroll view centre at all: without it the content box is only as
-        // tall as its contents, and there's nothing to centre within.
-        contentContainerStyle={{
-          paddingBottom: LAYOUT.tabBarClearance,
-          flexGrow: 1,
-          justifyContent: isEmpty ? "center" : "flex-start",
-        }}
-      >
-        {isEmpty ? (
+      {/* Empty, the invitation is centred by Yoga in a plain view rather than
+          by a scroll view's content container.
+
+          It used to live inside the ScrollView below, centred with
+          flexGrow + justifyContent. That only works once the scroll view has
+          been measured, which is a frame later -- and since a hidden tab is
+          laid out from scratch when it comes back, the message visibly jumped
+          from the top of the page to the middle on every switch to this tab.
+          There is nothing to scroll when there is nothing here, so there is no
+          reason for a scroll view to be deciding where it sits. */}
+      {isEmpty ? (
+        <View
+          className="items-center justify-center flex-1 px-screen"
+          style={{ paddingBottom: LAYOUT.tabBarClearance }}
+        >
           <EmptyState
             icon={Musicnote}
             message="No sessions yet. Make one for a tour or a season, put a setlist in it for each night, and you'll never go looking for a loop mid-song."
           />
-        ) : null}
-
-        {sessions.map((session) => {
-          const cues = session.items.length;
-          return (
-            <TouchableOpacity
-              key={session.id}
-              onPress={() =>
-                router.push({
-                  pathname: "/setlist",
-                  params: { id: session.id },
-                })
-              }
-              onLongPress={() => confirmRemove(session.id, session.title)}
-              delayLongPress={400}
-              className="p-4 mb-3 border rounded-lg bg-surface border-hairline"
-            >
-              <Text
-                className="text-white font-satoshiBold text-body"
-                numberOfLines={1}
+        </View>
+      ) : (
+        <ScrollView
+          className="flex-1 px-screen"
+          contentContainerStyle={{ paddingBottom: LAYOUT.tabBarClearance }}
+        >
+          {sessions.map((session) => {
+            const cues = session.items.length;
+            return (
+              <TouchableOpacity
+                key={session.id}
+                onPress={() =>
+                  router.push({
+                    pathname: "/setlist",
+                    params: { id: session.id },
+                  })
+                }
+                onLongPress={() => confirmRemove(session.id, session.title)}
+                delayLongPress={400}
+                className="p-4 mb-3 border rounded-lg bg-surface border-hairline"
               >
-                {session.title}
-              </Text>
-              <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
-                {cues} {cues === 1 ? "cue" : "cues"}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                <Text
+                  className="text-white font-satoshiBold text-body"
+                  numberOfLines={1}
+                >
+                  {session.title}
+                </Text>
+                <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
+                  {cues} {cues === 1 ? "cue" : "cues"}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
 
-        {sessions.length > 0 && (
           <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
             Hold a session to delete it.
           </Text>
-        )}
-      </ScrollView>
+        </ScrollView>
+      )}
 
       {/* Sits beside the floating tab bar rather than in the header: the tab
           pill is 228pt wide and centred, so the right-hand corner is empty, and

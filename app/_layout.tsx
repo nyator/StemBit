@@ -2,6 +2,7 @@ import {SplashScreen, Stack} from "expo-router";
 import {useFonts} from "expo-font";
 import {useEffect} from "react";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
+import {SafeAreaProvider, initialWindowMetrics} from "react-native-safe-area-context";
 import {BottomSheetModalProvider} from "@gorhom/bottom-sheet";
 import {PreferencesProvider} from "../context/PreferencesContext";
 import {PlaybackLockProvider} from "../context/PlaybackLockContext";
@@ -48,6 +49,22 @@ function RootLayout() {
 
     return (
         <GestureHandlerRootView style={{flex: 1}}>
+            {/*
+              Our own SafeAreaProvider, seeded with the metrics the native side
+              already knows at launch.
+
+              expo-router mounts one above this, but passes initialMetrics only
+              on web and under test -- on a device it is undefined, so the first
+              render reports zero insets and the real ones arrive a frame later.
+              Every screen therefore drew once flush to the top of the display
+              and then dropped by the status bar's height, which is the flicker
+              on switching tabs. initialWindowMetrics is a synchronous native
+              constant, so seeded with it the first frame is already right.
+
+              Nesting is supported and the inner provider wins for everything
+              below it; expo-router's own is left alone.
+            */}
+            <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <PreferencesProvider>
                 <BottomSheetModalProvider>
                     {/*
@@ -129,6 +146,7 @@ function RootLayout() {
                     </PlaybackLockProvider>
                 </BottomSheetModalProvider>
             </PreferencesProvider>
+            </SafeAreaProvider>
         </GestureHandlerRootView>
     );
 }

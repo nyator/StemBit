@@ -55,6 +55,14 @@ const ENGINE_PONG_TIMEOUT_MS = 2000;
 // costs nothing but a stale isPlaying flag that coming back clears anyway.
 const BACKGROUND_STOP_GRACE_MS = 60000;
 
+// How many loops are read and handed to the engine at once at startup.
+//
+// Two, not the whole catalog. Each preload is a file read plus a base64 string
+// posted across the bridge, and doing twenty-seven of those in parallel is what
+// makes the first seconds of the app unresponsive. Raising this fills the
+// catalog marginally sooner and costs responsiveness while it does.
+const PRELOAD_CONCURRENCY = 2;
+
 // Loop-click pan preference -> StereoPanner value (-1 left .. 0 .. 1 right).
 const CLICK_PAN_VALUE: Record<string, number> = {
   left: -1,
@@ -115,8 +123,8 @@ type LoopPlaybackContextValue = {
   feelIndex: number;
   setFeelIndex: (index: number) => void;
   /**
-   * The feel's multiplier, exposed so the screen's beat dots can pulse at the
-   * rate the loop is actually running rather than at the raw BPM.
+   * The subdivision's multiplier: 0.5, 1 or 2. What the click is doing, not
+   * what the loop is — the dots and the audio both stay on the musical beat.
    */
   speedMultiplier: number;
   resetBpm: () => void;
@@ -209,16 +217,12 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(false);
 
-  // Playback feel (subdivision): half / normal / double time, same three
-  // options the Metronome offers. It lives here rather than on the screen
-  // because it's part of the playback rate the engine runs at — on the screen
-  // it was a control that changed nothing.
+  // Subdivision: half / normal / double time, the same three options the
+  // Metronome offers. It moves the CLICK only — the loop's tempo is the BPM
+  // dial's job, and this used to duplicate it (see getPlaybackRate). Lives
+  // here rather than on the screen because the engine is what acts on it.
   const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX);
   const speedMultiplier = PLAYBACK_FEELS[feelIndex].multiplier;
-  // Read by getPlaybackRate, which is called from callbacks that would
-  // otherwise close over a stale value.
-  const speedMultiplierRef = useRef(speedMultiplier);
-  speedMultiplierRef.current = speedMultiplier;
 
   // The tempo the loaded loop was recorded at; BPM changes are warped onto
   // it via playback rate (bpm / nativeBpm = 1x at the loop's own tempo).
@@ -280,6 +284,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const messageQueueRef = useRef<Record<string, unknown>[]>([]);
   // Loop keys whose preload has been handed to the engine (or is in flight).
   const preloadStartedRef = useRef<Set<string>>(new Set());
+  // Keys waiting their turn, and how many are being read right now. See
+  // pumpPreloads for why the catalog is not simply loaded all at once.
+  const preloadQueueRef = useRef<string[]>([]);
+  const preloadActiveRef = useRef(0);
   // Click sound ids already handed to the engine to decode.
   const clickLoadedRef = useRef<Set<string>>(new Set());
 
@@ -294,14 +302,11 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // Read a loop's audio and hand it to the engine to decode ahead of time.
   // Works for either kind of loop: a bundled asset, or a file the user
   // imported (see context/UserLoopsContext.tsx).
-  const preloadLoop = (key: string) => {
-    if (preloadStartedRef.current.has(key)) return;
-    preloadStartedRef.current.add(key);
-
+  const sendPreload = (key: string) => {
     const loop = findLoopByKey(key);
-    if (!loop) return;
+    if (!loop) return Promise.resolve();
 
-    loadAudioBase64(loop.source)
+    return loadAudioBase64(loop.source)
       .then((base64) => {
         postToEngine({
           type: "preload",
@@ -315,6 +320,40 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         preloadStartedRef.current.delete(key);
         console.error("Failed to preload loop", key, error);
       });
+  };
+
+  // Drain the queue a few at a time.
+  //
+  // The catalog is 27 loops and ~17MB of audio, which becomes ~23MB of base64
+  // crossing the bridge as JSON strings. Reading and posting all of it in one
+  // pass -- which is what a plain forEach over the catalog did -- saturates the
+  // JS thread for the first seconds of the app: tab switches stutter and early
+  // taps get dropped. A couple at a time keeps the bridge fed without owning
+  // it, and the whole catalog still lands within a few seconds.
+  //
+  // Nothing waits on this. Selecting a loop reads its bytes directly (see
+  // reselectCurrentLoop), so a loop is playable the moment it is picked whether
+  // its preload has come round yet or not -- the preload only decides whether
+  // pressing play is instant or takes a beat.
+  const pumpPreloads = () => {
+    while (
+      preloadActiveRef.current < PRELOAD_CONCURRENCY &&
+      preloadQueueRef.current.length > 0
+    ) {
+      const key = preloadQueueRef.current.shift()!;
+      preloadActiveRef.current += 1;
+      sendPreload(key).finally(() => {
+        preloadActiveRef.current -= 1;
+        pumpPreloads();
+      });
+    }
+  };
+
+  const preloadLoop = (key: string) => {
+    if (preloadStartedRef.current.has(key)) return;
+    preloadStartedRef.current.add(key);
+    preloadQueueRef.current.push(key);
+    pumpPreloads();
   };
 
   // What the engine needs to make a loop active. An imported loop carries the
@@ -403,6 +442,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     engineReadyRef.current = false;
     messageQueueRef.current = [];
     preloadStartedRef.current.clear();
+    preloadQueueRef.current = [];
+    preloadActiveRef.current = 0;
     clickLoadedRef.current.clear();
     loopReadyRef.current = false;
     setLoopReady(false);
@@ -582,17 +623,20 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Rate the engine warps the loop to: the tempo the user asked for against
-  // the tempo it was recorded at, times the feel.
+  // the tempo it was recorded at. Nothing else.
   //
-  // Folding the feel in here rather than giving it its own control is what
-  // makes half/double time work everywhere at once — the WSOLA stretcher
-  // time-stretches to whatever rate it's handed (so the pitch holds), and the
-  // loop click derives its beat interval from the same currentRate, so the
-  // click subdivides along with the music instead of drifting off it.
-  const getPlaybackRate = (nextBpm = bpm) => {
-    const base = nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
-    return base * speedMultiplierRef.current;
-  };
+  // The subdivision is deliberately NOT folded in here. It used to be, and that
+  // made it a second tempo control: (bpm / nativeBpm) × 0.5 is the same rate as
+  // (bpm/2 / nativeBpm) × 1, so half time at 107 played exactly what the dial
+  // set to 53 would — same audio, same click, only a different number on
+  // screen. A control that duplicates the dial is one that mostly prompts
+  // "why is this slow?".
+  //
+  // It now moves the click alone (setClickFeel in constants/loopEngine.ts),
+  // which is both what the word "subdivision" means and the one thing the dial
+  // cannot do: play the loop at tempo while the click marks eighths.
+  const getPlaybackRate = (nextBpm = bpm) =>
+    nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
 
   const beginPlayback = () => {
     isPlayingRef.current = true;
@@ -617,6 +661,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           webViewRef.current?.postMessage(JSON.stringify(message))
         );
         preloadStartedRef.current.clear();
+        preloadQueueRef.current = [];
+        preloadActiveRef.current = 0;
         getAllLoops().forEach((loop) => preloadLoop(loop.key));
         // A fresh engine holds nothing, so the loop is not playable again
         // until the re-select below reports back. Saying so keeps the
@@ -753,11 +799,16 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
 
     currentKeyRef.current = selectedLoop.key;
     setSelectedKey(selectedLoop.key);
+    // Two numbers, and they are only the same one by default. The native tempo
+    // is what the audio was recorded at and every warp is measured from it; the
+    // opening tempo is what the user asked to hear. Setting the session to a
+    // playbackBpm therefore stretches the loop to it, rather than relabelling
+    // it -- which is what would happen if both were moved together.
     nativeBpmRef.current = selectedLoop.bpm;
     beatsPerBarRef.current = getBeatsPerBar(selectedLoop);
     setBeatsPerBar(beatsPerBarRef.current);
     setNativeBpm(selectedLoop.bpm);
-    setBpm(selectedLoop.bpm);
+    setBpm(selectedLoop.playbackBpm ?? selectedLoop.bpm);
     setSelectedTitle(selectedLoop.title);
 
     // Normally instant: the engine already holds the decoded buffer from
@@ -768,16 +819,26 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Warp the loop's playback rate to match the current BPM relative to the
-  // tempo it was recorded at (e.g. sample_bpm80 at bpm=160 plays at 2x), and
-  // to the chosen feel. A feel change is a rate change like any other, so the
-  // engine debounces it and crossfades at the matching musical position rather
-  // than jumping.
+  // tempo it was recorded at (e.g. a 107 loop at bpm=214 plays at 2x). The
+  // engine debounces the change and crossfades at the matching musical
+  // position rather than jumping.
+  //
+  // No longer fires on a feel change: the feel does not touch the rate, so
+  // re-rendering the stretched buffer for it would be work for nothing.
   useEffect(() => {
     if (loopReady) {
       postToEngine({ type: "setRate", rate: getPlaybackRate() });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm, loopReady, feelIndex]);
+  }, [bpm, loopReady]);
+
+  // The subdivision, straight to the click. Cheap enough to send whenever it
+  // changes -- the engine applies it to the next beat it schedules, with no
+  // buffer to re-render and nothing to crossfade.
+  useEffect(() => {
+    postToEngine({ type: "setClickFeel", multiplier: speedMultiplier });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speedMultiplier, loopReady, engineGeneration]);
 
   // Keep the engine's click samples + config in sync with preferences. Runs on
   // mount (queued until the engine is ready) and whenever any click-relevant
@@ -844,9 +905,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
       trimStart: loop.trimStart,
       trimEnd: loop.trimEnd,
       // The warp the incoming loop will play at, worked out here because the
-      // engine is handed a rate rather than a tempo.
-      rate:
-        (loop.bpm ? nextBpm / loop.bpm : 1) * speedMultiplierRef.current,
+      // engine is handed a rate rather than a tempo. No feel in it — the
+      // subdivision moves the click, not the music.
+      rate: loop.bpm ? nextBpm / loop.bpm : 1,
     });
     return true;
   };

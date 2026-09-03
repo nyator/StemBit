@@ -56,6 +56,7 @@ module.exports = {
           glass: "rgba(15,20,22,0.52)", // floating nav
           field: "#17181F", // input / text-field fill
           sheet: "#090B10", // bottom sheet panel, darker than the canvas
+          badge: "rgba(25,25,25,0.5)", // label chip recessed into a surface row
         },
         // The brand is a gradient; `brand` alone is the flat fallback.
         brand: {

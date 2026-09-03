@@ -59,6 +59,12 @@ export default function SegmentedControl<T extends string | number>({
 }: SegmentedControlProps<T>) {
   const isRow = variant === "row";
 
+  // Three "track" segments at the two-option padding overflow a 320pt phone --
+  // "Categories / Artists / Meter" comes to about 313pt of content in a 320pt
+  // window, and the labels start truncating. Tightening the padding past two
+  // options buys the room back without touching how a pair looks.
+  const trackPaddingX = options.length > 2 ? "px-4" : "px-6";
+
   const container = isRow
     ? `flex-row items-center w-full gap-2 ${className}`
     : `flex-row p-1 rounded-xl bg-white/10 ${className}`;
@@ -77,7 +83,7 @@ export default function SegmentedControl<T extends string | number>({
           ? `flex-1 items-center justify-center py-2 rounded-sm ${
               selected ? "" : "bg-surface-muted border border-hairline-segment"
             }`
-          : "px-6 py-2 rounded-lg items-center justify-center";
+          : `${trackPaddingX} py-2 rounded-lg items-center justify-center`;
 
         return (
           <TouchableOpacity

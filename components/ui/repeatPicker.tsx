@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 
-import { COLORS, LAYOUT, SIZES } from "../../constants/theme";
+import { COLORS, SIZES } from "../../constants/theme";
 import {
   REPEAT_CHOICES,
   repeatChoiceLabel,
@@ -10,6 +10,7 @@ import {
 } from "../../constants/barGrid";
 import {
   SHEET_BACKGROUND,
+  SHEET_CONTENT,
   SHEET_HANDLE_INDICATOR,
   useSheetBackdrop,
 } from "./sheet";
@@ -99,11 +100,7 @@ const RepeatPicker = forwardRef<RepeatPickerHandle, RepeatPickerProps>(
             read the same vertical drag, and only this one hands the gesture back
             at the top so the sheet can still be pulled shut. */}
         <BottomSheetScrollView
-          contentContainerStyle={{
-            paddingHorizontal: LAYOUT.screenPaddingX,
-            paddingTop: 4,
-            paddingBottom: 40,
-          }}
+          contentContainerStyle={SHEET_CONTENT}
         >
           <Text className="text-white font-satoshiBold text-title">
             {sectionName ?? "Section"}

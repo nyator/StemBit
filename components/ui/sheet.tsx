@@ -5,7 +5,7 @@ import {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 
-import { COLORS, RADII } from "../../constants/theme";
+import { COLORS, LAYOUT, RADII, SPACING } from "../../constants/theme";
 
 // The chrome every bottom sheet in this app shares.
 //
@@ -37,6 +37,36 @@ export const SHEET_HANDLE_INDICATOR: ViewStyle = {
   backgroundColor: COLORS.handle,
   width: 48,
 };
+
+/**
+ * How far a sheet's last control sits off the bottom edge.
+ *
+ * Past the home indicator, and enough that the control does not read as cut
+ * off by the edge of the panel. Larger than any SPACING step because it is
+ * clearing a piece of system chrome rather than separating two things.
+ */
+const SHEET_BOTTOM_CLEARANCE = 40;
+
+/**
+ * Padding for a sheet's content, whichever kind of sheet it is.
+ *
+ * The chrome above was already shared; this was not, and six sheets had drifted
+ * into two versions of it -- half at 4/40 and half at 8/44, one of them writing
+ * the horizontal padding as a bare 20. None of that difference was deliberate,
+ * and it is the kind that is invisible in isolation and obvious when two sheets
+ * open one after the other.
+ *
+ * Spread it rather than replacing a content container wholesale, so a sheet that
+ * genuinely needs something extra -- a centred picker, a grid gap -- can add it
+ * without forking the padding too.
+ */
+export const SHEET_CONTENT = {
+  paddingHorizontal: LAYOUT.screenPaddingX,
+  // The handle already puts air above the first row; this only keeps the text
+  // from touching it.
+  paddingTop: SPACING.xs,
+  paddingBottom: SHEET_BOTTOM_CLEARANCE,
+} as const;
 
 /**
  * The dimming behind a sheet: fades in with it, and closes it when tapped.

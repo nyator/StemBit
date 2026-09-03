@@ -7,7 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import * as FileSystem from "expo-file-system";
+// The legacy entrypoint, not the package root. SDK 54 ships
+// expo-file-system 19, where the root export is the new File/Directory API
+// and the path-and-string API this file uses moved behind /legacy. Importing
+// from the root leaves EncodingType undefined and makes every read throw.
+import * as FileSystem from "expo-file-system/legacy";
+
+import { resolveAudioUri } from "../utils/loadAssetBase64";
 
 import {
   LOOP_CATEGORIES,
@@ -64,6 +70,8 @@ type StoredUserLoop = {
   file: string;
   trimStart: number;
   trimEnd: number;
+  /** The tempo to open it at, when that is not the recorded one. */
+  playbackBpm?: number;
   createdAt: number;
 };
 
@@ -80,6 +88,8 @@ export type UserLoopEdits = {
   timeSignature: string;
   trimStart: number;
   trimEnd: number;
+  /** Undefined means "open it at the tempo it was recorded at". */
+  playbackBpm?: number;
 };
 
 type UserLoopsContextValue = {
@@ -88,6 +98,19 @@ type UserLoopsContextValue = {
   /** False until the index has been read off disk. */
   isLoaded: boolean;
   addUserLoop: (input: NewUserLoop) => Promise<Loop>;
+  /**
+   * Take a copy of any loop and file it under the user's own.
+   *
+   * The point is that the copy is fully theirs: renameable, re-tempoable,
+   * re-categorisable -- none of which a shipped loop allows, because its name
+   * and meter are catalog facts and the only thing an override can move is the
+   * tempo and the trim.
+   *
+   * A copy rather than a mutation, so the original stays where it was. Wanting
+   * this one at 96 called "Sunday Opener" is not the same as wanting the
+   * catalog's 107 to stop existing.
+   */
+  duplicateLoop: (loop: Loop) => Promise<Loop>;
   /** Re-save an existing import's tempo, trim and details, keeping its key. */
   updateUserLoop: (key: string, edits: UserLoopEdits) => void;
   removeUserLoop: (key: string) => Promise<void>;
@@ -177,6 +200,15 @@ const normalize = (value: unknown): StoredUserLoop[] => {
         file: record.file,
         trimStart: record.trimStart,
         trimEnd: record.trimEnd,
+        // Dropped rather than defaulted when it isn't a usable number: absent
+        // means "open at the recorded tempo", which is also the right answer
+        // for a value that has been corrupted.
+        playbackBpm:
+          typeof record.playbackBpm === "number" &&
+          Number.isFinite(record.playbackBpm) &&
+          record.playbackBpm > 0
+            ? record.playbackBpm
+            : undefined,
         createdAt:
           typeof record.createdAt === "number" ? record.createdAt : Date.now(),
       },
@@ -194,6 +226,7 @@ const toLoop = (record: StoredUserLoop): Loop => ({
   source: LOOPS_DIR + record.file,
   trimStart: record.trimStart,
   trimEnd: record.trimEnd,
+  playbackBpm: record.playbackBpm,
   userAdded: true,
 });
 
@@ -316,6 +349,38 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
     return toLoop(record);
   };
 
+  const duplicateLoop = async (loop: Loop): Promise<Loop> => {
+    // Every loop in the app carries a region -- the bundled ones state theirs
+    // in constants/loops.ts, imports get one from the trimmer. Without a valid
+    // pair there is nothing to write: normalize() drops a record whose trimEnd
+    // isn't past its trimStart, so a copy made without one would vanish on the
+    // next launch rather than fail here where it can be seen.
+    const trimStart = loop.trimStart ?? 0;
+    const trimEnd = loop.trimEnd ?? 0;
+    if (!(trimEnd > trimStart)) {
+      throw new Error(`${loop.title} has no loop region to copy`);
+    }
+
+    // Resolved rather than assumed to be a file: a bundled loop is a module id
+    // and lives inside the app package until the asset system unpacks it.
+    const { uri, fileName } = await resolveAudioUri(loop.source);
+
+    return addUserLoop({
+      // The name is kept as it stands. The editor opens straight after this so
+      // it can be changed, and inventing "Afro Piano (copy)" for somebody who
+      // is about to rename it anyway is noise -- the browser already tells the
+      // two apart by artist.
+      title: loop.title,
+      category: loop.category,
+      bpm: loop.bpm,
+      timeSignature: loop.timeSignature,
+      trimStart,
+      trimEnd,
+      sourceUri: uri,
+      fileName,
+    });
+  };
+
   // Keeps the key, the file and the created date; replaces what the user can
   // actually edit. Same key matters: the loop may be loaded in the Loop tab and
   // decoded in the engine under it, so an edit re-selects rather than reloads.
@@ -377,6 +442,7 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
         userLoops,
         isLoaded,
         addUserLoop,
+        duplicateLoop,
         updateUserLoop,
         removeUserLoop,
         setLoopOverride,
