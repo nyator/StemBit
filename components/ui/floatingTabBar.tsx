@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useRef, type ComponentProps } from "react";
 import { Pressable, Text, View } from "react-native";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { Tabs } from "expo-router";
 
 import { useFeatureTour } from "../../context/FeatureTourContext";
 import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
@@ -21,7 +21,18 @@ const TAB_LABELS: Record<string, string> = {
   session: "SET",
 };
 
-export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+// Pulled from <Tabs>'s own `tabBar` prop rather than imported from a types
+// module directly: expo-router (SDK 57) ships its own copy of this shape --
+// not the same nominal type as @react-navigation/bottom-tabs's own
+// BottomTabBarProps -- and doesn't re-export it from its own package root
+// either, so there is no name to import here that both exists and is
+// guaranteed to match what <Tabs tabBar={...}> actually calls this with. This
+// stays correct however that shape moves around internally.
+type TabBarProps = Parameters<
+  NonNullable<ComponentProps<typeof Tabs>["tabBar"]>
+>[0];
+
+export default function FloatingTabBar({ state, navigation }: TabBarProps) {
   // Each tab reports where it landed so the first-run tour can spotlight it.
   // Null outside the provider, which is the case in tests -- the tab bar still
   // has to render there.

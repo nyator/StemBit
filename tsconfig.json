@@ -1,6 +1,12 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // @types/node isn't picked up by TS's automatic @types scan under this
+    // project's config (SDK 57's expo/tsconfig.base doesn't set typeRoots, and
+    // the default search hasn't been reaching it) -- utils/wavMarkers.ts falls
+    // back to Buffer/global.atob for base64 decoding outside a browser-like
+    // environment, and needs the ambient Node types for that fallback branch.
+    "types": ["node"]
   }
 }
