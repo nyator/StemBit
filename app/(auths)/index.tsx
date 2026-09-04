@@ -22,8 +22,7 @@ import { BrandButton } from "../../components/ui/brandButton";
 // The illustrations are drawn to float directly on a dark background rather
 // than sit in a frame -- no card, no circular crop, just the artwork at a
 // size generous enough to read as the point of the slide rather than a
-// decoration beside the text. Tools is still the original placeholder;
-// nothing matching this style has replaced it yet.
+// decoration beside the text.
 const SLIDES = [
   {
     id: "loops",
@@ -37,7 +36,7 @@ const SLIDES = [
     title: "Your practice toolkit",
     subtitle:
       "A rock-solid metronome with real meter accents, tap tempo, and sustained pads in every key — everything on one dark, stage-ready screen.",
-    image: require("../../assets/images/splash2.png"),
+    image: require("../../assets/images/drummer.png"),
   },
   {
     id: "sessions",
