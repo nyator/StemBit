@@ -2,12 +2,12 @@ import { useRef, useState } from "react";
 import {
   View,
   Text,
-  Image,
   useWindowDimensions,
   type ViewToken,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, {
+  Easing,
   Extrapolation,
   FadeInUp,
   interpolate,
@@ -22,41 +22,50 @@ import Screen, { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import PulsingGlow from "../../components/ui/pulsingGlow";
 import OnboardingNav from "../../components/ui/onboardingNav";
 import { BrandButton } from "../../components/ui/brandButton";
+import {
+  LoopsPreview,
+  ToolsPreview,
+  SessionsPreview,
+} from "../../components/ui/onboardingPreview";
 
 // First-launch onboarding: swipeable feature slides, shown once (the seen flag
 // persists via PreferencesContext; app/index.tsx routes past this for returning
 // users).
 //
-// The copy and artwork below are the app's own. The Figma's onboarding frames
-// still carry meditation-app template filler ("Find Your Inner Peace… guided
-// meditation") in Inter rather than the design system's families, so only the
-// layout was taken from them -- 280pt circular illustration, 32pt gap to the
-// text group, 16pt between title and body.
+// Each slide's visual is the real instrument, not artwork of it: the same
+// BpmDial, BeatDots and SegmentedControl the Loop and Metronome screens
+// render, demonstrating themselves with local, disconnected-from-any-engine
+// state rather than a picture standing in for what they look like. See
+// components/ui/onboardingPreview.tsx.
 const SLIDES = [
   {
     id: "loops",
     title: "Loops that never stumble",
     subtitle:
       "Backing loops for worship, praise and funk — looped sample-accurately, warped to any tempo without changing key.",
-    image: require("../../assets/images/splash1.png"),
+    Preview: LoopsPreview,
   },
   {
     id: "tools",
     title: "Your practice toolkit",
     subtitle:
       "A rock-solid metronome with real meter accents, tap tempo, and sustained pads in every key — everything on one dark, stage-ready screen.",
-    image: require("../../assets/images/splash2.png"),
+    Preview: ToolsPreview,
   },
   {
     id: "sessions",
     title: "Built for the show",
     subtitle:
       "Turn your set into a session: an ordered list of loops you can fire instantly between songs. Rehearse it, then play it.",
-    image: require("../../assets/images/splash3.png"),
+    Preview: SessionsPreview,
   },
 ];
 
-const ILLUSTRATION = 280;
+/** Clears the dial's own 249pt slot (its glow rings included) with headroom
+ *  to spare, so the one slide with the tallest content sets the frame every
+ *  slide shares -- a carousel that resized itself slide to slide would be a
+ *  worse distraction than a little empty space around the other two. */
+const FRAME_HEIGHT = 264;
 
 type Slide = (typeof SLIDES)[number];
 
@@ -81,7 +90,7 @@ function OnboardingSlide({
   // runtime, and a plain JS function defined in component scope isn't
   // automatically usable from inside one just because it's in the same file.
 
-  const imageStyle = useAnimatedStyle(() => {
+  const frameStyle = useAnimatedStyle(() => {
     const d = scrollX.value / width - index;
     const scale = interpolate(d, [-1, 0, 1], [0.82, 1, 0.82], Extrapolation.CLAMP);
     return { transform: [{ scale }] };
@@ -115,24 +124,15 @@ function OnboardingSlide({
     };
   });
 
+  const Preview = item.Preview;
+
   return (
     <View style={{ width }} className="items-center px-8 pt-16">
       <Animated.View
-        style={[
-          {
-            width: ILLUSTRATION,
-            height: ILLUSTRATION,
-            borderRadius: ILLUSTRATION / 2,
-          },
-          imageStyle,
-        ]}
-        className="items-center justify-center overflow-hidden"
+        style={[{ width: "100%", height: FRAME_HEIGHT }, frameStyle]}
+        className="items-center justify-center p-6 border rounded-xl bg-surface border-hairline"
       >
-        <Image
-          source={item.image}
-          resizeMode="contain"
-          style={{ width: "100%", height: "100%" }}
-        />
+        <Preview />
       </Animated.View>
 
       <View className="items-center gap-4 mt-8">
@@ -207,7 +207,7 @@ export default function OnboardingScreen() {
 
       <View className="gap-4 px-8 pb-2">
         {isLast && (
-          <Animated.View entering={FadeInUp.duration(420).springify().damping(16)}>
+          <Animated.View entering={FadeInUp.duration(380).easing(Easing.out(Easing.cubic))}>
             <BrandButton label="Get Started" onPress={finish} />
           </Animated.View>
         )}
