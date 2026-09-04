@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import {
+  Pressable,
   View,
   Text,
   useWindowDimensions,
@@ -21,20 +22,32 @@ import { usePreferences } from "../../context/PreferencesContext";
 import Screen, { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import PulsingGlow from "../../components/ui/pulsingGlow";
 import OnboardingProgressBar from "../../components/ui/onboardingProgressBar";
-import OnboardingNav from "../../components/ui/onboardingNav";
-import OnboardingGraphic from "../../components/ui/onboardingPreview";
+import OnboardingSquircleButton from "../../components/ui/onboardingSquircleButton";
+import OnboardingIllustration, {
+  type IllustrationAccent,
+} from "../../components/ui/onboardingIllustration";
 import { BrandButton } from "../../components/ui/brandButton";
 import { COLORS } from "../../constants/theme";
-import { Clipboard, Loop, MetronomeFill, type IconComponent } from "../../components/icons";
+import {
+  Clipboard,
+  Loop,
+  MetronomeFill,
+  Musicnote,
+  PadFill,
+  PlayCircle,
+  type IconComponent,
+} from "../../components/icons";
 
 // First-launch onboarding: swipeable feature slides, shown once (the seen
 // flag persists via PreferencesContext; app/index.tsx routes past this for
 // returning users).
 //
-// Each slide's graphic is the brand gradient flowing behind a single large
-// icon (components/ui/onboardingPreview.tsx) rather than illustrated artwork
-// -- and the title is two-toned, one phrase in the brand colour, matching how
-// the rest of the launch flow already treats a headline.
+// Layout follows a referenced travel-app carousel -- wordmark and Skip up
+// top, one illustration, a bold two-line headline with one phrase in the
+// brand colour, and a floating squircle button for Next -- recoloured for
+// this app's own dark canvas rather than the reference's per-slide colour
+// blocks, and illustrated with this app's own icon set rather than the
+// reference's photoreal renders.
 type TitleSegment = { text: string; highlight?: boolean };
 
 const SLIDES: {
@@ -42,6 +55,7 @@ const SLIDES: {
   title: TitleSegment[];
   subtitle: string;
   icon: IconComponent;
+  accents: IllustrationAccent[];
 }[] = [
   {
     id: "loops",
@@ -49,6 +63,10 @@ const SLIDES: {
     subtitle:
       "Backing loops for worship, praise and funk — looped sample-accurately, warped to any tempo without changing key.",
     icon: Loop,
+    accents: [
+      { icon: Musicnote, size: 26, top: "12%", left: "68%", rotate: "12deg" },
+      { icon: Musicnote, size: 18, top: "70%", left: "22%", rotate: "-10deg" },
+    ],
   },
   {
     id: "tools",
@@ -56,6 +74,10 @@ const SLIDES: {
     subtitle:
       "A rock-solid metronome with real meter accents, tap tempo, and sustained pads in every key — everything on one dark, stage-ready screen.",
     icon: MetronomeFill,
+    accents: [
+      { icon: PadFill, size: 24, top: "14%", left: "24%", rotate: "-8deg" },
+      { icon: Musicnote, size: 18, top: "68%", left: "70%", rotate: "10deg" },
+    ],
   },
   {
     id: "sessions",
@@ -63,8 +85,16 @@ const SLIDES: {
     subtitle:
       "Turn your set into a session: an ordered list of loops you can fire instantly between songs. Rehearse it, then play it.",
     icon: Clipboard,
+    accents: [
+      { icon: PlayCircle, size: 26, top: "14%", left: "66%", rotate: "0deg" },
+      { icon: Musicnote, size: 18, top: "70%", left: "24%", rotate: "-14deg" },
+    ],
   },
 ];
+
+/** Clears the illustration's own 128pt badge with room for the accents
+ *  floating around it. */
+const ILLUSTRATION_HEIGHT = 220;
 
 type Slide = (typeof SLIDES)[number];
 
@@ -89,12 +119,11 @@ function OnboardingSlide({
   // runtime, and a plain JS function defined in component scope isn't
   // automatically usable from inside one just because it's in the same file.
 
-  // The graphic fades rather than scales: it's full-bleed, and a full-width
-  // shape shrinking toward its centre leaves bare canvas at its own edges,
-  // which reads as a mistake rather than a transition.
-  const graphicStyle = useAnimatedStyle(() => {
+  const illustrationStyle = useAnimatedStyle(() => {
     const d = scrollX.value / width - index;
-    return { opacity: interpolate(d, [-0.6, 0, 0.6], [0, 1, 0], Extrapolation.CLAMP) };
+    const scale = interpolate(d, [-1, 0, 1], [0.85, 1, 0.85], Extrapolation.CLAMP);
+    const opacity = interpolate(d, [-0.7, 0, 0.7], [0, 1, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ scale }] };
   });
 
   // The pair peaks at the same point -- d=0, dead centre, which is where
@@ -126,12 +155,16 @@ function OnboardingSlide({
   });
 
   return (
-    <View style={{ width }} className="pt-20">
-      <Animated.View style={graphicStyle}>
-        <OnboardingGraphic icon={item.icon} width={width} />
+    <View style={{ width }} className="pt-10">
+      <Animated.View style={illustrationStyle}>
+        <OnboardingIllustration
+          icon={item.icon}
+          accents={item.accents}
+          height={ILLUSTRATION_HEIGHT}
+        />
       </Animated.View>
 
-      <View className="items-start gap-4 px-8 mt-8">
+      <View className="items-start gap-4 px-8 mt-6">
         <Animated.Text
           style={titleStyle}
           className="text-left text-hero font-spaceBold text-ink"
@@ -191,7 +224,23 @@ export default function OnboardingScreen() {
     <Screen>
       <PulsingGlow style={GLOW_PLACEMENTS.bottomLeft} />
 
-      <View className="pt-2">
+      <View className="flex-row items-center justify-between px-8 pt-4">
+        <Text className="font-wordmark text-wordmarkSm tracking-wordmark text-ink">
+          stembits
+        </Text>
+        <Pressable
+          onPress={finish}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Skip onboarding"
+        >
+          <Text className="text-label font-satoshiMedium text-ink-muted">
+            Skip
+          </Text>
+        </Pressable>
+      </View>
+
+      <View className="px-8 pt-4">
         <OnboardingProgressBar count={SLIDES.length} scrollX={scrollX} pageWidth={width} />
       </View>
 
@@ -212,20 +261,21 @@ export default function OnboardingScreen() {
         )}
       />
 
-      <View className="gap-4 px-8 pb-2">
-        {isLast && (
-          <Animated.View entering={FadeInUp.duration(380).easing(Easing.out(Easing.cubic))}>
+      <View className="items-end px-8 pb-4">
+        {isLast ? (
+          <Animated.View
+            style={{ width: "100%" }}
+            entering={FadeInUp.duration(380).easing(Easing.out(Easing.cubic))}
+          >
             <BrandButton label="Get Started" onPress={finish} />
           </Animated.View>
+        ) : (
+          <OnboardingSquircleButton
+            onPress={() => goTo(page + 1)}
+            accessibilityLabel="Next"
+          />
         )}
       </View>
-
-      <OnboardingNav
-        page={page}
-        onBack={() => goTo(page - 1)}
-        onNext={() => (isLast ? finish() : goTo(page + 1))}
-        nextLabel={isLast ? "Done" : "Next"}
-      />
     </Screen>
   );
 }
