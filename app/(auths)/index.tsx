@@ -20,52 +20,51 @@ import Animated, {
 import { usePreferences } from "../../context/PreferencesContext";
 import Screen, { GLOW_PLACEMENTS } from "../../components/ui/screen";
 import PulsingGlow from "../../components/ui/pulsingGlow";
+import OnboardingProgressBar from "../../components/ui/onboardingProgressBar";
 import OnboardingNav from "../../components/ui/onboardingNav";
+import OnboardingGraphic from "../../components/ui/onboardingPreview";
 import { BrandButton } from "../../components/ui/brandButton";
-import {
-  LoopsPreview,
-  ToolsPreview,
-  SessionsPreview,
-} from "../../components/ui/onboardingPreview";
+import { COLORS } from "../../constants/theme";
+import { Clipboard, Loop, MetronomeFill, type IconComponent } from "../../components/icons";
 
-// First-launch onboarding: swipeable feature slides, shown once (the seen flag
-// persists via PreferencesContext; app/index.tsx routes past this for returning
-// users).
+// First-launch onboarding: swipeable feature slides, shown once (the seen
+// flag persists via PreferencesContext; app/index.tsx routes past this for
+// returning users).
 //
-// Each slide's visual is the real instrument, not artwork of it: the same
-// BpmDial, BeatDots and SegmentedControl the Loop and Metronome screens
-// render, demonstrating themselves with local, disconnected-from-any-engine
-// state rather than a picture standing in for what they look like. See
-// components/ui/onboardingPreview.tsx.
-const SLIDES = [
+// Each slide's graphic is the brand gradient flowing behind a single large
+// icon (components/ui/onboardingPreview.tsx) rather than illustrated artwork
+// -- and the title is two-toned, one phrase in the brand colour, matching how
+// the rest of the launch flow already treats a headline.
+type TitleSegment = { text: string; highlight?: boolean };
+
+const SLIDES: {
+  id: string;
+  title: TitleSegment[];
+  subtitle: string;
+  icon: IconComponent;
+}[] = [
   {
     id: "loops",
-    title: "Loops that never stumble",
+    title: [{ text: "Loops that never " }, { text: "stumble", highlight: true }],
     subtitle:
       "Backing loops for worship, praise and funk — looped sample-accurately, warped to any tempo without changing key.",
-    Preview: LoopsPreview,
+    icon: Loop,
   },
   {
     id: "tools",
-    title: "Your practice toolkit",
+    title: [{ text: "Your " }, { text: "practice toolkit", highlight: true }],
     subtitle:
       "A rock-solid metronome with real meter accents, tap tempo, and sustained pads in every key — everything on one dark, stage-ready screen.",
-    Preview: ToolsPreview,
+    icon: MetronomeFill,
   },
   {
     id: "sessions",
-    title: "Built for the show",
+    title: [{ text: "Built for " }, { text: "the show", highlight: true }],
     subtitle:
       "Turn your set into a session: an ordered list of loops you can fire instantly between songs. Rehearse it, then play it.",
-    Preview: SessionsPreview,
+    icon: Clipboard,
   },
 ];
-
-/** Clears the dial's own 249pt slot (its glow rings included) with headroom
- *  to spare, so the one slide with the tallest content sets the frame every
- *  slide shares -- a carousel that resized itself slide to slide would be a
- *  worse distraction than a little empty space around the other two. */
-const FRAME_HEIGHT = 264;
 
 type Slide = (typeof SLIDES)[number];
 
@@ -90,10 +89,12 @@ function OnboardingSlide({
   // runtime, and a plain JS function defined in component scope isn't
   // automatically usable from inside one just because it's in the same file.
 
-  const frameStyle = useAnimatedStyle(() => {
+  // The graphic fades rather than scales: it's full-bleed, and a full-width
+  // shape shrinking toward its centre leaves bare canvas at its own edges,
+  // which reads as a mistake rather than a transition.
+  const graphicStyle = useAnimatedStyle(() => {
     const d = scrollX.value / width - index;
-    const scale = interpolate(d, [-1, 0, 1], [0.82, 1, 0.82], Extrapolation.CLAMP);
-    return { transform: [{ scale }] };
+    return { opacity: interpolate(d, [-0.6, 0, 0.6], [0, 1, 0], Extrapolation.CLAMP) };
   });
 
   // The pair peaks at the same point -- d=0, dead centre, which is where
@@ -124,27 +125,29 @@ function OnboardingSlide({
     };
   });
 
-  const Preview = item.Preview;
-
   return (
-    <View style={{ width }} className="items-center px-8 pt-16">
-      <Animated.View
-        style={[{ width: "100%", height: FRAME_HEIGHT }, frameStyle]}
-        className="items-center justify-center p-6 border rounded-xl bg-surface border-hairline"
-      >
-        <Preview />
+    <View style={{ width }} className="pt-20">
+      <Animated.View style={graphicStyle}>
+        <OnboardingGraphic icon={item.icon} width={width} />
       </Animated.View>
 
-      <View className="items-center gap-4 mt-8">
+      <View className="items-start gap-4 px-8 mt-8">
         <Animated.Text
           style={titleStyle}
-          className="text-center text-hero font-spaceBold text-ink"
+          className="text-left text-hero font-spaceBold text-ink"
         >
-          {item.title}
+          {item.title.map((segment, i) => (
+            <Text
+              key={i}
+              style={segment.highlight ? { color: COLORS.brand } : undefined}
+            >
+              {segment.text}
+            </Text>
+          ))}
         </Animated.Text>
         <Animated.Text
           style={subtitleStyle}
-          className="text-body leading-[26px] text-center font-satoshiRegular text-ink-soft"
+          className="text-left leading-[26px] text-body font-satoshiRegular text-ink-soft"
         >
           {item.subtitle}
         </Animated.Text>
@@ -188,6 +191,10 @@ export default function OnboardingScreen() {
     <Screen>
       <PulsingGlow style={GLOW_PLACEMENTS.bottomLeft} />
 
+      <View className="pt-2">
+        <OnboardingProgressBar count={SLIDES.length} scrollX={scrollX} pageWidth={width} />
+      </View>
+
       <Animated.FlatList
         ref={listRef}
         data={SLIDES}
@@ -214,10 +221,7 @@ export default function OnboardingScreen() {
       </View>
 
       <OnboardingNav
-        count={SLIDES.length}
         page={page}
-        scrollX={scrollX}
-        pageWidth={width}
         onBack={() => goTo(page - 1)}
         onNext={() => (isLast ? finish() : goTo(page + 1))}
         nextLabel={isLast ? "Done" : "Next"}
