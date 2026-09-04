@@ -8,6 +8,15 @@ module.exports = {
   // NOTE: Update this to include the paths to all of your component files.
   content: ["./components/**/*.{js,jsx,ts,tsx}", "./app/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
+  // "class" rather than the default "media": the app is dark-only by design
+  // (userInterfaceStyle: "dark" in app.json, no light theme anywhere), and
+  // something in Expo's own runtime tries to enforce that on web by calling
+  // Appearance.setColorScheme -- which NativeWind's default "media" strategy
+  // (follow the OS's prefers-color-scheme, no manual override) rejects outright,
+  // crashing the whole app on --web before it ever mounts. Nothing here ever
+  // toggles a class, so this changes nothing about how the app looks; it just
+  // lets that call succeed instead of throwing.
+  darkMode: "class",
   theme: {
     // The type scale. Roles, smallest first -- see TYPE in constants/theme.ts
     // for what each one is for.
