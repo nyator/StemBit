@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { View, Text } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { usePreventRemove } from "@react-navigation/native";
+// Not @react-navigation/native directly: as of SDK 56, expo-router's require.context
+// scan rejects any direct react-navigation import from app code (it manages the
+// navigation tree itself now). expo-router/react-navigation is the sanctioned
+// re-export -- same hook, same behavior, just routed through the package expo-router
+// expects app code to go through.
+import { usePreventRemove } from "expo-router/react-navigation";
 
 import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
