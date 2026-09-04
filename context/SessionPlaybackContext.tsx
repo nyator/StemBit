@@ -12,6 +12,7 @@ import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
 import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
+import { resolveStemUri } from "../utils/importStems";
 import {
   ACCENT_SOUND_ID,
   BEAT_SOUND_ID,
@@ -338,7 +339,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     for (const track of tracks) {
       if (loadTokenRef.current !== token) return;
       try {
-        const base64 = await loadAudioBase64(track.uri);
+        const base64 = await loadAudioBase64(resolveStemUri(track.uri));
         if (loadTokenRef.current !== token) return;
         postToEngine({ type: "loadTrack", id: track.id, base64 });
       } catch (error) {

@@ -35,6 +35,23 @@ function extensionOf(fileName: string): string {
   return match ? match[0] : "";
 }
 
+/**
+ * Rebuilds a stem's path against the CURRENT documentDirectory, discarding
+ * whatever absolute prefix got baked in when it was imported.
+ *
+ * iOS reassigns the app's container a new absolute path on every reinstall --
+ * a fresh Expo Go build, a TestFlight update, sometimes an OS update. A uri
+ * stored as the fully-resolved path from import time points at a container
+ * that may no longer exist by the time it's read; the part after "stems/" is
+ * the only part of it that's actually stable, since the id in the filename
+ * never changes. Safe to call on an already-current path too -- it just
+ * rebuilds the same string.
+ */
+export function resolveStemUri(uri: string): string {
+  const filename = uri.split("/stems/").pop();
+  return filename ? `${STEMS_DIRECTORY}${filename}` : uri;
+}
+
 async function ensureStemsDirectory() {
   const info = await FileSystem.getInfoAsync(STEMS_DIRECTORY);
   if (!info.exists) {
@@ -109,9 +126,10 @@ export async function readStemSections(
     if (!/\.wav$/i.test(track.uri)) continue;
 
     try {
-      const base64 = await FileSystem.readAsStringAsync(track.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const base64 = await FileSystem.readAsStringAsync(
+        resolveStemUri(track.uri),
+        { encoding: FileSystem.EncodingType.Base64 }
+      );
       const markers = readWavMarkers(base64ToArrayBuffer(base64));
       if (markers.length === 0) continue;
 
@@ -137,7 +155,9 @@ export async function readStemSections(
 export async function removeStems(tracks: CueTrack[]): Promise<void> {
   await Promise.all(
     tracks.map((track) =>
-      FileSystem.deleteAsync(track.uri, { idempotent: true }).catch(() => {
+      FileSystem.deleteAsync(resolveStemUri(track.uri), {
+        idempotent: true,
+      }).catch(() => {
         // Already gone, which is the outcome we wanted anyway.
       })
     )
