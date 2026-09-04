@@ -19,18 +19,18 @@ import { BrandButton } from "../../components/ui/brandButton";
 // persists via PreferencesContext; app/index.tsx routes past this for returning
 // users).
 //
-// The copy and artwork below are the app's own. The Figma's onboarding frames
-// still carry meditation-app template filler ("Find Your Inner Peace… guided
-// meditation") in Inter rather than the design system's families, so only the
-// layout was taken from them -- 280pt circular illustration, 32pt gap to the
-// text group, 16pt between title and body.
+// The illustrations are drawn to float directly on a dark background rather
+// than sit in a frame -- no card, no circular crop, just the artwork at a
+// size generous enough to read as the point of the slide rather than a
+// decoration beside the text. Tools is still the original placeholder;
+// nothing matching this style has replaced it yet.
 const SLIDES = [
   {
     id: "loops",
     title: "Loops that never stumble",
     subtitle:
       "Backing loops for worship, praise and funk — looped sample-accurately, warped to any tempo without changing key.",
-    image: require("../../assets/images/splash1.png"),
+    image: require("../../assets/images/guitar_player.png"),
   },
   {
     id: "tools",
@@ -44,11 +44,13 @@ const SLIDES = [
     title: "Built for the show",
     subtitle:
       "Turn your set into a session: an ordered list of loops you can fire instantly between songs. Rehearse it, then play it.",
-    image: require("../../assets/images/splash3.png"),
+    image: require("../../assets/images/bass_player.png"),
   },
 ];
 
-const ILLUSTRATION = 280;
+/** Generous enough to read as the point of the slide; contain (not cover)
+ *  so none of the differently-proportioned illustrations get cropped. */
+const ILLUSTRATION_HEIGHT = 240;
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -120,20 +122,11 @@ export default function OnboardingScreen() {
         viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
         renderItem={({ item }) => (
           <View style={{ width }} className="items-start px-8 pt-10">
-            <View
-              style={{
-                width: ILLUSTRATION,
-                height: ILLUSTRATION,
-                borderRadius: ILLUSTRATION / 2,
-              }}
-              className="items-center justify-center overflow-hidden"
-            >
-              <Image
-                source={item.image}
-                resizeMode="contain"
-                style={{ width: "100%", height: "100%" }}
-              />
-            </View>
+            <Image
+              source={item.image}
+              resizeMode="contain"
+              style={{ width: "100%", height: ILLUSTRATION_HEIGHT }}
+            />
 
             <View className="items-start gap-4 mt-8">
               <Text className="text-left text-hero font-spaceBold text-ink">
