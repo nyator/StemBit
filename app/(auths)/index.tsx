@@ -119,7 +119,7 @@ export default function OnboardingScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
         renderItem={({ item }) => (
-          <View style={{ width }} className="items-center px-8 pt-10">
+          <View style={{ width }} className="items-start px-8 pt-10">
             <View
               style={{
                 width: ILLUSTRATION,
@@ -135,11 +135,11 @@ export default function OnboardingScreen() {
               />
             </View>
 
-            <View className="items-center gap-4 mt-8">
-              <Text className="text-center text-hero font-spaceBold text-ink">
+            <View className="items-start gap-4 mt-8">
+              <Text className="text-left text-hero font-spaceBold text-ink">
                 {item.title}
               </Text>
-              <Text className="text-body leading-[26px] text-center font-satoshiRegular text-ink-soft">
+              <Text className="text-left leading-[26px] text-body font-satoshiRegular text-ink-soft">
                 {item.subtitle}
               </Text>
             </View>
@@ -151,12 +151,15 @@ export default function OnboardingScreen() {
         {isLast && <BrandButton label="Get Started" onPress={finish} />}
       </View>
 
-      <OnboardingNav
-        page={page}
-        onBack={() => goTo(page - 1)}
-        onNext={() => (isLast ? finish() : goTo(page + 1))}
-        nextLabel={isLast ? "Done" : "Next"}
-      />
+      {/* Not shown on the last slide -- Get Started above is the only
+          action there, and a "Done" link beside it would just repeat it. */}
+      {!isLast && (
+        <OnboardingNav
+          page={page}
+          onBack={() => goTo(page - 1)}
+          onNext={() => goTo(page + 1)}
+        />
+      )}
     </Screen>
   );
 }

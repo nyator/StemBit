@@ -1,55 +1,21 @@
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
 
 import { COLORS } from "../../constants/theme";
 
-// Bottom navigation for the onboarding flow: Back on the left, Next/Done on
-// the right. The page indicator that used to sit between them now lives at
-// the top of the screen instead (a segmented bar, alongside the wordmark and
-// Skip), so this is just the two actions.
-//
-// Figma: 24pt icon boxes with a 1.5pt stroke at 30% white; labels are Satoshi
-// Regular 13 in #9C9C9C.
-
-const ARROW_COLOR = COLORS.hairlineOnDark;
+// Bottom navigation for the onboarding flow: Back on the left, Next on the
+// right, plain text -- no arrow glyphs. The page indicator that used to sit
+// between them now lives at the top of the screen instead (a segmented bar,
+// alongside the wordmark and Skip), so this is just the two actions. Not
+// shown at all on the last slide, where Get Started is the only action.
 const MUTED = COLORS.textDim;
-
-function Arrow({ direction }: { direction: "left" | "right" }) {
-  // One path drawn pointing left, mirrored for the right variant.
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24">
-      <Path
-        d={direction === "left" ? "M19.5 12H5.5" : "M4.5 12H18.5"}
-        stroke={ARROW_COLOR}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-      />
-      <Path
-        d={direction === "left" ? "M9.5 8L5.5 12L9.5 16" : "M14.5 8L18.5 12L14.5 16"}
-        stroke={ARROW_COLOR}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
-}
 
 type OnboardingNavProps = {
   page: number;
   onBack: () => void;
   onNext: () => void;
-  /** Label for the forward action -- "Next" on early pages, "Done" on the last. */
-  nextLabel?: string;
 };
 
-export default function OnboardingNav({
-  page,
-  onBack,
-  onNext,
-  nextLabel = "Next",
-}: OnboardingNavProps) {
+export default function OnboardingNav({ page, onBack, onNext }: OnboardingNavProps) {
   const canGoBack = page > 0;
 
   return (
@@ -64,32 +30,26 @@ export default function OnboardingNav({
         accessibilityLabel="Back"
         style={{ opacity: canGoBack ? 1 : 0 }}
       >
-        <View className="flex-row items-center">
-          <Arrow direction="left" />
-          <Text
-            className="text-label font-satoshiRegular tracking-wordmark"
-            style={{ color: MUTED }}
-          >
-            Back
-          </Text>
-        </View>
+        <Text
+          className="text-label font-satoshiRegular tracking-wordmark"
+          style={{ color: MUTED }}
+        >
+          Back
+        </Text>
       </Pressable>
 
       <Pressable
         onPress={onNext}
         hitSlop={12}
         accessibilityRole="button"
-        accessibilityLabel={nextLabel}
+        accessibilityLabel="Next"
       >
-        <View className="flex-row items-center">
-          <Text
-            className="text-label font-satoshiRegular tracking-wordmark"
-            style={{ color: MUTED }}
-          >
-            {nextLabel}
-          </Text>
-          <Arrow direction="right" />
-        </View>
+        <Text
+          className="text-label font-satoshiRegular tracking-wordmark"
+          style={{ color: MUTED }}
+        >
+          Next
+        </Text>
       </Pressable>
     </View>
   );
