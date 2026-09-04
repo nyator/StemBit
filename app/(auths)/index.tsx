@@ -76,10 +76,14 @@ function OnboardingSlide({
   width: number;
   scrollX: SharedValue<number>;
 }) {
-  const distance = () => scrollX.value / width - index;
+  // Each style's own worklet computes the distance itself, rather than all
+  // three calling one shared closure -- a worklet runs on its own UI-thread
+  // runtime, and a plain JS function defined in component scope isn't
+  // automatically usable from inside one just because it's in the same file.
 
   const imageStyle = useAnimatedStyle(() => {
-    const scale = interpolate(distance(), [-1, 0, 1], [0.82, 1, 0.82], Extrapolation.CLAMP);
+    const d = scrollX.value / width - index;
+    const scale = interpolate(d, [-1, 0, 1], [0.82, 1, 0.82], Extrapolation.CLAMP);
     return { transform: [{ scale }] };
   });
 
@@ -92,7 +96,7 @@ function OnboardingSlide({
   // the way out. A shifted peak reads as lag too, but leaves the resting
   // state visibly translucent, which is the bug version of this idea.
   const titleStyle = useAnimatedStyle(() => {
-    const d = distance();
+    const d = scrollX.value / width - index;
     return {
       opacity: interpolate(d, [-0.6, 0, 0.6], [0, 1, 0], Extrapolation.CLAMP),
       transform: [
@@ -102,7 +106,7 @@ function OnboardingSlide({
   });
 
   const subtitleStyle = useAnimatedStyle(() => {
-    const d = distance();
+    const d = scrollX.value / width - index;
     return {
       opacity: interpolate(d, [-0.4, 0, 0.4], [0, 1, 0], Extrapolation.CLAMP),
       transform: [
