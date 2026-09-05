@@ -8,7 +8,6 @@ import { InverseButton } from "../../components/ui/brandButton";
 import {
   SettingLink,
   SettingSwitch,
-  SettingRadio,
   SettingSection,
 } from "../../components/ui/settingRow";
 import { usePreferences, type Preferences } from "../../context/PreferencesContext";
@@ -23,25 +22,17 @@ import {
   NotificationBing,
   Flash,
   MessageQuestion,
-  PlayCircle,
-  PadFill,
-  MetronomeFill,
-  SortPadFill,
 } from "../../components/icons";
 
-// The same four tabs FloatingTabBar renders, in the same filled icon
-// treatment it uses for whichever tab is active -- there's no "idle" state
-// to speak of here, so every row gets the bold version.
-const LAUNCH_SCREEN_OPTIONS: {
-  value: Preferences["launchScreen"];
-  label: string;
-  icon: typeof PlayCircle;
-}[] = [
-  { value: "loop", label: "Loops", icon: PlayCircle },
-  { value: "pad", label: "Pad", icon: PadFill },
-  { value: "metro", label: "Metronome", icon: MetronomeFill },
-  { value: "session", label: "Sessions", icon: SortPadFill },
-];
+// Just the label for the current choice, shown as the link row's value text --
+// the full options (with their icons) live on the sub-screen itself
+// (launchscreen.tsx), which is the only place that needs to render all four.
+const LAUNCH_SCREEN_LABELS: Record<Preferences["launchScreen"], string> = {
+  loop: "Loops",
+  pad: "Pad",
+  metro: "Metronome",
+  session: "Sessions",
+};
 
 // Read from app.json via expo-constants rather than a hardcoded constant, so
 // these can't drift from what actually ships.
@@ -121,21 +112,14 @@ const SettingsScreen = () => {
             label="Haptic Feedback"
             sublabel="Vibrate on pad presses and tap tempo"
             value={prefs.haptics}
+            border={true}
             onValueChange={(value) => setPref("haptics", value)}
           />
-        </SettingSection>
-
-        <SettingSection title="Launch Screen">
-          {LAUNCH_SCREEN_OPTIONS.map((option, index) => (
-            <SettingRadio
-              key={option.value}
-              icon={option.icon}
-              label={option.label}
-              border={index < LAUNCH_SCREEN_OPTIONS.length - 1}
-              selected={prefs.launchScreen === option.value}
-              onSelect={() => setPref("launchScreen", option.value)}
-            />
-          ))}
+          <SettingLink
+            label="Launch Screen"
+            value={LAUNCH_SCREEN_LABELS[prefs.launchScreen]}
+            onPress={() => router.push("/launchscreen")}
+          />
         </SettingSection>
 
         <SettingSection title="About">
