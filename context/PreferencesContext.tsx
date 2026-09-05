@@ -27,6 +27,7 @@ import * as FileSystem from "expo-file-system/legacy";
 //                    own mix level. One key press sounds all of them.
 //   natureNoise   -> the ambience bed layered over every pad. A mixer channel
 //                    of its own, muted until the user brings it in.
+//   launchScreen  -> which tab opens after signing in
 /**
  * How far the metronome's master gain can be pushed, where 1 is the click as
  * its sample was recorded.
@@ -63,6 +64,8 @@ export type Preferences = {
   natureNoise: MixSettings;
   seenOnboarding: boolean;
   seenFeatureTour: boolean;
+  /** Which tab opens after signing in (Settings -> Launch Screen). */
+  launchScreen: "loop" | "pad" | "metro" | "session";
 };
 
 /** A mixer channel's own settings. Muting keeps the level for when it returns. */
@@ -134,6 +137,7 @@ const DEFAULTS: Preferences = {
   // actually in the app -- so the two are reached at different moments and a
   // user who skipped one should still get the other.
   seenFeatureTour: false,
+  launchScreen: "loop",
 };
 
 type PreferencesContextValue = {

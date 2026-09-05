@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import Screen from "../../components/ui/screen";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
+import { usePreferences } from "../../context/PreferencesContext";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -14,10 +15,14 @@ const DEV_SKIP_AUTH = true;
 const LoginScreen = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const { prefs } = usePreferences();
+  // Settings -> Launch Screen. Read once per submit rather than at import
+  // time, so a change takes effect on the very next sign-in.
+  const launchRoute = `/(tabs)/${prefs.launchScreen}` as const;
 
   const submit = () => {
     if (DEV_SKIP_AUTH) {
-      router.replace("/(tabs)/loop");
+      router.replace(launchRoute);
       return;
     }
 
@@ -26,7 +31,7 @@ const LoginScreen = () => {
       return;
     }
     setError("");
-    router.push("/(tabs)/loop");
+    router.push(launchRoute);
   };
 
   return (

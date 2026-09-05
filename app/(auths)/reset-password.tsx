@@ -7,16 +7,19 @@ import ScreenHeader from "../../components/ui/screenHeader";
 import AuthFooter from "../../components/ui/authFooter";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
+import { usePreferences } from "../../context/PreferencesContext";
 
 const ResetPasswordScreen = () => {
   const router = useRouter();
+  const { prefs } = usePreferences();
   const [form, setForm] = useState({
     code: "",
     password: "",
   });
 
   const submitResetPassword = () => {
-    router.push("/(tabs)/loop");
+    // Settings -> Launch Screen, same as a fresh sign-in.
+    router.push(`/(tabs)/${prefs.launchScreen}` as const);
   };
 
   return (

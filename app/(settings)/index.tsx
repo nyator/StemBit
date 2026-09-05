@@ -8,9 +8,10 @@ import { InverseButton } from "../../components/ui/brandButton";
 import {
   SettingLink,
   SettingSwitch,
+  SettingRadio,
   SettingSection,
 } from "../../components/ui/settingRow";
-import { usePreferences } from "../../context/PreferencesContext";
+import { usePreferences, type Preferences } from "../../context/PreferencesContext";
 import { useSessionCue } from "../../context/SessionCueContext";
 import { useMetronome } from "../../context/MetronomeContext";
 import { logoutUser } from "../../lib/appwrite";
@@ -22,7 +23,25 @@ import {
   NotificationBing,
   Flash,
   MessageQuestion,
+  PlayCircle,
+  PadFill,
+  MetronomeFill,
+  SortPadFill,
 } from "../../components/icons";
+
+// The same four tabs FloatingTabBar renders, in the same filled icon
+// treatment it uses for whichever tab is active -- there's no "idle" state
+// to speak of here, so every row gets the bold version.
+const LAUNCH_SCREEN_OPTIONS: {
+  value: Preferences["launchScreen"];
+  label: string;
+  icon: typeof PlayCircle;
+}[] = [
+  { value: "loop", label: "Loops", icon: PlayCircle },
+  { value: "pad", label: "Pad", icon: PadFill },
+  { value: "metro", label: "Metronome", icon: MetronomeFill },
+  { value: "session", label: "Sessions", icon: SortPadFill },
+];
 
 // Read from app.json via expo-constants rather than a hardcoded constant, so
 // these can't drift from what actually ships.
@@ -104,6 +123,19 @@ const SettingsScreen = () => {
             value={prefs.haptics}
             onValueChange={(value) => setPref("haptics", value)}
           />
+        </SettingSection>
+
+        <SettingSection title="Launch Screen">
+          {LAUNCH_SCREEN_OPTIONS.map((option, index) => (
+            <SettingRadio
+              key={option.value}
+              icon={option.icon}
+              label={option.label}
+              border={index < LAUNCH_SCREEN_OPTIONS.length - 1}
+              selected={prefs.launchScreen === option.value}
+              onSelect={() => setPref("launchScreen", option.value)}
+            />
+          ))}
         </SettingSection>
 
         <SettingSection title="About">
