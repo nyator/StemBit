@@ -119,8 +119,9 @@ export default function OnboardingScreen() {
         bounces={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
+        style={{ flex: 1 }}
         renderItem={({ item }) => (
-          <View style={{ width }} className="items-center px-8 pt-10">
+          <View style={{ width }} className="items-center justify-center px-8">
             <Image
               source={item.image}
               resizeMode="contain"
