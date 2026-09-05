@@ -120,18 +120,18 @@ export default function OnboardingScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
         renderItem={({ item }) => (
-          <View style={{ width }} className="items-start px-8 pt-10">
+          <View style={{ width }} className="items-center px-8 pt-10">
             <Image
               source={item.image}
               resizeMode="contain"
               style={{ width: "100%", height: ILLUSTRATION_HEIGHT }}
             />
 
-            <View className="items-start gap-4 mt-8">
-              <Text className="text-left text-hero font-spaceBold text-ink">
+            <View className="items-center gap-4 mt-8">
+              <Text className="text-center text-hero font-spaceBold text-ink">
                 {item.title}
               </Text>
-              <Text className="text-left leading-[26px] text-body font-satoshiRegular text-ink-soft">
+              <Text className="text-center leading-[26px] text-body font-satoshiRegular text-ink-soft">
                 {item.subtitle}
               </Text>
             </View>
