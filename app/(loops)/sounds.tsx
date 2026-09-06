@@ -11,6 +11,7 @@ import ScreenHeader from "../../components/ui/screenHeader";
 import Screen from "../../components/ui/screen";
 import SearchField from "../../components/ui/searchField";
 import SelectLoopView from "../../components/selectLoopView";
+import NavButton from "../../components/ui/navButton";
 import { BrandButton } from "../../components/ui/brandButton";
 import {
   SHEET_BACKGROUND,
@@ -26,7 +27,7 @@ import {
   type Loop,
 } from "../../constants/loops";
 import { useUserLoops } from "../../context/UserLoopsContext";
-import { Add, MusicFilter, TickCircle } from "../../components/icons";
+import { Add, Download, MusicFilter, TickCircle } from "../../components/icons";
 import { COLORS, SIZES } from "../../constants/theme";
 
 // The three axes a loop can be narrowed by. Within an axis, checking more than
@@ -208,19 +209,27 @@ const LoopBrowserScreen = () => {
 
   return (
     <Screen glows={["topLeftFar", "bottomLeft"]}>
-      {/* The way in to importing a loop of your own. Sits in the header rather
-          than in the list: it isn't one of the loops, it's what makes another
-          one. */}
+      {/* The two ways to get another loop, both in the header rather than in
+          the list: neither is one of the loops, they're what make another one.
+          The store comes first and is the quieter of the two -- it's a place to
+          go and look, where + is the one that ends in a loop you made, so only
+          that one takes the brand tint. */}
       <ScreenHeader
         title="Bits"
         action={
-          <TouchableOpacity
-            onPress={() => router.push("/(loops)/import")}
-            accessibilityLabel="Add your own loop"
-            className="p-2 rounded-full bg-brand"
-          >
-            <Add size={22} color={COLORS.white} />
-          </TouchableOpacity>
+          <View className="flex-row items-center gap-2">
+            <NavButton
+              icon={Download}
+              onPress={() => router.push("/(loops)/store")}
+              accessibilityLabel="Browse the loop store"
+            />
+            <NavButton
+              icon={Add}
+              tint="brand"
+              onPress={() => router.push("/(loops)/import")}
+              accessibilityLabel="Add your own loop"
+            />
+          </View>
         }
       />
 

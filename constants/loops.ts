@@ -46,8 +46,24 @@ export type Loop = {
    * at 96 is stretched to 96 rather than relabelled 96 and left at 107.
    */
   playbackBpm?: number;
-  /** Imported by the user rather than shipped with the app. */
+  /**
+   * In the user's own library rather than shipped with the app -- true for a
+   * file they imported and for one downloaded from the store alike. What it
+   * governs is capability, not provenance: this loop's audio is a file in app
+   * storage, so it can be renamed, re-tempoed and deleted, none of which a
+   * bundled loop allows.
+   */
   userAdded?: boolean;
+  /**
+   * The store pack this was downloaded from, for a loop that came from one.
+   *
+   * Absent on both shipped loops and the user's own imports. It's what lets the
+   * browser credit the artist on a downloaded row instead of filing it under
+   * "Imported" -- the pack's author is the whole point of an artist pack, and
+   * losing their name at the moment the loop arrives would be the one place it
+   * matters most.
+   */
+  packId?: string;
 };
 
 /**

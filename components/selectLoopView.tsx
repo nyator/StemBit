@@ -129,7 +129,9 @@ const SelectLoopView = ({
   const confirmDelete = (loop: Loop) => {
     Alert.alert(
       "Delete Loop",
-      `Remove "${loop.title}"? Its audio is deleted from the app — the original file on your device isn't touched.`,
+      loop.packId
+        ? `Remove "${loop.title}"? Its audio is deleted from the app — you can download it again from the store.`
+        : `Remove "${loop.title}"? Its audio is deleted from the app — the original file on your device isn't touched.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -279,11 +281,18 @@ const SelectLoopView = ({
               </View>
               <View className="flex-row items-center justify-start gap-2">
                 <Text className="text-ink-muted text-overline font-satoshiRegular">
-                  {item.userAdded
-                    ? "Imported"
-                    : overriddenKeys.includes(item.key)
-                      ? "Edited"
-                      : `${item.artist} Artist`}
+                  {/* A downloaded loop is credited to whoever made the pack,
+                      ahead of the "Imported" its userAdded flag would otherwise
+                      give it. Both are the user's own copy, but only one of
+                      them is theirs in the sense that caption means -- and the
+                      artist's name is the reason an artist pack exists. */}
+                  {item.packId
+                    ? item.artist
+                    : item.userAdded
+                      ? "Imported"
+                      : overriddenKeys.includes(item.key)
+                        ? "Edited"
+                        : `${item.artist} Artist`}
                 </Text>
                 <Text className="text-ink-muted text-overline font-satoshiRegular">
                   .

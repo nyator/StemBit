@@ -8,6 +8,7 @@ import {PreferencesProvider} from "../context/PreferencesContext";
 import {PlaybackLockProvider} from "../context/PlaybackLockContext";
 import {MetronomeProvider} from "../context/MetronomeContext";
 import {UserLoopsProvider} from "../context/UserLoopsContext";
+import {LoopStoreProvider} from "../context/LoopStoreContext";
 import {SessionsProvider} from "../context/SessionsContext";
 import {LoopPlaybackProvider} from "../context/LoopPlaybackContext";
 import {PadPlaybackProvider} from "../context/PadPlaybackContext";
@@ -85,6 +86,14 @@ function RootLayout() {
                                 shipped catalog. */}
                             <SessionsProvider>
                             <UserLoopsProvider>
+                            {/* Below UserLoopsProvider, which is where a
+                                finished download is filed -- the store fetches
+                                the audio and hands it straight over, so it has
+                                to be able to see that context. Above the Stack
+                                so the catalogue is fetched once at launch
+                                rather than every time the store screen is
+                                pushed. */}
+                            <LoopStoreProvider>
                             <LoopPlaybackProvider>
                                 <PadPlaybackProvider>
                                     {/* The session's own engine: a third hidden
@@ -140,6 +149,7 @@ function RootLayout() {
                                     </SessionPlaybackProvider>
                                 </PadPlaybackProvider>
                             </LoopPlaybackProvider>
+                            </LoopStoreProvider>
                             </UserLoopsProvider>
                             </SessionsProvider>
                         </MetronomeProvider>

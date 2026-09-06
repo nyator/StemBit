@@ -1,7 +1,13 @@
-import { TouchableOpacity } from "react-native";
+import { TouchableOpacity, View } from "react-native";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { COLORS } from "../../constants/theme";
 import { PauseCircle, PlayCircle } from "../icons";
+
+// Real Liquid Glass on iOS 26+; every other platform (older iOS, Android,
+// web) falls back to the flat well this button already had. A device's
+// glass support can't change mid-session, so this is read once.
+const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
 
 // Audition a row without loading it.
 //
@@ -42,14 +48,34 @@ export default function PreviewButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${isPlaying ? "Stop preview of" : "Preview"} ${title}`}
-      className="items-center justify-center rounded-full"
-      style={{
-        width: BUTTON_SIZE,
-        height: BUTTON_SIZE,
-        backgroundColor: PREVIEW_WELL,
-      }}
     >
-      <Icon size={ICON_SIZE} color={COLORS.white} />
+      {HAS_LIQUID_GLASS ? (
+        <GlassView
+          glassEffectStyle="regular"
+          isInteractive
+          tintColor={PREVIEW_WELL}
+          style={{
+            width: BUTTON_SIZE,
+            height: BUTTON_SIZE,
+            borderRadius: BUTTON_SIZE / 2,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon size={ICON_SIZE} color={COLORS.white} />
+        </GlassView>
+      ) : (
+        <View
+          className="items-center justify-center rounded-full"
+          style={{
+            width: BUTTON_SIZE,
+            height: BUTTON_SIZE,
+            backgroundColor: PREVIEW_WELL,
+          }}
+        >
+          <Icon size={ICON_SIZE} color={COLORS.white} />
+        </View>
+      )}
     </TouchableOpacity>
   );
 }

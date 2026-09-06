@@ -700,3 +700,23 @@ export function SearchNormal({ size = 24, color = DEFAULT_COLOR, style }: IconPr
     </Svg>
   );
 }
+
+export function Download({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path d="M12 3.25V14.75" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M16.5 10.75L12 15.25L7.5 10.75" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M3.5 15.5V17.5C3.5 19.43 5.07 21 7 21H17C18.93 21 20.5 19.43 20.5 17.5V15.5" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function Lock({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path d="M7 10.25V7.5C7 4.74 7.9 2.5 12 2.5C16.1 2.5 17 4.74 17 7.5V10.25" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M16.5 21.5H7.5C4.5 21.5 3.75 20.75 3.75 17.75V14C3.75 11 4.5 10.25 7.5 10.25H16.5C19.5 10.25 20.25 11 20.25 14V17.75C20.25 20.75 19.5 21.5 16.5 21.5Z" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M12 15V17" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}

@@ -26,14 +26,15 @@ import { BrandButton } from "../../components/ui/brandButton";
 const SLIDES = [
   {
     id: "loops",
-    title: "Loops that never stumble",
+    // title: "Loops that never stumble",
+    title: "Never stumble",
     subtitle:
       "Backing loops for worship, praise and funk — looped sample-accurately, warped to any tempo without changing key.",
     image: require("../../assets/images/guitar_player.png"),
   },
   {
     id: "tools",
-    title: "Your practice toolkit",
+    title: "Practice toolkit",
     subtitle:
       "A rock-solid metronome with real meter accents, tap tempo, and sustained pads in every key — everything on one dark, stage-ready screen.",
     image: require("../../assets/images/drummer.png"),

@@ -60,6 +60,27 @@ export type NewUserLoop = {
   mimeType?: string;
 };
 
+/** Everything a download from the loop store needs. */
+export type NewRemoteLoop = {
+  /** The loop's key in the store's manifest, for spotting a re-download. */
+  remoteKey: string;
+  /** The pack it came from. */
+  packId: string;
+  /** The pack's artist, kept as the credit on the local copy. */
+  artist: string;
+  title: string;
+  category: LoopCategory;
+  bpm: number;
+  timeSignature: string;
+  trimStart: number;
+  trimEnd: number;
+  /** Where the finished download is now -- a file in the cache directory. */
+  sourceUri: string;
+  fileName: string;
+  /** The local key to file it under, so a re-download is recognisable. */
+  key: string;
+};
+
 type StoredUserLoop = {
   key: string;
   title: string;
@@ -73,6 +94,17 @@ type StoredUserLoop = {
   /** The tempo to open it at, when that is not the recorded one. */
   playbackBpm?: number;
   createdAt: number;
+  /**
+   * Who to credit. Absent on everything imported from the user's own device,
+   * which is every record written before the store existed -- hence optional
+   * rather than a migration: an index already on a device stays readable, and
+   * its entries keep falling back to USER_LOOP_ARTIST the way they always did.
+   */
+  artist?: string;
+  /** The store pack this was downloaded from, when it was. */
+  packId?: string;
+  /** Its key in the store manifest, so the store can mark it downloaded. */
+  remoteKey?: string;
 };
 
 /**
@@ -98,6 +130,18 @@ type UserLoopsContextValue = {
   /** False until the index has been read off disk. */
   isLoaded: boolean;
   addUserLoop: (input: NewUserLoop) => Promise<Loop>;
+  /**
+   * File a finished store download in the library.
+   *
+   * Separate from addUserLoop because the two disagree about identity. An
+   * import is anonymous -- a fresh random key, credited to the user, and
+   * importing the same file twice legitimately gives two loops. A download is
+   * the pack author's named work arriving under a key derived from the
+   * manifest, and downloading it twice has to give one loop, not two.
+   */
+  addRemoteLoop: (input: NewRemoteLoop) => Promise<Loop>;
+  /** Manifest keys already downloaded, so the store can mark its rows. */
+  downloadedRemoteKeys: string[];
   /**
    * Take a copy of any loop and file it under the user's own.
    *
@@ -211,6 +255,13 @@ const normalize = (value: unknown): StoredUserLoop[] => {
             : undefined,
         createdAt:
           typeof record.createdAt === "number" ? record.createdAt : Date.now(),
+        // The three store fields travel together or not at all: a record with a
+        // pack id but no artist would credit a download to "Yours", which is
+        // the one thing filing it under a pack was for.
+        artist: typeof record.artist === "string" ? record.artist : undefined,
+        packId: typeof record.packId === "string" ? record.packId : undefined,
+        remoteKey:
+          typeof record.remoteKey === "string" ? record.remoteKey : undefined,
       },
     ];
   });
@@ -219,7 +270,9 @@ const normalize = (value: unknown): StoredUserLoop[] => {
 const toLoop = (record: StoredUserLoop): Loop => ({
   key: record.key,
   title: record.title,
-  artist: USER_LOOP_ARTIST,
+  // A download keeps its artist; an import has none to keep, and is filed under
+  // "Yours" so the browser's Artist axis gets that chip for free.
+  artist: record.artist ?? USER_LOOP_ARTIST,
   category: record.category,
   bpm: record.bpm,
   timeSignature: record.timeSignature,
@@ -228,6 +281,7 @@ const toLoop = (record: StoredUserLoop): Loop => ({
   trimEnd: record.trimEnd,
   playbackBpm: record.playbackBpm,
   userAdded: true,
+  packId: record.packId,
 });
 
 export function UserLoopsProvider({ children }: { children: ReactNode }) {
@@ -349,6 +403,41 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
     return toLoop(record);
   };
 
+  const addRemoteLoop = async (input: NewRemoteLoop): Promise<Loop> => {
+    // Already here: hand back what's on disk rather than writing a second copy.
+    // The store checks this before it downloads anything, so reaching it means
+    // two downloads of the same loop overlapped -- and the loser should be a
+    // no-op, not a duplicate row.
+    const existing = recordsRef.current.find((entry) => entry.key === input.key);
+    if (existing) return toLoop(existing);
+
+    const file = `${input.key}.${extensionFor(input.fileName)}`;
+
+    await FileSystem.makeDirectoryAsync(LOOPS_DIR, { intermediates: true });
+    // Moved, not copied: the source is this app's own download in the cache
+    // directory and nothing else refers to it, so copying would leave a second
+    // full-size file behind for the OS to clear up whenever it got round to it.
+    await FileSystem.moveAsync({ from: input.sourceUri, to: LOOPS_DIR + file });
+
+    const record: StoredUserLoop = {
+      key: input.key,
+      title: input.title,
+      category: input.category,
+      bpm: input.bpm,
+      timeSignature: input.timeSignature,
+      file,
+      trimStart: input.trimStart,
+      trimEnd: input.trimEnd,
+      createdAt: Date.now(),
+      artist: input.artist,
+      packId: input.packId,
+      remoteKey: input.remoteKey,
+    };
+
+    commit([record, ...recordsRef.current]);
+    return toLoop(record);
+  };
+
   const duplicateLoop = async (loop: Loop): Promise<Loop> => {
     // Every loop in the app carries a region -- the bundled ones state theirs
     // in constants/loops.ts, imports get one from the trimmer. Without a valid
@@ -436,12 +525,20 @@ export function UserLoopsProvider({ children }: { children: ReactNode }) {
   // nothing changes: this list is an effect dependency in LoopPlaybackContext.
   const userLoops = useMemo(() => records.map(toLoop), [records]);
 
+  const downloadedRemoteKeys = useMemo(
+    () =>
+      records.flatMap((record) => (record.remoteKey ? [record.remoteKey] : [])),
+    [records]
+  );
+
   return (
     <UserLoopsContext.Provider
       value={{
         userLoops,
         isLoaded,
         addUserLoop,
+        addRemoteLoop,
+        downloadedRemoteKeys,
         duplicateLoop,
         updateUserLoop,
         removeUserLoop,

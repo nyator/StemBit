@@ -43,9 +43,9 @@ export async function resolveAudioUri(
 }
 
 /**
- * Base64 for either kind of audio a loop can come from: a bundled asset module
+ *  Base64 for either kind of audio a loop can come from: a bundled asset module
  * id, or a file URI for one the user imported. Imported files are already on
- * disk, so they skip the asset system entirely.
+ * disk, so they skip the asset system entirely.d
  */
 export async function loadAudioBase64(
   source: number | string

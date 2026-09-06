@@ -6,8 +6,14 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { COLORS, GRADIENTS, RADII, SIZES } from "../../constants/theme";
+
+// Real Liquid Glass on iOS 26+; every other platform (older iOS, Android,
+// web) falls back to the flat gradient fill this button already had. A
+// device's glass support can't change mid-session, so this is read once.
+const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
 
 // The design's three button treatments.
 //
@@ -60,27 +66,50 @@ export function BrandButton({
         style,
       ]}
     >
-      <LinearGradient
-        colors={GRADIENTS.brand.colors}
-        start={GRADIENTS.brand.start}
-        end={GRADIENTS.brand.end}
-        style={{
-          height: SIZES.buttonHeight,
-          borderRadius: RADII.md,
-          borderWidth: 1,
-          borderColor: COLORS.borderBrand,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {loading ? (
-          <ActivityIndicator color={COLORS.textOnBrand} />
-        ) : (
-          <Text className="font-spaceBold text-body text-ink-onBrand">
-            {label}
-          </Text>
-        )}
-      </LinearGradient>
+      {HAS_LIQUID_GLASS ? (
+        <GlassView
+          glassEffectStyle="regular"
+          isInteractive
+          tintColor={COLORS.brand}
+          style={{
+            height: SIZES.buttonHeight,
+            borderRadius: RADII.md,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.textOnBrand} />
+          ) : (
+            <Text className="font-spaceBold text-body text-ink-onBrand">
+              {label}
+            </Text>
+          )}
+        </GlassView>
+      ) : (
+        <LinearGradient
+          colors={GRADIENTS.brand.colors}
+          start={GRADIENTS.brand.start}
+          end={GRADIENTS.brand.end}
+          style={{
+            height: SIZES.buttonHeight,
+            borderRadius: RADII.md,
+            borderWidth: 1,
+            borderColor: COLORS.borderBrand,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.textOnBrand} />
+          ) : (
+            <Text className="font-spaceBold text-body text-ink-onBrand">
+              {label}
+            </Text>
+          )}
+        </LinearGradient>
+      )}
     </Pressable>
   );
 }
@@ -134,9 +163,27 @@ export function InverseButton({
       accessibilityState={{ disabled: !!disabled }}
       style={({ pressed }) => [{ opacity: disabled ? 0.5 : pressed ? 0.8 : 1 }, style]}
     >
-      <View className="items-center justify-center px-5 py-2 bg-white h-9 rounded-md">
-        <Text className="font-spaceBold text-body text-ink-inverse">{label}</Text>
-      </View>
+      {HAS_LIQUID_GLASS ? (
+        <GlassView
+          glassEffectStyle="regular"
+          isInteractive
+          tintColor={COLORS.white}
+          style={{
+            height: 36,
+            paddingHorizontal: 20,
+            borderRadius: RADII.md,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          <Text className="font-spaceBold text-body text-ink-inverse">{label}</Text>
+        </GlassView>
+      ) : (
+        <View className="items-center justify-center px-5 py-2 bg-white h-9 rounded-md">
+          <Text className="font-spaceBold text-body text-ink-inverse">{label}</Text>
+        </View>
+      )}
     </Pressable>
   );
 }

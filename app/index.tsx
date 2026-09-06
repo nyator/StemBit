@@ -70,7 +70,9 @@ export default function Page() {
       </Animated.View>
 
       {isLoaded && minDisplayElapsed && (
-        <Redirect href={prefs.seenOnboarding ? "/(auths)/login" : "/(auths)"} />
+        // TEMP: forced to onboarding to preview it -- revert to
+        // `prefs.seenOnboarding ? "/(auths)/login" : "/(auths)"` before shipping.
+        <Redirect href="/(auths)" />
       )}
     </Screen>
   );
