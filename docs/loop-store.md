@@ -123,7 +123,7 @@ neither is something the app can supply on its own:
    digital goods, so this is StoreKit / Play Billing, not a card form.
 2. **A signing endpoint.** Something server-side has to verify the receipt and
    hand back a short-lived signed URL for the object — a Cloudflare Worker in
-   front of a *private* bucket, or an Appwrite function. Client-side
+   front of a *private* bucket, or `stembits-backend`. Client-side
    entitlements are one patched binary away from being bypassed.
 
 Until then, paid audio must not be uploaded to the public bucket. A public

@@ -5,33 +5,45 @@ import { router } from "expo-router";
 import Screen from "../../components/ui/screen";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
-import { usePreferences } from "../../context/PreferencesContext";
+import { useEmailCodeAuth } from "../../hooks/useEmailCodeAuth";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-const DEV_SKIP_AUTH = true;
-
 const LoginScreen = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const { prefs } = usePreferences();
-  // Settings -> Launch Screen. Read once per submit rather than at import
-  // time, so a change takes effect on the very next sign-in.
-  const launchRoute = `/(tabs)/${prefs.launchScreen}` as const;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { sendCode, isLoaded } = useEmailCodeAuth();
 
-  const submit = () => {
-    if (DEV_SKIP_AUTH) {
-      router.replace(launchRoute);
-      return;
-    }
-
+  // One field and one button, because there is no password to collect. An
+  // address with no account gets one made for it -- see useEmailCodeAuth --
+  // so this screen is the way in for everybody, new or returning.
+  const submit = async () => {
     if (!isValidEmail(email)) {
       setError("Please enter a valid email address.");
       return;
     }
+
     setError("");
-    router.push(launchRoute);
+    setIsSubmitting(true);
+    try {
+      const mode = await sendCode(email, "sign_in");
+      // The code screen has to know which flow it is completing: the two verify
+      // through different Clerk calls and nothing on that screen could tell.
+      router.push({
+        pathname: "/(auths)/verification-code",
+        params: { email: email.trim().toLowerCase(), mode },
+      });
+    } catch (sendError) {
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Couldn't send a code. Try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -59,11 +71,19 @@ const LoginScreen = () => {
               if (error) setError("");
             }}
             onSubmitEditing={submit}
-            returnKeyType="next"
+            returnKeyType="go"
             error={error}
           />
 
-          <BrandButton label="Continue" onPress={submit} />
+          {/* Disabled until Clerk's client has loaded -- calling into it before
+              that throws, and a button that fails on the first tap of a cold
+              start reads as a broken app. */}
+          <BrandButton
+            label="Continue"
+            onPress={submit}
+            loading={isSubmitting}
+            disabled={!isLoaded}
+          />
 
           <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5 mt-3">
             By continuing, I agree to the{" "}

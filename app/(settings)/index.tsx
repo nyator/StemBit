@@ -13,7 +13,7 @@ import {
 import { usePreferences, type Preferences } from "../../context/PreferencesContext";
 import { useSessionCue } from "../../context/SessionCueContext";
 import { useMetronome } from "../../context/MetronomeContext";
-import { logoutUser } from "../../lib/appwrite";
+import { useAuth } from "@clerk/expo";
 import {
   ProfileCircle,
   VolumeHigh,
@@ -52,6 +52,7 @@ const SettingsScreen = () => {
   const { prefs, setPref } = usePreferences();
   const { endSession } = useSessionCue();
   const { stopMetronome } = useMetronome();
+  const { signOut } = useAuth();
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -68,11 +69,22 @@ const SettingsScreen = () => {
           endSession();
           stopMetronome();
           try {
-            await logoutUser();
+            await signOut();
           } catch {
-            // No active session (e.g. dev bypass) — proceed anyway.
+            // Clearing the local session is what actually signs them out; a
+            // failed round-trip to Clerk shouldn't strand them signed in, and
+            // the navigation below runs either way.
           }
-          router.replace("/(auths)/login");
+
+          // Navigated explicitly, because the guard in (tabs)/_layout cannot
+          // reach this screen: (settings) is a SIBLING of (tabs) in the root
+          // Stack rather than a route inside it, so it never re-renders through
+          // that layout and nothing redirects on its own.
+          //
+          // replace, not push -- behind this sits Settings on top of a tab the
+          // user is no longer allowed to see, and a back swipe should return to
+          // neither.
+          router.replace("/login");
         },
       },
     ]);

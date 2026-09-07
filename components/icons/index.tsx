@@ -711,6 +711,15 @@ export function Download({ size = 24, color = DEFAULT_COLOR, style }: IconProps)
   );
 }
 
+export function Close({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path d="M6.5 6.5L17.5 17.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M17.5 6.5L6.5 17.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export function Lock({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>

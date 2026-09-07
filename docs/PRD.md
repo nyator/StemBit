@@ -68,7 +68,7 @@ The repository already includes:
 - A Bits loop player with loop selection, preview, BPM loading, tap tempo, and play/pause.
 - A placeholder Session screen for future setlist management.
 - Settings, profile, onboarding, login, register, reset password, and help routes.
-- Appwrite configuration for auth, database, audio collection, and file storage, though auth state and session persistence are not yet fully wired.
+- Clerk passwordless email-code auth (`@clerk/expo`), with the session persisted to the Keychain/Keystore and `(tabs)/_layout` gating the whole instrument surface.
 
 ## 7. MVP Scope
 
@@ -119,7 +119,7 @@ MVP loop metadata:
 Future requirements:
 
 - Import audio from device files.
-- Store imported loops in Appwrite storage.
+- Store imported loops on device; artist packs stream from Cloudflare R2 (see `docs/loop-store.md`).
 - Let users tag loops by genre, key, usage, or setlist.
 - Support half-time and double-time controls.
 - Support count-in before loop start.
@@ -258,7 +258,7 @@ The current placeholder profile data should be replaced before release.
 
 ### Auth And Cloud
 
-Appwrite appears intended for:
+Clerk owns authentication. A separate service (`stembits-backend`) owns entitlements and signed download URLs. Between them:
 
 - User accounts.
 - User metadata.
@@ -276,7 +276,7 @@ Acceptance criteria:
 - Login, registration, logout, and password reset work end to end before cloud features are marketed.
 - Auth state persists across app restart.
 - Failed auth shows clear error messages.
-- Sensitive Appwrite dev keys are not shipped in production builds.
+- Only public-half keys ship in the bundle; R2 API tokens and store credentials stay server-side.
 
 ## 9. Navigation And Information Architecture
 
@@ -377,7 +377,7 @@ Recommended launch behavior:
 - Routing: Expo Router.
 - Styling: NativeWind/Tailwind.
 - Audio: `expo-audio` for MVP, with evaluation of native/sample-accurate audio if timing limitations remain.
-- Backend: Appwrite for auth, metadata, database, and storage.
+- Backend: Clerk for auth; Cloudflare R2 for loop audio; `stembits-backend` (FastAPI) for entitlements and signed URLs.
 - Platform: iOS first, Android supported.
 - Orientation: portrait.
 - Offline support: core playback and local sessions should work without network.
@@ -431,7 +431,7 @@ Product success indicators:
 
 ### Phase 3: Accounts And Cloud Sync
 
-- Complete Appwrite auth flow.
+- Complete the Clerk auth flow.
 - Persist user profile.
 - Cloud sync sessions.
 - Upload and manage custom loops.
@@ -454,7 +454,7 @@ Product success indicators:
 4. Should loops be called "Bits" everywhere, or should "Loops" remain user-facing in some places?
 5. Should Session become the default home screen once a user has created a setlist?
 6. Do users need imported local files in MVP, or are bundled loops enough for first release?
-7. Is Appwrite the final backend choice for production?
+7. Which store handles paid pack purchases first — App Store, Play, or both together?
 8. Should metronome and loop playback be able to run simultaneously?
 
 ## 16. MVP Acceptance Checklist

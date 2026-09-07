@@ -8,9 +8,12 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "stembit",
-      "runtimeVersion": "1.0.0"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nehtek.stembit",
+      "runtimeVersion": "1.0.0",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,13 +21,10 @@
         "backgroundColor": "#101116"
       },
       "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "runtimeVersion": "1.0.0",
-      "package": "com.stembit"
+      "package": "com.nehtek.stembit"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -42,6 +42,16 @@
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#101116"
+        }
+      ],
+      "@clerk/expo",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "StemBit uses your photo library so you can pick a profile picture.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ]
     ],

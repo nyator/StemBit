@@ -215,9 +215,25 @@ export const FONTS = {
   spaceBold: "SpaceGrotesk-Bold",
   spaceMedium: "SpaceGrotesk-Medium",
   spaceRegular: "SpaceGrotesk-Regular",
-  satoshiBold: "Satoshi-Bold",
-  satoshiMedium: "Satoshi-Medium",
+
+  // Satoshi's full range. Regular / Medium / Bold do the work; Light and Black
+  // are there for the ends of a hierarchy three weights can't stretch to.
+  //
+  // Italic is its own face rather than a style flag: React Native won't
+  // synthesise one for a custom family, so `fontStyle: "italic"` on
+  // Satoshi-Regular gives upright text on iOS and a mechanical slant on
+  // Android. Name the italic face instead.
+  satoshiLight: "Satoshi-Light",
+  satoshiLightItalic: "Satoshi-LightItalic",
   satoshiRegular: "Satoshi-Regular",
+  satoshiItalic: "Satoshi-Italic",
+  satoshiMedium: "Satoshi-Medium",
+  satoshiMediumItalic: "Satoshi-MediumItalic",
+  satoshiBold: "Satoshi-Bold",
+  satoshiBoldItalic: "Satoshi-BoldItalic",
+  satoshiBlack: "Satoshi-Black",
+  satoshiBlackItalic: "Satoshi-BlackItalic",
+
   wordmark: "GochiHand-Regular",
 } as const;
 

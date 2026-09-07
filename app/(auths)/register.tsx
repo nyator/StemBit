@@ -5,54 +5,47 @@ import { Link, router } from "expo-router";
 import Screen from "../../components/ui/screen";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
+import { useEmailCodeAuth } from "../../hooks/useEmailCodeAuth";
 
-import { createUser } from "../../lib/appwrite";
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+// Email and nothing else.
+//
+// The password and confirm-password fields are gone because there is no
+// password any more -- proof of identity is a code sent to the address, so a
+// second field to type it twice would be collecting something nothing checks.
+// That also removes the whole class of "passwords do not match" errors this
+// screen used to spend most of its code on.
 const RegisterScreen = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [showToast, setShowToast] = useState(false);
-
-  const passwordsMatch = () => {
-    return form.password === form.confirmPassword;
-  };
-
-  const showError = (message: string) => {
-    setError(message);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 2500);
-  };
+  const { sendCode, isLoaded } = useEmailCodeAuth();
 
   const submit = async () => {
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setError("");
-    if (!form.email || !form.password) {
-      showError("All fields (email and password) are required.");
-      return;
-    }
-    if (!passwordsMatch()) {
-      showError("Passwords do not match");
-      return;
-    }
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-      await createUser({ email: form.email, password: form.password });
-      router.replace("/verification-code");
-    } catch (error: any) {
-      const errMsg = (error?.message || "").toLowerCase();
-      let message = "Signup failed. Please try again.";
-      if (errMsg.includes("already exists")) {
-        message = "An account with this email already exists.";
-      } else if (errMsg.includes("password")) {
-        message = "Password must be at least 8 characters.";
-      } else if (errMsg.includes("email")) {
-        message = "Please enter a valid email address.";
-      }
-      showError(message);
+      // Prefers sign-up, but falls back to sign-in when the address already has
+      // an account -- so somebody who forgot they had one gets signed in rather
+      // than told off.
+      const mode = await sendCode(email, "sign_up");
+      router.push({
+        pathname: "/(auths)/verification-code",
+        params: { email: email.trim().toLowerCase(), mode },
+      });
+    } catch (signUpError) {
+      setError(
+        signUpError instanceof Error
+          ? signUpError.message
+          : "Couldn't create an account. Try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -74,6 +67,10 @@ const RegisterScreen = () => {
             Create account
           </Text>
 
+          <Text className="mb-4 text-ink-soft font-satoshiRegular text-label leading-5">
+            We&apos;ll email you a 6-digit code. No password to remember.
+          </Text>
+
           <BrandInput
             label="Email Address"
             placeholder="Enter your email"
@@ -81,47 +78,21 @@ const RegisterScreen = () => {
             autoCapitalize="none"
             autoComplete="email"
             autoCorrect={false}
-            value={form.email}
-            onChangeText={(email) => setForm({ ...form, email })}
-            returnKeyType="next"
-          />
-
-          <BrandInput
-            label="Password"
-            placeholder="Enter your password"
-            secure
-            autoCapitalize="none"
-            autoComplete="new-password"
-            value={form.password}
-            onChangeText={(password) => setForm({ ...form, password })}
-            returnKeyType="next"
-          />
-
-          <BrandInput
-            label="Confirm Password"
-            placeholder="Re-enter password"
-            secure
-            autoCapitalize="none"
-            value={form.confirmPassword}
-            onChangeText={(confirmPassword) =>
-              setForm({ ...form, confirmPassword })
-            }
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError("");
+            }}
             onSubmitEditing={submit}
             returnKeyType="go"
+            error={error}
           />
 
-          {/* In flow rather than absolutely positioned, so it pushes the button
-              down instead of landing on top of whatever is beneath it. */}
-          {showToast && error ? (
-            <Text className="mb-3 text-center text-danger font-satoshiMedium text-label">
-              {error}
-            </Text>
-          ) : null}
-
           <BrandButton
-            label="Sign up"
+            label="Send code"
             onPress={submit}
             loading={isSubmitting}
+            disabled={!isLoaded}
           />
 
           <View className="flex-row justify-center mt-4">

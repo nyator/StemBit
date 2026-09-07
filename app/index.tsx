@@ -8,6 +8,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useAuth } from "@clerk/expo";
+
 import { usePreferences } from "../context/PreferencesContext";
 import Screen, { GLOW_PLACEMENTS } from "../components/ui/screen";
 import PulsingGlow from "../components/ui/pulsingGlow";
@@ -33,6 +35,7 @@ const MIN_DISPLAY_MS = 700;
 
 export default function Page() {
   const { prefs, isLoaded } = usePreferences();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const [minDisplayElapsed, setMinDisplayElapsed] = useState(false);
 
   useEffect(() => {
@@ -69,10 +72,19 @@ export default function Page() {
         </Text>
       </Animated.View>
 
-      {isLoaded && minDisplayElapsed && (
-        // TEMP: forced to onboarding to preview it -- revert to
-        // `prefs.seenOnboarding ? "/(auths)/login" : "/(auths)"` before shipping.
-        <Redirect href="/(auths)" />
+      {isLoaded && authLoaded && minDisplayElapsed && (
+        <Redirect
+          href={
+            // Signed in already: straight to the instrument they chose, with
+            // no sign-in screen flashing past on the way. The stored session is
+            // read by Clerk before this fires -- that's what authLoaded gates.
+            isSignedIn
+              ? (`/(tabs)/${prefs.launchScreen}` as const)
+              : prefs.seenOnboarding
+                ? "/(auths)/login"
+                : "/(auths)"
+          }
+        />
       )}
     </Screen>
   );

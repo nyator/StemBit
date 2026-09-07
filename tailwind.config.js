@@ -51,9 +51,26 @@ module.exports = {
         spaceBold: ["SpaceGrotesk-Bold"],
         spaceMedium: ["SpaceGrotesk-Medium"],
         spaceRegular: ["SpaceGrotesk-Regular"],
-        satoshiBold: ["Satoshi-Bold"],
-        satoshiMedium: ["Satoshi-Medium"],
+
+        // Satoshi's full range. Regular / Medium / Bold carry the app; Light
+        // and Black exist for the two ends of a hierarchy that needs more room
+        // than three weights allow.
+        //
+        // React Native does not synthesise styles for a custom family -- asking
+        // for italic on Satoshi-Regular gets you upright text on iOS and a
+        // mechanical slant on Android. So each style is its own registered
+        // face, and italic is a font choice here rather than a modifier.
+        satoshiLight: ["Satoshi-Light"],
+        satoshiLightItalic: ["Satoshi-LightItalic"],
         satoshiRegular: ["Satoshi-Regular"],
+        satoshiItalic: ["Satoshi-Italic"],
+        satoshiMedium: ["Satoshi-Medium"],
+        satoshiMediumItalic: ["Satoshi-MediumItalic"],
+        satoshiBold: ["Satoshi-Bold"],
+        satoshiBoldItalic: ["Satoshi-BoldItalic"],
+        satoshiBlack: ["Satoshi-Black"],
+        satoshiBlackItalic: ["Satoshi-BlackItalic"],
+
         wordmark: ["GochiHand-Regular"],
       },
       colors: {
