@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { OtpInput, type OtpInputRef } from "react-native-otp-entry";
@@ -15,6 +15,18 @@ import {
 } from "../../hooks/useEmailCodeAuth";
 
 const DIGITS = 6;
+
+/**
+ * How long before another code can be requested.
+ *
+ * Clerk's own prebuilt components use 30 seconds; this flow is custom, so
+ * nothing enforced a wait at all and the link was tappable the instant the
+ * previous request returned. That is worse than it sounds: every new code
+ * invalidates the one before it, so somebody tapping twice while the first
+ * email is still in flight ends up typing a code that is already dead and
+ * being told it is wrong.
+ */
+const RESEND_COOLDOWN_MS = 60_000;
 
 export default function VerificationCodeScreen() {
   const router = useRouter();
@@ -33,6 +45,27 @@ export default function VerificationCodeScreen() {
   const { verifyCode, sendCode, isLoaded } = useEmailCodeAuth();
   const { prefs } = usePreferences();
   const launchRoute = `/(tabs)/${prefs.launchScreen}` as const;
+
+  // Reaching this screen means a code was just sent, so the wait starts now
+  // rather than on the first resend.
+  const [resendAt, setResendAt] = useState(() => Date.now() + RESEND_COOLDOWN_MS);
+  const [tick, setTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (tick >= resendAt) return;
+    // Re-scheduled each tick by the dependency below, and cleared on unmount.
+    //
+    // The remaining time is derived from a deadline rather than counted down
+    // from 60, because JS timers are throttled while the app is backgrounded --
+    // a decrementing counter comes back reading far too high, and would keep
+    // somebody waiting long after the real cooldown had passed. Recomputing
+    // from Date.now() means it is simply correct on resume.
+    const id = setTimeout(() => setTick(Date.now()), 500);
+    return () => clearTimeout(id);
+  }, [tick, resendAt]);
+
+  const secondsLeft = Math.max(0, Math.ceil((resendAt - tick) / 1000));
+  const canResend = secondsLeft === 0 && !isResending && !isSubmitting && isLoaded;
 
   // Whichever flow sent the code has to be the one that completes it: a
   // sign-in attempts a first factor, a sign-up attempts an email verification.
@@ -83,12 +116,20 @@ export default function VerificationCodeScreen() {
       setError("Go back and enter your email again.");
       return;
     }
+    // The button is disabled during the wait, but a stray double-tap can still
+    // land two presses before the state updates.
+    if (!canResend) return;
 
     setError("");
     setNotice("");
     setIsResending(true);
     try {
       await sendCode(email, flow);
+      // Restarted only on success -- a send that failed produced no new code,
+      // so making the user wait a minute before retrying would be punishing
+      // them for our error.
+      setResendAt(Date.now() + RESEND_COOLDOWN_MS);
+      setTick(Date.now());
       otpRef.current?.clear();
       setCode("");
       setNotice("A new code is on its way.");
@@ -188,16 +229,28 @@ export default function VerificationCodeScreen() {
             and without a way out the only recovery is force-quitting the app. */}
         <TouchableOpacity
           onPress={resend}
-          disabled={isResending || isSubmitting || !isLoaded}
+          disabled={!canResend}
           accessibilityRole="button"
-          accessibilityLabel="Send another code"
+          accessibilityLabel={
+            secondsLeft > 0
+              ? `Send another code, available in ${secondsLeft} seconds`
+              : "Send another code"
+          }
+          accessibilityState={{ disabled: !canResend }}
           className="self-center mt-4"
         >
           <Text className="text-ink-soft font-satoshiMedium text-label">
             Didn&apos;t get it?{" "}
-            <Text className="text-brand underline">
-              {isResending ? "Sending…" : "Send again"}
-            </Text>
+            {/* The countdown is plain rather than link-coloured while it is
+                waiting: an underlined brand-blue "Send again in 42s" looks
+                tappable and isn't, which reads as the button being broken. */}
+            {isResending ? (
+              <Text className="text-brand underline">Sending…</Text>
+            ) : secondsLeft > 0 ? (
+              <Text className="text-ink-faint">Send again in {secondsLeft}s</Text>
+            ) : (
+              <Text className="text-brand underline">Send again</Text>
+            )}
           </Text>
         </TouchableOpacity>
       </View>
