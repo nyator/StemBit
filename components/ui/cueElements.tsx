@@ -1,25 +1,11 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 import { findLoopByKey, getAllLoops } from "../../constants/loops";
 import { PAD_PACKS, findPadPackByKey } from "../../constants/pads";
-import { COLORS } from "../../constants/theme";
-import { ChevronDown } from "../icons";
-import CuePicker, { type PickerOption } from "./cuePicker";
-
-// What a loop or pad cue is made of, and the two ways you look at it.
-//
-// A stem song has a timeline in STUDIO because it is audio laid out in time and
-// there is a right answer to where the bridge starts. A loop cue has no such
-// picture: it is a handful of choices -- which loop, how fast, which pad, what
-// key -- that were made in the cue editor and are worth changing again once you
-// have heard them against a room. So STUDIO here is those choices, live, rather
-// than a waveform of nothing.
-//
-// The same facts appear in PERFORM as CueSummary, and there they are only
-// facts. On stage you are checking that the cue about to fire is the one you
-// meant; a chip you could nudge with a thumb while reaching for PLAY is a way
-// to change the tempo of the next song by accident.
+import { COLORS, SIZES } from "../../constants/theme";
+import { ChevronDown, Musicnote } from "../icons";
+import CuePicker, { type CuePickerHandle, type PickerOption } from "./cuePicker";
 
 const MIN_BPM = 20;
 const MAX_BPM = 320;
@@ -30,12 +16,10 @@ type CueElementsProps = {
   padPack?: string;
   padKey?: string;
   padMode: "major" | "minor";
-  /** True while this cue is the one sounding, so edits can say they landed. */
   isLive: boolean;
   onChangeLoop: (key: string | undefined) => void;
   onChangeBpm: (bpm: number) => void;
   onChangePadPack: (key: string | undefined) => void;
-  /** Opens the key grid, which the performance screen already owns. */
   onEditKey: () => void;
 };
 
@@ -54,15 +38,11 @@ export default function CueElements({
   const loops = getAllLoops();
   const loop = loopKey ? findLoopByKey(loopKey) : undefined;
   const pack = padPack ? findPadPackByKey(padPack) : undefined;
-  const tempo = bpm ?? loop?.bpm;
+  const tempo = bpm ?? loop?.bpm ?? 120;
 
-  // Which catalog is open over this screen, if either.
-  const [picking, setPicking] = useState<"loop" | "pad" | null>(null);
+  const loopPickerRef = useRef<CuePickerHandle>(null);
+  const padPickerRef = useRef<CuePickerHandle>(null);
 
-  // Built per render rather than memoised. getAllLoops() hands back a fresh
-  // array every time -- it has to, since a user import can land at any moment --
-  // so a memo keyed on it would never hit, and mapping a catalog this size costs
-  // less than the memo that pretended to avoid it.
   const loopOptions: PickerOption[] = loops.map((entry) => ({
     key: entry.key,
     title: entry.title,
@@ -77,30 +57,178 @@ export default function CueElements({
     group: entry.genre,
   }));
 
+  const isLoopActive = Boolean(loop);
+  const isPadActive = Boolean(pack);
+
   return (
-    <View>
-      <Text className="mb-2 text-ink font-spaceMedium text-label">Loop</Text>
+    <View className="gap-y-3 gap-3">
+      {/* 2-Column Sound Engines (BITS & PAD) */}
+      <View className="flex-row items-stretch gap-3">
+        {/* LOOP / BITS ENGINE */}
+        <TouchableOpacity
+          onPress={() => loopPickerRef.current?.present()}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Loop engine: ${loop?.title ?? "Empty"}`}
+          className="flex-1 p-2 rounded-2xl border border-hairline justify-between min-h-[110px]"
+          style={{
+            backgroundColor: isLoopActive ? COLORS.surface : "rgba(255,255,255,0.02)",
+            borderColor: isLoopActive ? COLORS.brand : COLORS.borderSegment,
+          }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <View
+                className="w-2 h-2 rounded-full mr-2"
+                style={{
+                  backgroundColor: isLoopActive ? COLORS.brand : COLORS.textMuted,
+                  opacity: isLoopActive ? 1 : 0.4,
+                }}
+              />
+              <Text
+                className="text-micro font-spaceBold tracking-widest"
+                style={{ color: isLoopActive ? COLORS.brand : COLORS.textMuted }}
+              >
+                BITS
+              </Text>
+            </View>
+            <ChevronDown size={14} color={isLoopActive ? COLORS.brand : COLORS.textMuted} />
+          </View>
 
-      <SelectRow
-        value={loop?.title}
-        detail={
-          loop
-            ? `${loop.artist}   ·   ${loop.timeSignature}`
-            : "Pick one from the catalog"
-        }
-        accessibilityLabel="Choose a loop"
-        onPress={() => setPicking("loop")}
-      />
+          <View className="my-auto">
+            <Text
+              numberOfLines={1}
+              className="text-body font-satoshiBold"
+              style={{ color: isLoopActive ? COLORS.white : COLORS.textMuted }}
+            >
+              {loop?.title ?? "No Loop"}
+            </Text>
+            <Text
+              numberOfLines={1}
+              className="mt-0.5 text-micro text-ink-muted font-spaceBold"
+              style={{ fontVariant: ["tabular-nums"] }}
+            >
+              {loop ? `${loop.timeSignature}` : "TAP TO LOAD"}
+            </Text>
+            {/* <Text
+              className="text-micro font-spaceBold"
+              style={{ color: isLoopActive ? COLORS.brand : COLORS.textMuted }}
+            >
+              {isLoopActive ? "LOADED" : "OFF"}
+            </Text> */}
+          </View>
 
+        </TouchableOpacity>
+
+        {/* AMBIENT PAD ENGINE */}
+        <TouchableOpacity
+          onPress={() => padPickerRef.current?.present()}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Pad engine: ${pack?.title ?? "Empty"}`}
+          className="flex-1 p-2 rounded-2xl border border-hairline justify-between min-h-[110px]"
+          style={{
+            backgroundColor: isPadActive ? COLORS.surface : "rgba(255,255,255,0.02)",
+            borderColor: isPadActive ? COLORS.brand : COLORS.borderSegment,
+          }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <View
+                className="w-2 h-2 rounded-full mr-2"
+                style={{
+                  backgroundColor: isPadActive ? COLORS.brand : COLORS.textMuted,
+                  opacity: isPadActive ? 1 : 0.4,
+                }}
+              />
+              <Text
+                className="text-micro font-spaceBold tracking-widest"
+                style={{ color: isPadActive ? COLORS.brand : COLORS.textMuted }}
+              >
+                PAD
+              </Text>
+            </View>
+            <ChevronDown size={14} color={isPadActive ? COLORS.brand : COLORS.textMuted} />
+          </View>
+
+          <View className="my-auto">
+            <Text
+              numberOfLines={1}
+              className="text-body font-satoshiBold"
+              style={{ color: isPadActive ? COLORS.white : COLORS.textMuted }}
+            >
+              {pack?.title ?? "No Pad"}
+            </Text>
+            <Text
+              numberOfLines={1}
+              className="mt-0.5 text-micro text-ink-muted font-spaceBold"
+            >
+              {pack?.genre ?? "TAP TO LOAD"}
+            </Text>
+            {/* <Text
+              className="text-micro font-spaceBold"
+              style={{ color: isPadActive ? COLORS.brand : COLORS.textMuted }}
+            >
+              {isPadActive ? "LOADED" : "OFF"}
+            </Text> */}
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* TONALITY STRIP (Shown when PAD is assigned) */}
+      {padPack && (
+        <TouchableOpacity
+          onPress={onEditKey}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Open key picker"
+          className="flex-row items-center justify-between px-4 py-3 rounded-xl border bg-surface/40"
+          style={{ borderColor: COLORS.border }}
+        >
+          <View className="flex-row items-center">
+            <View className="items-center justify-center w-7 h-7 rounded-lg bg-brand/10 border border-brand/20 mr-3">
+            </View>
+            <View>
+              <Text className="text-overline font-satoshiBold text-white">
+                {padKey ? `${padKey} ${padMode === "minor" ? "MINOR" : "MAJOR"}` : "SELECT KEY "}
+              </Text>
+            </View>
+          </View>
+
+          <View className="px-3 py-1.5 rounded-lg border border-border bg-white/5">
+            <Text className="text-micro font-spaceBold text-brand">SET KEY</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* CLOCK / BPM CONTROLLER (Shown when LOOP is loaded) */}
       {loop && (
-        <>
-          {/* The loop's own tempo, said plainly rather than left in the picker.
-              Every warp is measured from it -- a loop recorded at 80 and played
-              at 140 is a different thing to hear than one recorded at 132 --
-              so it belongs next to the tempo control, not two taps away. */}
-          <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
-            Recorded at {loop.bpm} BPM.
-          </Text>
+        <View
+          className="p-4 rounded-2xl bg-surface/50"
+          style={{ borderColor: COLORS.border }}
+        >
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center">
+              <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
+                TEMPO
+              </Text>
+              {isLive && (
+                <View className="flex-row items-center ml-2.5 px-2 py-0.5 rounded-full bg-brand/10 border border-brand/30">
+                  <View className="w-1.5 h-1.5 rounded-full bg-brand mr-1.5" />
+                  <Text className="text-micro text-brand font-spaceBold">LIVE</Text>
+                </View>
+              )}
+            </View>
+
+            {loop.bpm && (
+              <Text
+                className="text-micro text-ink-muted font-spaceBold"
+                style={{ fontVariant: ["tabular-nums"] }}
+              >
+                {loop.bpm} BPM *
+              </Text>
+            )}
+          </View>
 
           <TempoStepper
             bpm={tempo}
@@ -108,225 +236,141 @@ export default function CueElements({
             nativeBpm={loop.bpm}
             isLive={isLive}
           />
-        </>
+        </View>
       )}
 
-      <Text className="mt-6 mb-2 text-ink font-spaceMedium text-label">Pad</Text>
-
-      <SelectRow
-        value={pack?.title}
-        detail={
-          pack
-            ? `${pack.artist}   ·   ${pack.genre}`
-            : "A drone under whatever else is playing"
-        }
-        accessibilityLabel="Choose a pad"
-        onPress={() => setPicking("pad")}
-      />
-
-      {/* The key sits behind the same grid the stem screen uses rather than a
-          second row of twelve chips here. It is one question -- what key is
-          this cue in -- and it should be asked one way. */}
-      {padPack && (
-        <TouchableOpacity
-          onPress={onEditKey}
-          accessibilityLabel="Change the key"
-          activeOpacity={0.8}
-          className="flex-row items-center justify-between px-4 py-3 mt-3 border rounded-lg"
-          style={{ borderColor: COLORS.border }}
-        >
-          <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
-            KEY
-          </Text>
-          <Text className="text-white font-satoshiBold text-body">
-            {padKey
-              ? `${padKey} ${padMode === "minor" ? "min" : "maj"}`
-              : "Not set"}
-          </Text>
-        </TouchableOpacity>
-      )}
-
+      {/* EMPTY CUE ADVISORY */}
       {!loopKey && !padPack && (
-        <Text className="mt-6 text-center text-label text-ink-muted font-satoshiRegular">
-          This cue has nothing in it yet. Pick a loop, a pad, or both — it will
-          fire from here and from its row in the setlist.
-        </Text>
+        <View
+          className="items-center py-6 px-4 rounded-2xl border border-dashed"
+          style={{
+            backgroundColor: "rgba(255,255,255,0.01)",
+            borderColor: COLORS.borderSegment,
+          }}
+        >
+          <View className="w-10 h-10 rounded-full items-center justify-center bg-white/5 mb-2.5">
+            <Musicnote size={18} color={COLORS.textMuted} />
+          </View>
+          <Text className="text-body font-satoshiBold text-white">Empty Scene</Text>
+          <Text className="mt-0.5 text-center text-micro text-ink-muted font-satoshiRegular max-w-[240px]">
+            Select a beat loop or ambient pad above to prepare this stage cue.
+          </Text>
+        </View>
       )}
 
+      {/* BOTTOM SHEET PICKERS */}
       <CuePicker
-        visible={picking === "loop"}
-        title="Loop"
+        ref={loopPickerRef}
+        title="Beat Loops"
         options={loopOptions}
         selectedKey={loopKey}
-        noneLabel="No loop"
+        noneLabel="Bypass Loop"
         onSelect={onChangeLoop}
-        onClose={() => setPicking(null)}
       />
 
       <CuePicker
-        visible={picking === "pad"}
-        title="Pad"
+        ref={padPickerRef}
+        title="Pad Packs"
         options={padOptions}
         selectedKey={padPack}
-        noneLabel="No pad"
+        noneLabel="Bypass Pad"
         onSelect={onChangePadPack}
-        onClose={() => setPicking(null)}
       />
     </View>
-  );
-}
-
-/**
- * What is currently chosen, and the way to change it.
- *
- * The catalog behind it can be any length, so what stands on the screen is one
- * row of fixed height rather than a block that grows with the number of things
- * you could have picked. Same shape as the KEY row below it, because they are
- * the same kind of control: a decision, its current answer, and a way in.
- */
-function SelectRow({
-  value,
-  detail,
-  accessibilityLabel,
-  onPress,
-}: {
-  /** Undefined reads as "None" -- an empty row would look like a bug. */
-  value?: string;
-  detail?: string;
-  accessibilityLabel: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      accessibilityLabel={accessibilityLabel}
-      activeOpacity={0.8}
-      className="flex-row items-center px-4 py-3 border rounded-lg"
-      style={{ borderColor: COLORS.border }}
-    >
-      <View className="flex-1">
-        <Text
-          className="text-body font-satoshiBold"
-          numberOfLines={1}
-          style={{ color: value ? COLORS.white : COLORS.textMuted }}
-        >
-          {value ?? "None"}
-        </Text>
-        {detail && (
-          <Text
-            className="mt-0.5 text-micro text-ink-muted font-satoshiRegular"
-            numberOfLines={1}
-          >
-            {detail}
-          </Text>
-        )}
-      </View>
-
-      <ChevronDown size={18} color={COLORS.textMuted} />
-    </TouchableOpacity>
   );
 }
 
 type TempoStepperProps = {
   bpm?: number;
   onChange: (bpm: number) => void;
-  /** The loop's own tempo, offered as a reset. A song has no such thing. */
   nativeBpm?: number;
-  /** True while the cue is sounding, so the row can say the change has landed. */
   isLive?: boolean;
-  /** Why the number matters, for a cue that hasn't been given one yet. */
   hint?: string;
 };
 
-/**
- * The tempo of a cue, whatever kind of cue it is.
- *
- * Steppers rather than a field, because this gets used against a band playing:
- * you nudge until it sits, and typing means a keyboard over the thing you are
- * listening to. Fives as well as ones, since 80 to 140 one tap at a time is not
- * a control.
- */
 export function TempoStepper({
   bpm,
   onChange,
   nativeBpm,
-  isLive,
   hint,
 }: TempoStepperProps) {
-  // An unset tempo steps from a plausible one rather than from zero, so the
-  // first tap lands somewhere musical instead of eight taps below it.
   const from = bpm ?? nativeBpm ?? 120;
 
   return (
-    <>
-      <Text className="mt-5 mb-2 text-ink font-spaceMedium text-label">
-        Tempo
-      </Text>
+    <View>
+      <View className="flex-row items-center justify-between">
+        {/* Decrement Group */}
+        <View className="flex-row items-center gap-2">
+          <Step label="−5" onPress={() => onChange(from - 5)} />
+          <Step label="−1" onPress={() => onChange(from - 1)} />
+        </View>
 
-      <View className="flex-row items-center">
-        <Step label="−5" onPress={() => onChange(from - 5)} />
-        <Step label="−" onPress={() => onChange(from - 1)} />
-
-        <View className="items-center flex-1">
+        {/* Center Digital Display */}
+        <View className="items-center px-4">
           <Text
-            className="text-heading text-white font-spaceBold"
-            style={{ fontVariant: ["tabular-nums"] }}
+            className="text-white text-display font-spaceBold tracking-tight"
+            style={{ fontVariant: ["tabular-nums"], fontSize: 34, lineHeight: 38 }}
           >
             {bpm ?? "--"}
           </Text>
-          <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
+          <Text className="text-micro text-brand font-spaceBold tracking-widest">
             BPM
           </Text>
         </View>
 
-        <Step label="+" onPress={() => onChange(from + 1)} />
-        <Step label="+5" onPress={() => onChange(from + 5)} />
+        {/* Increment Group */}
+        <View className="flex-row items-center gap-2">
+          <Step label="+1" onPress={() => onChange(from + 1)} />
+          <Step label="+5" onPress={() => onChange(from + 5)} />
+        </View>
       </View>
 
-      <View className="flex-row items-center mt-3">
-        {nativeBpm !== undefined && bpm !== nativeBpm && (
+      {/* Reset to Native Action */}
+      {nativeBpm !== undefined && bpm !== nativeBpm && (
+        <View className="mt-3 pt-2 border-t border-hairline border-white/5 items-center">
           <TouchableOpacity
             onPress={() => onChange(nativeBpm)}
-            accessibilityLabel="Back to the loop's own tempo"
             hitSlop={10}
+            activeOpacity={0.7}
+            className="px-3 py-1 rounded-full bg-brand/10 border border-brand/25"
           >
-            <Text className="text-micro text-brand font-spaceBold tracking-widest">
-              RESET TO {nativeBpm}
+            <Text
+              className="text-micro text-brand font-spaceBold tracking-widest"
+              style={{ fontVariant: ["tabular-nums"] }}
+            >
+              RESET TO {nativeBpm} BPM
             </Text>
           </TouchableOpacity>
-        )}
-        {isLive && (
-          <Text className="ml-auto text-micro text-ink-muted font-satoshiRegular">
-            Changes land as you make them.
-          </Text>
-        )}
-      </View>
+        </View>
+      )}
 
       {bpm === undefined && hint && (
-        <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
+        <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular text-center">
           {hint}
         </Text>
       )}
-    </>
+    </View>
   );
 }
 
-/** One nudge of the tempo. Square, so the four of them read as a set. */
 function Step({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      accessibilityLabel={`Tempo ${label}`}
-      activeOpacity={0.8}
-      className="items-center justify-center border rounded-lg"
-      style={{ width: 52, height: 52, borderColor: COLORS.border }}
+      accessibilityLabel={`Nudge tempo ${label}`}
+      activeOpacity={0.75}
+      className="items-center justify-center rounded-xl border bg-canvas"
+      style={{
+        width: 48,
+        height: 48,
+        borderColor: COLORS.border,
+      }}
     >
-      <Text className="text-body text-white font-spaceBold">{label}</Text>
+      <Text className="text-label text-white font-spaceBold">{label}</Text>
     </TouchableOpacity>
   );
 }
 
-/** Keeps a nudged tempo inside what the engine will warp to. */
 export const clampBpm = (bpm: number) =>
   Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
 
@@ -336,19 +380,10 @@ type CueSummaryProps = {
   padPack?: string;
   padKey?: string;
   padMode: "major" | "minor";
-  /** Whether the loop is sounding, and whether the pad is. */
   loopIsLive: boolean;
   padIsLive: boolean;
 };
 
-/**
- * The same elements on stage: what this cue will put in the room when you
- * press PLAY, at a size you can check without stopping what you are doing.
- *
- * Lit while sounding, the way a track tile is. It answers the question you
- * actually ask mid-cue -- is the pad still going, is that the loop I can hear
- * -- which two lines of grey text at the top of the screen cannot.
- */
 export function CueSummary({
   loopKey,
   bpm,
@@ -362,76 +397,90 @@ export function CueSummary({
   const pack = padPack ? findPadPackByKey(padPack) : undefined;
 
   return (
-    <View>
-      <Text className="mb-2 text-ink font-spaceMedium text-label">Elements</Text>
+    <View className="gap-y-2">
+      <Text className="text-micro font-spaceBold text-ink-muted tracking-widest mb-1">
+        ELEMENTS
+      </Text>
 
       <Element
-        label="LOOP"
+        badge="BITS"
         title={loop?.title ?? "None"}
-        detail={loop ? `${bpm ?? loop.bpm} BPM   ·   ${loop.timeSignature}` : undefined}
-        isLive={loopIsLive && !!loop}
+        detail={loop ? `${bpm ?? loop.bpm} BPM · ${loop.timeSignature}` : "BYPASSED"}
+        isLive={loopIsLive && Boolean(loop)}
       />
       <Element
-        label="PAD"
+        badge="PAD"
         title={pack?.title ?? "None"}
         detail={
           pack && padKey
-            ? `${padKey} ${padMode === "minor" ? "minor" : "major"}`
+            ? `${padKey} ${padMode === "minor" ? "MIN" : "MAJ"}`
             : pack
-              ? "No key set"
-              : undefined
+              ? "NO KEY SET"
+              : "BYPASSED"
         }
-        isLive={padIsLive && !!pack}
+        isLive={padIsLive && Boolean(pack)}
       />
     </View>
   );
 }
 
 function Element({
-  label,
+  badge,
   title,
   detail,
   isLive,
 }: {
-  label: string;
+  badge: string;
   title: string;
-  detail?: string;
+  detail: string;
   isLive: boolean;
 }) {
   return (
     <View
-      className="px-4 py-3 mb-2 border-2 rounded-lg"
+      className="flex-row items-center justify-between rounded-2xl mt-2 mb-2 border-b last:border-0"
       style={{
         backgroundColor: isLive ? COLORS.surface : "transparent",
         borderColor: isLive ? COLORS.brand : COLORS.border,
       }}
     >
-      <View className="flex-row items-center">
+      <View className="flex-1 mr-3 p-2 ">
+        <View className="flex-row items-center">
+          <Text
+            className="text-micro font-spaceBold tracking-widest mr-2"
+            style={{ color: isLive ? COLORS.brand : COLORS.textMuted }}
+          >
+            {badge}
+          </Text>
+          {isLive && (
+            <View className="w-1.5 h-1.5 rounded-full bg-brand" />
+          )}
+        </View>
+
         <Text
-          className="text-micro font-spaceBold tracking-widest"
-          style={{ color: isLive ? COLORS.brand : COLORS.textMuted }}
+          numberOfLines={1}
+          className="text-title text-white font-satoshiBold mt-0.5"
         >
-          {label}
+          {title}
         </Text>
-        {isLive && (
-          <View
-            className="ml-2 rounded-full"
-            style={{ width: 6, height: 6, backgroundColor: COLORS.brand }}
-          />
-        )}
       </View>
 
-      <Text
-        className="mt-1 text-title text-white font-satoshiBold"
-        numberOfLines={1}
+      <View
+        className="px-2.5 py-1 rounded-sm border"
+        style={{
+          borderColor: isLive ? COLORS.brand : COLORS.border,
+          backgroundColor: isLive ? "rgba(255,255,255,0.04)" : "transparent",
+        }}
       >
-        {title}
-      </Text>
-      {detail && (
-        <Text className="mt-0.5 text-micro text-ink-muted font-satoshiRegular">
+        <Text
+          className="text-micro font-spaceBold"
+          style={{
+            color: isLive ? COLORS.white : COLORS.textMuted,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
           {detail}
         </Text>
-      )}
+      </View>
     </View>
   );
 }

@@ -6,16 +6,15 @@ import NavButton, { NAV_BUTTON_FOOTPRINT } from "./navButton";
 
 type ScreenHeaderProps = {
   title: string;
-  // Right-side action (e.g. a + button). Width-balanced against the back button.
+  subTitle?: string;
   action?: ReactNode;
   onBack?: () => void; // defaults to router.back()
   showBack?: boolean;
 };
 
-// The one header used by every pushed screen: back button, centered title,
-// optional right action. Keeps titles aligned identically across the app.
 export default function ScreenHeader({
   title,
+  subTitle,
   action,
   onBack,
   showBack = true,
@@ -24,6 +23,7 @@ export default function ScreenHeader({
 
   return (
     <View className="flex-row items-center justify-between w-full px-screen mt-4 mb-5">
+      {/* Left Back Anchor */}
       {showBack ? (
         <NavButton
           icon={ArrowLeft}
@@ -33,14 +33,28 @@ export default function ScreenHeader({
       ) : (
         <View style={{ width: NAV_BUTTON_FOOTPRINT }} />
       )}
-      <Text
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        className="flex-1 mx-2 text-center text-white text-heading font-spaceBold"
-      >
-        {title}
-      </Text>
-      <View style={{ minWidth: NAV_BUTTON_FOOTPRINT, alignItems: "flex-end" }}>
+
+      <View className="flex-1 items-center justify-center mx-2">
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          className="w-full text-center text-white text-heading font-spaceBold"
+        >
+          {title}
+        </Text>
+        {subTitle && (
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            className="w-full text-center text-ink-muted text-label font-satoshiMedium"
+          >
+            {subTitle}
+          </Text>
+        )}
+      </View>
+
+      {/* Right Action Anchor */}
+      <View style={{ width: NAV_BUTTON_FOOTPRINT, alignItems: "flex-end" }}>
         {action}
       </View>
     </View>

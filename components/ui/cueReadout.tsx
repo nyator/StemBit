@@ -4,19 +4,6 @@ import { Animated, Text, View } from "react-native";
 import { COLORS } from "../../constants/theme";
 import SetlistNav, { type NeighbourCue } from "./setlistNav";
 
-// What a loop or pad cue is doing, in the block a stem song gets.
-//
-// Deliberately the same shape as TransportReadout, in the same place on the
-// screen. Between songs you are not asking "is this one a loop cue" -- you are
-// asking what is running, what is next, and where in the night you are. A cue
-// that answered those in a different layout because of what happens to be
-// inside it would make you read the screen instead of glance at it.
-//
-// What changes is the bar and the numbers, because a loop has no end to count
-// down to. A song's bar crosses once and empties; a loop's fills and restarts
-// on every pass, which is the more useful thing to watch anyway -- it is how
-// you find the downbeat without counting.
-
 type CueReadoutProps = {
   /** The cue's name on the night. */
   title: string;
@@ -78,22 +65,22 @@ export default function CueReadout({
         )}
       </View>
 
-      <Text className="text-heading text-white font-satoshiBold" numberOfLines={1}>
+      {/* <Text className="text-heading text-white font-satoshiBold" numberOfLines={1}>
         {title}
-      </Text>
-      <Text
+      </Text> */}
+      {/* <Text
         className="mt-0.5 text-micro text-ink-muted font-satoshiRegular"
         numberOfLines={1}
       >
         {subtitle}
-      </Text>
+      </Text> */}
 
       {/* One pass of the loop. Empty rather than frozen mid-pass when nothing
           is sounding: a half-filled bar under a stopped transport claims the
           loop is somewhere, and it isn't anywhere. */}
       <View
         className="mt-3 overflow-hidden rounded-full"
-        style={{ height: 3, backgroundColor: COLORS.track }}
+        style={{ height: 15, backgroundColor: COLORS.track }}
       >
         {isPlaying && (
           <Animated.View
@@ -101,10 +88,6 @@ export default function CueReadout({
           />
         )}
       </View>
-
-      {/* No TEMPO/KEY/IN SET row -- the subtitle line above already carries
-          the loop's tempo and the pad's key (see describeCue), and repeating
-          them here was three numbers nobody read twice. */}
       <SetlistNav prev={prev} next={next} />
     </View>
   );

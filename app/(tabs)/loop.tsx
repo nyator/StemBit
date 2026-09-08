@@ -155,7 +155,7 @@ export default function LoopScreen() {
             or make it your own. */}
         <View className="items-center gap-1 mb-5">
           {/* <ControlLabel text="Select Loop" topic="selectLoop" /> */}
-          <Text className="text-white text-label font-spaceBold">Select Loop</Text>
+          {/* <Text className="text-white text-label font-spaceBold">Select Loop</Text> */}
           <View className="flex-row items-center gap-2">
             <PickerButton
               icon={Folder}

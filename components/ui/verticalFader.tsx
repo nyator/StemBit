@@ -46,11 +46,6 @@ type VerticalFaderProps = {
   /** Fires once when the grip is released — persist here, not on every move. */
   onComplete?: (value: number) => void;
   accessibilityLabel?: string;
-  /**
-   * Where a double tap puts the fader. Without one, a double tap is just two
-   * taps and the second wins, which is what a fader with no meaningful home
-   * position should do.
-   */
   defaultValue?: number;
 };
 
@@ -143,7 +138,7 @@ export default function VerticalFader({
       }}
       style={{
         height: FADER_HEIGHT,
-        width: CAP_WIDTH + 22,
+        width: CAP_WIDTH + 10,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -157,6 +152,20 @@ export default function VerticalFader({
             position: "absolute",
             top: CAP_HEIGHT / 2 + (1 - tick) * TRAVEL,
             left: 0,
+            width: tick === 1 || tick === 0 ? 10 : 6,
+            height: 1,
+            backgroundColor: "rgba(255,255,255,0.25)",
+          }}
+        />
+      ))}
+      {TICKS.map((tick) => (
+        <View
+          key={tick}
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: CAP_HEIGHT / 2 + (1 - tick) * TRAVEL,
+            right: 0,
             width: tick === 1 || tick === 0 ? 10 : 6,
             height: 1,
             backgroundColor: "rgba(255,255,255,0.25)",
@@ -219,6 +228,7 @@ export default function VerticalFader({
             backgroundColor: "rgba(0,0,0,0.55)",
           }}
         />
+
       </View>
     </View>
   );

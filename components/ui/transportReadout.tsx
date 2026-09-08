@@ -287,13 +287,7 @@ export default function TransportReadout({
           />
         )}
 
-        {/* The bar count, opposite the label.
-
-            Up here rather than in the row of clocks below, because it is not
-            the same kind of number. ELAPSED and REMAINING are about the song as
-            a length; this is where you are in the arrangement, which is what
-            you say out loud to a band ("from the top of 17") and the only one
-            of the three that the waveform underneath is ruled for. */}
+  
         {!!bpm && (
           <Text
             className="flex-1 text-right text-micro text-ink-muted font-spaceBold tracking-widest"
@@ -305,24 +299,10 @@ export default function TransportReadout({
         )}
       </View>
 
-      <Text className="text-heading text-white font-satoshiBold" numberOfLines={1}>
+      {/* <Text className="text-heading text-white font-satoshiBold" numberOfLines={1}>
         {title}
-      </Text>
+      </Text> */}
 
-      {/* The song as its own shape, filling as it plays.
-
-          A flat bar answers "how far through are we" and nothing else. The
-          waveform answers it just as well -- the lit part is still the part
-          that has gone -- and carries the arrangement with it for free: the
-          quiet bar before the last chorus is a visible notch, so where you are
-          in the song is something you recognise rather than something you
-          measure. That is the read you actually want from six feet away.
-
-          Drawn twice rather than recoloured per frame: the played copy sits
-          over the unplayed one inside a clip whose width is the same Animated
-          value the bar used, so the fill costs one interpolation and the paths
-          are built only when the peaks or the width change. Nothing here
-          re-renders at the transport's sixteen-a-second. */}
       <View className="mt-3" onLayout={handleWaveLayout}>
         {hasWave ? (
           <>
@@ -387,12 +367,6 @@ export default function TransportReadout({
           </View>
         )}
       </View>
-
-      {/* Both dead with the transport up, which is the safe reading and the
-          useful one at once: the moment you want either is the few seconds
-          after a song ends, and loading a cue's stems takes long enough that
-          starting it there rather than walking back to the setlist is most of
-          the gap between songs. */}
       <SetlistNav prev={prev} next={next} />
     </View>
   );

@@ -38,6 +38,7 @@ import {
   PlayFilled,
   Stop,
 } from "../../components/icons";
+import NavButton from "../../components/ui/navButton";
 
 // The running order, and the screen that gets used on stage.
 //
@@ -432,13 +433,12 @@ export default function SetlistScreen() {
       <ScreenHeader
         title={session?.title ?? "Session"}
         action={
-          <TouchableOpacity
+          <NavButton
+            icon={Add}
             onPress={addCue}
+            tint="brand"
             accessibilityLabel="Add a cue"
-            className="p-2 rounded-full bg-brand"
-          >
-            <Add size={22} color={COLORS.white} />
-          </TouchableOpacity>
+          />
         }
       />
 
@@ -455,268 +455,259 @@ export default function SetlistScreen() {
             // scroll fight each other for the same finger.
             scrollEnabled={!dragId}
           >
-          {session.items.length === 0 ? (
-            <View className="mt-10">
-              <EmptyState
-                icon={Musicnote}
-                message="No cues yet. Add them in the order you'll play them — each one opens in studio, where you give it its stems, its loop, or its pad."
-              />
-            </View>
-          ) : null}
+            {session.items.length === 0 ? (
+              <View className="mt-10">
+                <EmptyState
+                  icon={Musicnote}
+                  message="No cues yet. Add them in the order you'll play them — each one opens in studio, where you give it its stems, its loop, or its pad."
+                />
+              </View>
+            ) : null}
 
-          {items.map((item, index) => {
-            const isStemCue = (item.tracks?.length ?? 0) > 0;
-            const isLoaded = stems.loadedCueId === item.id;
-            // Sounding right now, whichever engine is doing it.
-            const live = isStemCue
-              ? isLoaded && stems.isPlaying
-              : liveItemId === item.id;
-            // Pressed, and waiting on the next downbeat to take over from
-            // whatever is running.
-            const armed = armedItemId === item.id;
-            const held = dragId === item.id;
-            const expanded = expandedId === item.id;
-            // Decoding. A song is tens of megabytes and the engine holds the
-            // press until its stems are in, so without this the row would sit
-            // there looking untouched for the second or two before it sounds.
-            const isLoading = isStemCue && isLoaded && !stems.isReady;
+            {items.map((item, index) => {
+              const isStemCue = (item.tracks?.length ?? 0) > 0;
+              const isLoaded = stems.loadedCueId === item.id;
+              // Sounding right now, whichever engine is doing it.
+              const live = isStemCue
+                ? isLoaded && stems.isPlaying
+                : liveItemId === item.id;
+              // Pressed, and waiting on the next downbeat to take over from
+              // whatever is running.
+              const armed = armedItemId === item.id;
+              const held = dragId === item.id;
+              const expanded = expandedId === item.id;
+              // Decoding. A song is tens of megabytes and the engine holds the
+              // press until its stems are in, so without this the row would sit
+              // there looking untouched for the second or two before it sounds.
+              const isLoading = isStemCue && isLoaded && !stems.isReady;
 
-            // One handler behind both the transport and the title, so the two
-            // can never disagree about what a tap on this row does.
-            const fire = () => {
-              if (isStemCue) {
-                fireStems(item);
-                return;
-              }
-              hapticImpact(prefs.haptics, "medium");
-              // A loop cue and a stem song can't sound at once, so firing one
-              // silences the other.
-              stems.stop();
-              if (live) stop();
-              else play(item);
-            };
-
-            // The title opens a stem song's sections instead of firing it. It
-            // is the one row with something more to say, the transport beside
-            // it is 68pt of unmissable target, and a song you can only fire
-            // from the top is a song you can't rehearse the last chorus of.
-            const openOrFire = () => {
-              if (!isStemCue) {
-                fire();
-                return;
-              }
-              hapticImpact(prefs.haptics, "light");
-              setExpandedId((current) => (current === item.id ? null : item.id));
-            };
-
-            return (
-              <View
-                key={item.id}
-                onLayout={(event) => {
-                  // Measured rather than assumed: the row's height is the unit a
-                  // drag counts in, and it moves with the system font size.
-                  //
-                  // Only while collapsed, since an open row is taller than its
-                  // neighbours and the drag maths counts in one uniform row.
-                  if (expanded) return;
-                  rowHeightRef.current = event.nativeEvent.layout.height + 12;
-                }}
-                // overflow-hidden so the sweeping fill is clipped to the row's
-                // rounded corners instead of squaring them off.
-                // Armed sits between live and idle on purpose: it has been
-                // pressed and is coming, so it can't look untouched, but it is
-                // not what you are hearing either.
-                className={`mb-3 border-hairline border-2 rounded-lg overflow-hidden ${live
-                  ? "bg-surface border-brand"
-                  : armed
-                    ? "bg-surface border-brand-from"
-                    : held
-                      ? "bg-surface border-white"
-                      : "bg-surface border-hairline"
-                  }`}
-                style={
-                  held
-                    ? {
-                      transform: [{ translateY: dragOffset }],
-                      // Lifted clear of its neighbours so it's obvious which
-                      // row is in hand.
-                      zIndex: 10,
-                      elevation: 10,
-                    }
-                    : undefined
+              // One handler behind both the transport and the title, so the two
+              // can never disagree about what a tap on this row does.
+              const fire = () => {
+                if (isStemCue) {
+                  fireStems(item);
+                  return;
                 }
-              >
-                {/* The whole card, not just the transport button -- armed is a
-                    state of the row (it's this cue that's about to take over),
-                    and confining the pulse to one 68pt circle made it easy to
-                    miss on a screen with several rows on it. */}
-                <ArmedPulse active={armed} />
+                hapticImpact(prefs.haptics, "medium");
+                // A loop cue and a stem song can't sound at once, so firing one
+                // silences the other.
+                stems.stop();
+                if (live) stop();
+                else play(item);
+              };
 
+              // The title opens a stem song's sections instead of firing it. It
+              // is the one row with something more to say, the transport beside
+              // it is 68pt of unmissable target, and a song you can only fire
+              // from the top is a song you can't rehearse the last chorus of.
+              const openOrFire = () => {
+                if (!isStemCue) {
+                  fire();
+                  return;
+                }
+                hapticImpact(prefs.haptics, "light");
+                setExpandedId((current) => (current === item.id ? null : item.id));
+              };
+
+              return (
                 <View
-                  className="flex-row items-center p-3"
-                  style={{ minHeight: 84 }}
+                  key={item.id}
+                  onLayout={(event) => {
+                    // Measured rather than assumed: the row's height is the unit a
+                    // drag counts in, and it moves with the system font size.
+                    //
+                    // Only while collapsed, since an open row is taller than its
+                    // neighbours and the drag maths counts in one uniform row.
+                    if (expanded) return;
+                    rowHeightRef.current = event.nativeEvent.layout.height + 12;
+                  }}
+                  // overflow-hidden so the sweeping fill is clipped to the row's
+                  // rounded corners instead of squaring them off.
+                  // Armed sits between live and idle on purpose: it has been
+                  // pressed and is coming, so it can't look untouched, but it is
+                  // not what you are hearing either.
+                  className={`mb-3 border-hairline border-2 rounded-lg overflow-hidden ${live
+                    ? "bg-surface border-brand"
+                    : armed
+                      ? "bg-surface border-brand-from"
+                      : held
+                        ? "bg-surface border-white"
+                        : "bg-surface border-hairline"
+                    }`}
+                  style={
+                    held
+                      ? {
+                        transform: [{ translateY: dragOffset }],
+                        // Lifted clear of its neighbours so it's obvious which
+                        // row is in hand.
+                        zIndex: 10,
+                        elevation: 10,
+                      }
+                      : undefined
+                  }
                 >
-                  {/* One tap: load the loop at its tempo, arm the pad at its
-                      key, and go. Between songs there is no time for anything
-                      else. */}
-                  {/* The transport is deliberately oversized. A 44pt target is
-                      the accessibility floor for someone sitting still; this
-                      gets hit in the dark, mid-song, by a hand that is already
-                      busy, and a missed cue is heard by the whole room. */}
-                  <TouchableOpacity
-                    onPress={fire}
-                    accessibilityLabel={
-                      live
-                        ? `Stop ${item.title}`
-                        : armed
-                          ? `${item.title} starts on the next bar`
-                          : `Play ${item.title}`
-                    }
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
-                    className="items-center justify-center mr-3 rounded-full"
-                    style={{
-                      width: 68,
-                      height: 68,
-                      // Filled while live so the thing you need to hit next --
-                      // stop -- is the brightest object on the row. Armed gets
-                      // the paler fill: pressed and coming, but not the thing
-                      // making the sound. The pulse itself now lives on the row
-                      // as a whole, not this button -- see below.
-                      backgroundColor: live
-                        ? COLORS.brand
-                        : armed
-                          ? COLORS.brandFrom
-                          : "rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    {live ? <Stop size={40} /> : <PlayFilled size={40} />}
-                  </TouchableOpacity>
 
-                  {/* Long-press still removes, so the destructive action stays
-                      behind a deliberate gesture rather than a tap. */}
-                  <TouchableOpacity
-                    onPress={openOrFire}
-                    onLongPress={() => openCueActions(item)}
-                    delayLongPress={400}
-                    accessibilityLabel={
-                      isStemCue
-                        ? `${expanded ? "Hide" : "Show"} sections of ${item.title}`
-                        : live
-                          ? `Stop ${item.title}`
-                          : `Play ${item.title}`
-                    }
-                    className="flex-row items-center"
-                    style={{ flex: 1, minHeight: 68 }}
+                  <ArmedPulse active={armed} />
+
+                  <View
+                    className="flex-row items-center p-3"
+                    style={{ minHeight: 84 }}
                   >
-                    <View style={{ flex: 1, justifyContent: "center" }}>
-                      <Text
-                        className="text-title text-white font-satoshiBold"
-                        numberOfLines={1}
-                      >
-                        {index + 1}. {item.title}
-                      </Text>
-                      <Text
-                        className="text-label font-satoshiRegular mt-1"
-                        numberOfLines={1}
-                        style={{
-                          color:
-                            isLoading || armed ? COLORS.brand : COLORS.textMuted,
-                        }}
-                      >
-                        {/* Armed no longer overrides this with "Starts on the
+
+                    <TouchableOpacity
+                      onPress={fire}
+                      accessibilityLabel={
+                        live
+                          ? `Stop ${item.title}`
+                          : armed
+                            ? `${item.title} starts on the next bar`
+                            : `Play ${item.title}`
+                      }
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
+                      className="items-center justify-center mr-3 rounded-full"
+                      style={{
+                        width: 68,
+                        height: 68,
+                        // Filled while live so the thing you need to hit next --
+                        // stop -- is the brightest object on the row. Armed gets
+                        // the paler fill: pressed and coming, but not the thing
+                        // making the sound. The pulse itself now lives on the row
+                        // as a whole, not this button -- see below.
+                        backgroundColor: live
+                          ? COLORS.brand
+                          : armed
+                            ? COLORS.brandFrom
+                            : "rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      {live ? <Stop size={40} /> : <PlayFilled size={40} />}
+                    </TouchableOpacity>
+
+                    {/* Long-press still removes, so the destructive action stays
+                      behind a deliberate gesture rather than a tap. */}
+                    <TouchableOpacity
+                      onPress={openOrFire}
+                      onLongPress={() => openCueActions(item)}
+                      delayLongPress={400}
+                      accessibilityLabel={
+                        isStemCue
+                          ? `${expanded ? "Hide" : "Show"} sections of ${item.title}`
+                          : live
+                            ? `Stop ${item.title}`
+                            : `Play ${item.title}`
+                      }
+                      className="flex-row items-center"
+                      style={{ flex: 1, minHeight: 68 }}
+                    >
+                      <View style={{ flex: 1, justifyContent: "center" }}>
+                        <Text
+                          className="text-title text-white font-satoshiBold"
+                          numberOfLines={1}
+                        >
+                          {index + 1}. {item.title}
+                        </Text>
+                        <Text
+                          className="text-label font-satoshiRegular mt-1"
+                          numberOfLines={1}
+                          style={{
+                            color:
+                              isLoading || armed ? COLORS.brand : COLORS.textMuted,
+                          }}
+                        >
+                          {/* Armed no longer overrides this with "Starts on the
                             next bar" -- the pulse on the transport button says
                             that now, and this line keeps saying what the cue
                             actually holds instead of losing it for a beat. */}
-                        {isLoading ? "Loading stems…" : describeCue(item)}
-                      </Text>
-                    </View>
+                          {isLoading ? "Loading stems…" : describeCue(item)}
+                        </Text>
+                      </View>
 
-                    {isStemCue && (
-                      <ChevronDown
-                        size={18}
-                        color={expanded ? COLORS.brand : COLORS.textMuted}
-                        style={{
-                          transform: [{ rotate: expanded ? "180deg" : "0deg" }],
-                        }}
-                      />
-                    )}
-                  </TouchableOpacity>
+                      {isStemCue && (
+                        <ChevronDown
+                          size={18}
+                          color={expanded ? COLORS.brand : COLORS.textMuted}
+                          style={{
+                            transform: [{ rotate: expanded ? "180deg" : "0deg" }],
+                          }}
+                        />
+                      )}
+                    </TouchableOpacity>
 
-                  {/* The grip. Dragging is confined to it rather than the whole
+                    {/* The grip. Dragging is confined to it rather than the whole
                       row, because the row has to stay tappable -- on stage, a
                       thumb that drags when it meant to fire a cue is a worse
                       mistake than one that doesn't reorder. */}
-                  <View
-                    {...(dragResponders[item.id]?.panHandlers ?? {})}
-                    accessibilityLabel={`Reorder ${item.title}`}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    className="items-center justify-center ml-1"
-                    style={{ width: 40, height: 68 }}
-                  >
-                    <DragHandle
-                      size={24}
-                      color={held ? COLORS.brand : COLORS.textMuted}
-                    />
+                    <View
+                      {...(dragResponders[item.id]?.panHandlers ?? {})}
+                      accessibilityLabel={`Reorder ${item.title}`}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      className="items-center justify-center ml-1"
+                      style={{ width: 40, height: 68 }}
+                    >
+                      <DragHandle
+                        size={24}
+                        color={held ? COLORS.brand : COLORS.textMuted}
+                      />
+                    </View>
                   </View>
-                </View>
 
-                {/* The song's sections, in the row. The same pads the
+                  {/* The song's sections, in the row. The same pads the
                     performance screen draws, at the size a row can spare: what
                     they do is identical, so they had better look and behave
                     identically too. */}
-                {isStemCue && expanded && (
-                  <View className="px-3 pb-3">
-                    {(item.sections?.length ?? 0) === 0 ? (
-                      <Text className="mb-3 text-micro text-ink-muted font-satoshiRegular">
-                        No sections yet — mark them on the timeline in studio.
-                      </Text>
-                    ) : (
-                      <View className="flex-row flex-wrap justify-between">
-                        {item.sections?.map((section, sectionIndex) => (
-                          <SectionPad
-                            key={section.id}
-                            name={section.name}
-                            index={sectionIndex}
-                            startSeconds={section.startSeconds}
-                            endSeconds={section.endSeconds}
-                            // Only the loaded song has a playhead in it, so
-                            // only its pads can claim to be running.
-                            isLive={
-                              isLoaded &&
-                              stems.isPlaying &&
-                              liveSectionId === section.id
-                            }
-                            isArmed={isLoaded && armedSectionId === section.id}
-                            playheadSeconds={playheadSeconds}
-                            onPress={() => fireStems(item, section)}
-                            compact
-                          />
-                        ))}
-                      </View>
-                    )}
+                  {isStemCue && expanded && (
+                    <View className="px-3 pb-3">
+                      {(item.sections?.length ?? 0) === 0 ? (
+                        <Text className="mb-3 text-micro text-ink-muted font-satoshiRegular">
+                          No sections yet — mark them on the timeline in studio.
+                        </Text>
+                      ) : (
+                        <View className="flex-row flex-wrap justify-between">
+                          {item.sections?.map((section, sectionIndex) => (
+                            <SectionPad
+                              key={section.id}
+                              name={section.name}
+                              index={sectionIndex}
+                              startSeconds={section.startSeconds}
+                              endSeconds={section.endSeconds}
+                              // Only the loaded song has a playhead in it, so
+                              // only its pads can claim to be running.
+                              isLive={
+                                isLoaded &&
+                                stems.isPlaying &&
+                                liveSectionId === section.id
+                              }
+                              isArmed={isLoaded && armedSectionId === section.id}
+                              playheadSeconds={playheadSeconds}
+                              onPress={() => fireStems(item, section)}
+                              compact
+                            />
+                          ))}
+                        </View>
+                      )}
 
-                    <TouchableOpacity
-                      onPress={() => openPerformance(item)}
-                      accessibilityLabel={`Open ${item.title} in performance mode`}
-                      className="items-center py-3 mt-1 border rounded-lg border-hairline"
-                    >
-                      <Text className="text-micro text-brand font-spaceBold tracking-widest">
-                        PERFORMANCE MODE
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            );
-          })}
+                      <TouchableOpacity
+                        onPress={() => openPerformance(item)}
+                        accessibilityLabel={`Open ${item.title} in performance mode`}
+                        className="items-center py-3 mt-1 border rounded-lg border-hairline"
+                      >
+                        <Text className="text-micro text-brand font-spaceBold tracking-widest">
+                          PERFORMANCE MODE
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
 
-          {items.length > 0 && (
-            <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
-              Tap the transport to play a cue, tap again to stop. Tap a song&apos;s
-              name to open its sections. Drag the grip to reorder, hold a cue to
-              open, edit or remove it.
-            </Text>
-          )}
+            {items.length > 0 && (
+              <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
+                Tap the transport to play a cue, tap again to stop. Tap a song&apos;s
+                name to open its sections. Drag the grip to reorder, hold a cue to
+                open, edit or remove it.
+              </Text>
+            )}
           </ScrollView>
 
           {/* Performance mode, where a thumb actually lands.

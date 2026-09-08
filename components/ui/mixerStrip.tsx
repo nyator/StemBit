@@ -50,6 +50,7 @@ type MixerStripProps = {
    * with a fingertip is the wrong way to spend a soundcheck.
    */
   defaultMix?: Pick<TrackMix, "level" | "pan">;
+  onRemove?: () => void;
 };
 
 export default function MixerStrip({
@@ -65,6 +66,7 @@ export default function MixerStrip({
   onToggleMute,
   onToggleSolo,
   defaultMix,
+  onRemove,
 }: MixerStripProps) {
   const panRef = useRef({ onPan, onPanCommit });
   panRef.current = { onPan, onPanCommit };
@@ -165,7 +167,7 @@ export default function MixerStrip({
       <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
         {/* Meter beside the fader, the way a console puts them, so you can see
             what a stem is doing and change it without moving your eyes. */}
-        <View
+        {/* <View
           style={{
             width: 6,
             height: METER_HEIGHT,
@@ -183,7 +185,7 @@ export default function MixerStrip({
               backgroundColor: COLORS.success,
             }}
           />
-        </View>
+        </View> */}
 
         <VerticalFader
           value={mix.level}
@@ -251,9 +253,9 @@ export default function MixerStrip({
         />
       </View>
 
-      <Text className="mt-1 text-micro text-ink-muted font-spaceBold">
+      {/* <Text className="mt-1 text-micro text-ink-muted font-spaceBold">
         {panLabel}
-      </Text>
+      </Text> */}
 
       <View style={{ flexDirection: "row", marginTop: 8 }}>
         <StripButton
@@ -271,6 +273,15 @@ export default function MixerStrip({
           accessibilityLabel={`${isSolo ? "Clear solo on" : "Solo"} ${name}`}
         />
       </View>
+
+      <TouchableOpacity
+        onPress={onRemove}
+        accessibilityLabel={`Remove ${name}`}
+        hitSlop={10}
+        className="mt-6"
+      >
+        <Text className="text-micro text-ink-muted font-spaceBold">REMOVE</Text>
+      </TouchableOpacity>
     </View>
   );
 }

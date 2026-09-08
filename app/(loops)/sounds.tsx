@@ -144,8 +144,6 @@ const LoopBrowserScreen = () => {
 
   const activeCount = active.length + (query.trim().length > 0 ? 1 : 0);
 
-  // One section of the sheet: an axis's name, a Clear link when it's set, and
-  // a row per value with a live count of what tapping it would leave.
   const renderSection = (axis: Axis) => (
     <View key={axis} className="w-full gap-2">
       <View className="flex-row items-center justify-between">
@@ -209,11 +207,6 @@ const LoopBrowserScreen = () => {
 
   return (
     <Screen glows={["topLeftFar", "bottomLeft"]}>
-      {/* The two ways to get another loop, both in the header rather than in
-          the list: neither is one of the loops, they're what make another one.
-          The store comes first and is the quieter of the two -- it's a place to
-          go and look, where + is the one that ends in a loop you made, so only
-          that one takes the brand tint. */}
       <ScreenHeader
         title="Bits"
         action={
@@ -232,10 +225,6 @@ const LoopBrowserScreen = () => {
           </View>
         }
       />
-
-      {/* Find one by name, combined with whatever Filters is set to rather
-          than replacing it -- "worship" typed here and 3/4 chosen there give
-          the worship loops in three-four together. */}
       <View className="px-screen mb-3">
         <SearchField
           value={query}
@@ -244,10 +233,6 @@ const LoopBrowserScreen = () => {
           accessibilityLabel="Search loops by name, artist or category"
         />
       </View>
-
-      {/* Filters opens the sheet below; what it's currently set to (plus the
-          search text) trails it as removable pills, so a filter set earlier
-          is never invisible -- just a short list with no visible reason. */}
       <View className="flex-row items-center mb-3 px-screen gap-2">
         <TouchableOpacity
           onPress={openFilters}
@@ -284,7 +269,7 @@ const LoopBrowserScreen = () => {
               <TouchableOpacity
                 onPress={() => setQuery("")}
                 accessibilityLabel={`Remove "${query.trim()}" search`}
-                className="flex-row items-center px-3 py-1 rounded-full gap-1.5 bg-brand/20 border border-brand/40"
+                className="flex-row items-center px-3 py-1 rounded-full gap-2 bg-brand/20 border border-brand/40"
               >
                 <Text className="text-brand-from text-overline font-satoshiMedium">
                   &quot;{query.trim()}&quot;
@@ -297,7 +282,7 @@ const LoopBrowserScreen = () => {
                 key={`${axis}:${value}`}
                 onPress={() => toggle(axis, value)}
                 accessibilityLabel={`Remove ${value} filter`}
-                className="flex-row items-center px-3 py-1 rounded-full gap-1.5 bg-brand/20 border border-brand/40"
+                className="flex-row items-center px-3 py-2 rounded-full gap-1.5 bg-brand/20 border border-brand/40"
               >
                 <Text className="text-brand-from text-overline font-satoshiMedium">
                   {value}
@@ -360,9 +345,6 @@ const LoopBrowserScreen = () => {
           {renderSection("meters")}
         </BottomSheetScrollView>
 
-        {/* A fixed footer below the scrolling sections, not another row inside
-            them -- the count it shows depends on every section at once, so it
-            has to stay on screen while any of them scroll past. */}
         <View
           className="pt-3 border-t px-screen border-hairline"
           style={{ paddingBottom: SHEET_CONTENT.paddingBottom }}
