@@ -226,7 +226,7 @@ export default function MetroScreen() {
         {/* Time Signature — the same picker the Loop screen names its loop
             with, kept to segmentWidth so it lines up with the dial above it. */}
         <View className="items-center gap-1 mb-5">
-          <Text className="text-white text-label font-spaceBold">Time Signature</Text>
+          {/* <Text className="text-white text-label font-spaceBold">Time Signature</Text> */}
           <PickerButton
             icon={Musicnote}
             label={timeSignature.label}

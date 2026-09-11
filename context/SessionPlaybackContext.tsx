@@ -531,21 +531,8 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       // Ignore malformed messages.
     }
   };
-
-  // Bring the engine's audio clock back when the app returns.
-  //
-  // The ONLY thing this listens for. Unlike the loop and metronome contexts
-  // there is no stop-on-background here, and there should not be: a song is
-  // minutes long and the whole point of a setlist is that it keeps running
-  // while you look away.
-  //
-  // What it fixes is the other half of that promise. Android suspends a
-  // WebView's AudioContext when the activity pauses -- pulling the notification
-  // shade down does exactly that -- and nothing brought it back, because every
-  // resume in the engine sits inside ensureContext, which only runs when a
-  // command arrives. Returning to the app is not a command, so the song stayed
-  // stopped until the next thing anyone pressed.
   useEffect(() => {
+ 
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") postToEngine({ type: "resume" });
     });

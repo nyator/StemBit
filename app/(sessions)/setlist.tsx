@@ -40,45 +40,12 @@ import {
 } from "../../components/icons";
 import NavButton from "../../components/ui/navButton";
 
-// The running order, and the screen that gets used on stage.
-//
-// So the important thing about it is what a tap does: one press loads the cue's
-// loop at its tempo, arms its pad at its key, and starts. No hunting through a
-// catalog between songs, which is the whole reason the feature exists.
-//
-// That now holds for a stem song too. It used to be the exception -- tapping one
-// opened the performance screen instead of playing it, on the grounds that a
-// song with per-track controls is something you want to be standing in front of
-// before it starts. True when the song needs mixing, wrong when it doesn't: most
-// cues in a set are hit once and left alone, and making those the one kind of
-// cue you cannot fire from the running order meant a screen in the way of every
-// song. So the transport fires stems from the row like everything else, and the
-// row opens to show the song's sections -- the performance screen is still a tap
-// away for when the song does need hands on it.
-//
-// It no longer builds cues, either. There was a form here -- name, stems, tempo,
-// loop, pad, key -- from when this was the only screen a cue had. Then STUDIO
-// grew the same controls for every kind of cue, because a loop or a tempo is
-// something you want to change against a room rather than in a list, and the two
-// were the same form in two places with only one of them able to make a sound
-// while you used it. So + creates the cue and opens it, and this screen went
-// back to being the running order.
-
-/**
- * A row, armed and waiting on the next downbeat.
- *
- * Replaces what used to be said in words -- "Starts on the next bar" printed
- * under the title -- with the same idea SectionPad's fill carries: a wash
- * pulsing at a fixed rate regardless of tempo. Over the whole card rather
- * than just the transport button, so it's caught out of the corner of an eye
- * wherever on the row that happens to land, not only on one 68pt circle.
- */
 function ArmedPulse({ active }: { active: boolean }) {
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // TEMPORARY DIAGNOSTIC -- remove once the loop-swap pulse is confirmed working.
-    console.log("[ArmedPulse] active:", active, Date.now());
+    // console.log("[ArmedPulse] active:", active, Date.now());
     if (!active) return;
     const loop = Animated.loop(
       Animated.sequence([
@@ -129,26 +96,8 @@ export default function SetlistScreen() {
   const { findSession, addItem, removeItem, reorderItems } = useSessions();
   const { prefs } = usePreferences();
   const { play, stop, endSession, liveItemId, armedItemId } = useSessionCue();
-  // Stem songs run on their own engine -- multi-track and sample-locked, which
-  // only works inside one AudioContext -- so firing one from here means talking
-  // to that engine directly rather than through the cue context.
-  const stems = useSessionPlayback();
 
-  // Leaving the setlist ends the set: the loop and pad tabs get back whatever
-  // they held before it started. Deliberately not on every stop -- see the note
-  // on endSession for why restoring between cues made the next one hang.
-  //
-  // Held in a ref and depended on with [], because endSession is a new closure
-  // every render. As `useEffect(() => endSession, [endSession])` the dependency
-  // changed on each render, so React ran the cleanup each time too -- ending the
-  // set continuously while the screen was in use rather than once on the way
-  // out.
-  //
-  // Stems go quiet with it. They run on their own engine, which knows nothing
-  // about sets ending, and a song fired from a row here would otherwise still
-  // be playing after the setlist it belongs to has been left. Only on the way
-  // out of the stack -- pushing the performance screen leaves this one mounted,
-  // so nothing is cut off by going in to mix a song.
+  const stems = useSessionPlayback();
   const endSessionRef = useRef(() => {
     endSession();
     stems.stop();
@@ -191,26 +140,9 @@ export default function SetlistScreen() {
   const items = order ?? session?.items ?? [];
   orderRef.current = items;
 
-  // The cue the PERFORM bar opens: whatever is live, and failing that the top
-  // of the set.
-  //
-  // Live first because that is the one you were last standing in front of --
-  // coming back to it is far more common than choosing a different cue, and it
-  // is the case the per-row entry serves worst, since reaching that means
-  // opening a row or holding one.
-  // Sounding beats merely loaded: the stem engine keeps the last song in memory
-  // after it stops, so a loop cue playing now with a stale song still decoded is
-  // a real pairing -- and the loop is the one you are standing in front of.
   const performCue =
     items.find((item) => item.id === liveItemId) ?? loadedStemCue ?? items[0];
 
-  /**
-   * Into a song's own surface -- timeline, mixer, section pads.
-   *
-   * A push rather than a replace: this screen stays mounted underneath, which
-   * is what keeps a song fired from a row here sounding while you go in to put
-   * hands on it. See the note on endSession above.
-   */
   const openPerformance = (
     item: SessionItem,
     view: "studio" | "perform" = "perform"
@@ -222,8 +154,7 @@ export default function SetlistScreen() {
     });
   };
 
-  // One responder per cue, rebuilt only when the saved order changes -- never
-  // mid-drag, since nothing is saved until the finger lifts.
+
   const dragResponders = useMemo(() => {
     const responders: Record<string, ReturnType<typeof PanResponder.create>> = {};
 

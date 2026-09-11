@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, PanResponder, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G, Line, Path, Rect } from "react-native-svg";
 
@@ -8,54 +8,138 @@ import { BAR_STEPS, secondsPerBar, snapSeconds } from "../../constants/barGrid";
 import type { CueSection } from "../../context/SessionsContext";
 import type { TrackMix } from "../../context/SessionPlaybackContext";
 
-// The arrange window: every stem on its own lane, against one ruler, under one
-// playhead.
-//
-// The performance view shows the song as section pads and track tiles because
-// on stage you are not reading, you are hitting. This is the other half of the
-// job -- the part you do sitting down, before the gig, working out where the
-// sections actually fall and what the arrangement is doing. For that the useful
-// picture is the one every DAW draws: parts stacked in time, so you can see the
-// drums drop out under the bridge instead of hunting for it by ear.
-//
-// Why one Svg for all the lanes rather than one per track: a component per lane
-// re-measures and re-rasterises on every layout pass, and the whole point of
-// this view is that it stays still while a playhead moves across it. The
-// waveforms are drawn once into a memoised child; the playhead is an
-// Animated.View on top, driven by an Animated.Value, so 16 position updates a
-// second move a 2px bar and re-render nothing at all.
-//
-// Gestures are split by surface, which is the only way two of them fit on a
-// phone without guessing at intent:
-//
-//   ruler / marker band   drag  -> move the playhead, or drag a marker
-//   lanes                 drag  -> scroll the arrangement
-//   anywhere              pinch -> zoom
-//
-// That is the desktop DAW arrangement (the ruler is where you scrub, the
-// arrangement is where you navigate) and it means neither gesture has to wait
-// to find out whether it was meant to be the other one.
+// Minimum duration in seconds allowed for any section so its start and end cannot invert.
+const MIN_SECTION_DURATION = 0.1;
 
 const HEADER_WIDTH = 92;
 const RULER_HEIGHT = 20;
 const MARKER_HEIGHT = 22;
 const LANE_HEIGHT = 52;
 const LANE_GAP = 4;
-// Wide enough to grab a marker flag with a fingertip, on either side of it.
 const MARKER_TOUCH_WIDTH = 34;
 
-// Zoom stops for the buttons. 1 is the whole song across the screen; 32 is
-// about a bar and a half of a mid-tempo song, which is close enough to put a
-// marker on the snare rather than near it.
 const ZOOM_STOPS = [1, 2, 4, 8, 16, 32];
 const MIN_ZOOM = ZOOM_STOPS[0];
 const MAX_ZOOM = ZOOM_STOPS[ZOOM_STOPS.length - 1];
 
-// Pinching reports a continuous scale, and every distinct value rebuilds four
-// waveform paths. Rounded to this, a pinch across the whole range recomputes a
-// couple of dozen times instead of once per frame, and the difference is not
-// visible in the drawing.
 const ZOOM_STEP = 0.25;
+
+/**
+ * Clamps zoom values within the designated minimum and maximum zoom constraints.
+ */
+export function stepsToZoom(val: number): number {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, val));
+}
+
+/**
+ * Calculates clamped seconds for a section edge being trimmed so that
+ * it never crosses its own opposite edge or neighboring sections.
+ */
+export function clampSectionEdge({
+  sections,
+  sectionId,
+  edge,
+  targetSeconds,
+  duration,
+  minDuration = MIN_SECTION_DURATION,
+}: {
+  sections: CueSection[];
+  sectionId: string;
+  edge: "start" | "end";
+  targetSeconds: number;
+  duration: number;
+  minDuration?: number;
+}): number {
+  const sorted = [...sections].sort((a, b) => a.startSeconds - b.startSeconds);
+  const index = sorted.findIndex((s) => s.id === sectionId);
+  if (index === -1) return targetSeconds;
+
+  const current = sorted[index];
+  const prev = index > 0 ? sorted[index - 1] : null;
+  const next = index < sorted.length - 1 ? sorted[index + 1] : null;
+
+  let min = 0;
+  let max = duration > 0 ? duration : Infinity;
+
+  if (edge === "start") {
+    if (prev) {
+      min = prev.endSeconds !== undefined ? prev.endSeconds : prev.startSeconds;
+    } else {
+      min = 0;
+    }
+
+    if (current.endSeconds !== undefined) {
+      max = current.endSeconds - minDuration;
+    } else if (next) {
+      max = next.startSeconds - minDuration;
+    } else if (duration > 0) {
+      max = duration - minDuration;
+    }
+  } else {
+    min = current.startSeconds + minDuration;
+
+    if (next) {
+      max = next.startSeconds;
+    } else if (duration > 0) {
+      max = duration;
+    }
+  }
+
+  if (min > max) {
+    return edge === "start" ? min : max;
+  }
+
+  return Math.max(min, Math.min(max, targetSeconds));
+}
+
+export function getNewSectionBounds({
+  sections,
+  desiredStartSeconds,
+  desiredDurationSeconds,
+  songDuration,
+  minDuration = MIN_SECTION_DURATION,
+}: {
+  sections: CueSection[];
+  desiredStartSeconds: number;
+  desiredDurationSeconds: number;
+  songDuration: number;
+  minDuration?: number;
+}): { startSeconds: number; endSeconds: number } | null {
+  const sorted = [...sections].sort((a, b) => a.startSeconds - b.startSeconds);
+  let prevSection: CueSection | null = null;
+  let nextSection: CueSection | null = null;
+
+  for (const section of sorted) {
+    if (section.startSeconds <= desiredStartSeconds) {
+      prevSection = section;
+    } else {
+      nextSection = section;
+      break;
+    }
+  }
+
+  let start = desiredStartSeconds;
+
+  if (prevSection) {
+    const prevEnd = prevSection.endSeconds ?? prevSection.startSeconds;
+    if (start < prevEnd) {
+      start = prevEnd;
+    }
+  }
+
+  const maxEnd = nextSection
+    ? nextSection.startSeconds
+    : songDuration > 0
+      ? songDuration
+      : Infinity;
+
+  if (start >= maxEnd - minDuration) {
+    return null;
+  }
+
+  const end = Math.min(maxEnd, start + desiredDurationSeconds);
+  return { startSeconds: start, endSeconds: end };
+}
 
 export type TimelineTrack = {
   id: string;
@@ -64,49 +148,20 @@ export type TimelineTrack = {
 
 type TrackTimelineProps = {
   tracks: TimelineTrack[];
-  /** One peak array per track id, from the engine. Missing means not measured yet. */
   peaks: Record<string, number[]>;
-  /** Song length in seconds, for converting x to time. */
   duration: number;
   bpm: number;
   sections: CueSection[];
   mix: Record<string, TrackMix>;
   soloed: string | null;
-  /**
-   * The performance view's master mute, which silences everything without
-   * touching a single track's own state.
-   *
-   * Passed in rather than left to that view because the two are the same song:
-   * lanes drawn as sounding while the master is down would have the studio
-   * disagreeing with what is actually coming out.
-   */
   masterMuted?: boolean;
   onToggleMute: (trackId: string) => void;
   onToggleSolo: (trackId: string) => void;
-  /**
-   * Where the audio has reached, in seconds, as an Animated.Value.
-   *
-   * A value rather than a number because this component would otherwise
-   * re-render at the engine's report rate, and re-rendering a few hundred SVG
-   * path points sixteen times a second is exactly the thing that makes a
-   * timeline feel like it is dragging its feet.
-   */
   playheadSeconds: Animated.Value;
-  /** True while the transport runs, so a zoomed view can follow the playhead. */
   isPlaying: boolean;
-  /** Where the transport will start from -- the line you drag. */
   cursorSeconds: number;
-  /** Fires continuously through a drag, so the cursor tracks the finger. */
   onScrub: (seconds: number) => void;
-  /** Fires once on release. Seek here, not on every frame. */
   onSeek: (seconds: number) => void;
-  /**
-   * One edge of a section was dragged along the ruler.
-   *
-   * Which edge is part of the event because a section is a span rather than a
-   * point: its start and its end are grabbed separately, and the caller has to
-   * know which one moved to keep them from crossing.
-   */
   onMoveSection: (
     sectionId: string,
     seconds: number,
@@ -141,12 +196,12 @@ export default function TrackTimeline({
   const laneWidth = Math.max(1, width - HEADER_WIDTH);
   const lanesHeight = tracks.length * (LANE_HEIGHT + LANE_GAP);
 
-  // Zoom and scroll move together -- every zoom has to reposition the view to
-  // keep something anchored -- so they are one piece of state. As two, a zoom
-  // and the scroll it implies could interleave and land somewhere neither
-  // asked for.
   const [viewport, setViewport] = useState({ zoom: MIN_ZOOM, scrollX: 0 });
   const contentWidth = laneWidth * viewport.zoom;
+
+  const [isAutoFollowDisabled, setIsAutoFollowDisabled] = useState(false);
+  const isInteractingRef = useRef(false);
+  const autoFollowTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const clampScroll = (x: number, content: number) =>
     Math.max(0, Math.min(Math.max(0, content - laneWidth), x));
@@ -154,12 +209,6 @@ export default function TrackTimeline({
   const xOf = (seconds: number) =>
     duration > 0 ? (seconds / duration) * contentWidth : 0;
 
-  /**
-   * Moves to a zoom level, keeping whatever is under `anchorX` where it is.
-   *
-   * Without an anchor a zoom throws away your place: you are looking at bar 40,
-   * you zoom to see it better, and you are now looking at bar 3.
-   */
   const applyZoom = (next: number, anchorX: number) => {
     setViewport((current) => {
       const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next));
@@ -183,13 +232,9 @@ export default function TrackTimeline({
           ? stop > viewport.zoom + 0.01
           : stop < viewport.zoom - 0.01
       ) ?? viewport.zoom;
-    // Anchored on the middle of the view, which is where you are looking when
-    // you reach for a zoom button.
     applyZoom(next, laneWidth / 2);
   };
 
-  // Refs, because a PanResponder is built once and would otherwise hold the
-  // first render's callbacks, sections and viewport forever.
   const stateRef = useRef({
     sections,
     duration,
@@ -197,6 +242,7 @@ export default function TrackTimeline({
     laneWidth,
     contentWidth,
     viewport,
+    isAutoFollowDisabled,
     onScrub,
     onSeek,
     onMoveSection,
@@ -209,13 +255,13 @@ export default function TrackTimeline({
     laneWidth,
     contentWidth,
     viewport,
+    isAutoFollowDisabled,
     onScrub,
     onSeek,
     onMoveSection,
     onSelectSection,
   };
 
-  /** Viewport x (what a touch reports) to a moment in the song. */
   const secondsFrom = (x: number) => {
     const { duration: d, contentWidth: content, viewport: view } =
       stateRef.current;
@@ -223,230 +269,233 @@ export default function TrackTimeline({
     return Math.max(0, Math.min(d, ((x + view.scrollX) / content) * d));
   };
 
-  /**
-   * How wide a second is on screen right now.
-   *
-   * Read off the content rather than the zoom level, so it already accounts for
-   * however far in the view happens to be -- which is what decides whether the
-   * grid a drag snaps to is beats, bars, or eight-bar phrases.
-   */
   const pxPerSecondOf = (state: { duration: number; contentWidth: number }) =>
     state.duration > 0 ? state.contentWidth / state.duration : 0;
+
+  /**
+   * Suspends auto-scrolling immediately upon gesture interaction.
+   */
+  const suspendAutoFollow = () => {
+    setIsAutoFollowDisabled(true);
+    if (autoFollowTimeoutRef.current) {
+      clearTimeout(autoFollowTimeoutRef.current);
+    }
+  };
+
+  /**
+   * Schedules re-enabling playhead auto-follow. Will only execute
+   * once all touch interactions have completely ceased.
+   */
+  const startAutoFollowTimer = () => {
+    if (autoFollowTimeoutRef.current) {
+      clearTimeout(autoFollowTimeoutRef.current);
+    }
+    autoFollowTimeoutRef.current = setTimeout(() => {
+      if (!isInteractingRef.current) {
+        setIsAutoFollowDisabled(false);
+      }
+    }, 5000); // Wait 5 seconds of absolute idle before snapping back
+  };
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoFollowTimeoutRef.current) clearTimeout(autoFollowTimeoutRef.current);
+    };
+  }, []);
+
+  // Instantly re-engage auto-follow when playback state starts or restarts
+  useEffect(() => {
+    if (isPlaying) {
+      setIsAutoFollowDisabled(false);
+      if (autoFollowTimeoutRef.current) {
+        clearTimeout(autoFollowTimeoutRef.current);
+      }
+    }
+  }, [isPlaying]);
 
   /* ---------------------------------------------------------------------- */
   /* Gestures                                                                */
   /* ---------------------------------------------------------------------- */
 
-  // A pinch begins as a single touch, so the lane responder has already granted
-  // by the time the second finger lands. This tells it to stand down rather
-  // than scrolling on the centroid of two fingers that are pinching.
-  const pinchingRef = useRef(false);
   const pinchStartRef = useRef(MIN_ZOOM);
-
   const pinch = useMemo(
     () =>
       Gesture.Pinch()
-        // On the JS thread: everything it touches -- the viewport state, the
-        // scroll clamp -- lives there, and a worklet would have to hop back for
-        // all of it anyway.
         .runOnJS(true)
         .onStart(() => {
-          pinchingRef.current = true;
+          isInteractingRef.current = true;
+          suspendAutoFollow();
           pinchStartRef.current = stateRef.current.viewport.zoom;
         })
         .onUpdate((event) => {
           const raw = pinchStartRef.current * event.scale;
-          // Rounded, so a pinch rebuilds the waveform paths a few times rather
-          // than sixty times a second.
           const stepped = Math.round(raw / ZOOM_STEP) * ZOOM_STEP;
-          applyZoom(stepped, event.focalX);
+          applyZoom(stepsToZoom(stepped), event.focalX);
+        })
+        .onEnd(() => {
+          isInteractingRef.current = false;
+          startAutoFollowTimer();
         })
         .onFinalize(() => {
-          pinchingRef.current = false;
+          isInteractingRef.current = false;
+          startAutoFollowTimer();
         }),
-    // Rebuilt when the lane width changes, since applyZoom closes over it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [laneWidth]
   );
 
-  // Dragging the lanes navigates. Scrubbing lives on the ruler instead, the way
-  // it does on a desktop DAW -- one gesture per surface, so neither has to be
-  // guessed at.
-  const scrollStartRef = useRef(0);
-  /**
-   * How far the finger had already travelled when this responder was granted.
-   *
-   * The grant is deliberately late -- it waits for 4px of sideways movement to
-   * prove the drag is horizontal -- but `gesture.dx` is measured from where the
-   * finger first touched down, not from the grant. Subtracting the travel at
-   * grant is what makes the arrangement start moving from where it was, instead
-   * of jumping the threshold's worth of pixels the moment it takes over.
-   */
-  const grabDxRef = useRef(0);
-  const laneResponder = useMemo(
+  const laneScrollStartRef = useRef(0);
+  const lanePan = useMemo(
     () =>
-      PanResponder.create({
-        // Deliberately not claimed on touch-down. Granting on start would mean
-        // this responder owns the touch before anyone knows which way it is
-        // going, and a vertical flick to scroll the page would die on the
-        // lanes. It is claimed only once the finger has travelled, and only if
-        // it travelled sideways.
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-        // Once this drag is ours it stays ours, the way the marker band above
-        // already insists.
-        //
-        // The timeline sits inside STUDIO's vertical ScrollView, and without
-        // this that ScrollView can ask for the gesture back partway through a
-        // horizontal drag -- which it will, as soon as a drag across the lanes
-        // picks up any vertical component, i.e. on every real drag by a real
-        // thumb. Handing it over mid-move is what made scrolling the
-        // arrangement stick and jump: the lanes would follow the finger, stop
-        // dead, and the page would start moving underneath instead.
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (_event, gesture) => {
-          scrollStartRef.current = stateRef.current.viewport.scrollX;
-          grabDxRef.current = gesture.dx;
-        },
-        onPanResponderMove: (_event, gesture) => {
-          if (pinchingRef.current) return;
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetX([-6, 6])
+        .failOffsetY([-14, 14])
+        .minPointers(1)
+        .maxPointers(1)
+        .onStart(() => {
+          isInteractingRef.current = true;
+          suspendAutoFollow();
+          laneScrollStartRef.current = stateRef.current.viewport.scrollX;
+        })
+        .onUpdate((event) => {
           setViewport((current) => ({
             ...current,
             scrollX: clampScroll(
-              scrollStartRef.current - (gesture.dx - grabDxRef.current),
+              laneScrollStartRef.current - event.translationX,
               stateRef.current.laneWidth * current.zoom
             ),
           }));
-        },
-      }),
+        })
+        .onEnd(() => {
+          isInteractingRef.current = false;
+          startAutoFollowTimer();
+        })
+        .onFinalize(() => {
+          isInteractingRef.current = false;
+          startAutoFollowTimer();
+        }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [laneWidth]
   );
 
-  // The marker band is its own responder so the two gestures can't fight: a
-  // finger on a section flag moves the flag, a finger on empty ruler moves the
-  // playhead, and neither has to guess which was meant.
-  // Which edge of which section is in hand. Both edges of every section are
-  // grabbable, so what the finger landed on is a section AND a side of it.
   const draggingMarkerRef = useRef<{
     id: string;
     edge: "start" | "end";
   } | null>(null);
-  const markerResponder = useMemo(
+
+  const pickMarkerAt = (x: number) => {
+    const {
+      sections: liveSections,
+      duration: d,
+      contentWidth: content,
+      viewport: view,
+    } = stateRef.current;
+
+    const xAt = (seconds: number) =>
+      (d > 0 ? (seconds / d) * content : 0) - view.scrollX;
+
+    let closest: { id: string; edge: "start" | "end" } | null = null;
+    let best = MARKER_TOUCH_WIDTH / 2;
+    for (const section of liveSections) {
+      const edges: { edge: "start" | "end"; seconds: number }[] = [
+        { edge: "start", seconds: section.startSeconds },
+      ];
+      if (section.endSeconds !== undefined) {
+        edges.push({ edge: "end", seconds: section.endSeconds });
+      }
+
+      for (const { edge, seconds } of edges) {
+        const distance = Math.abs(xAt(seconds) - x);
+        if (distance > best) continue;
+        if (distance === best && closest && edge !== "start") continue;
+        best = distance;
+        closest = { id: section.id, edge };
+      }
+    }
+    return closest;
+  };
+
+  const markerPan = useMemo(
     () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (event) => {
-          const x = event.nativeEvent.locationX;
-          const {
-            sections: liveSections,
-            duration: d,
-            contentWidth: content,
-            viewport: view,
-          } = stateRef.current;
-
-          const xAt = (seconds: number) =>
-            (d > 0 ? (seconds / d) * content : 0) - view.scrollX;
-
-          // The nearest edge, not the nearest section. On a short section both
-          // of its edges are inside one thumb, and picking by section would
-          // make the end of a four-bar loop ungrabbable.
-          let closest: { id: string; edge: "start" | "end" } | null = null;
-          let best = MARKER_TOUCH_WIDTH / 2;
-          for (const section of liveSections) {
-            const edges: { edge: "start" | "end"; seconds: number }[] = [
-              { edge: "start", seconds: section.startSeconds },
-            ];
-            // A section with no end has no handle to grab for it -- there is no
-            // point on the ruler that means "the end of the file".
-            if (section.endSeconds !== undefined) {
-              edges.push({ edge: "end", seconds: section.endSeconds });
-            }
-
-            for (const { edge, seconds } of edges) {
-              const distance = Math.abs(xAt(seconds) - x);
-              if (distance > best) continue;
-              // Two sections meeting at the same point -- which is what placing
-              // markers straight through a song gives you -- put two handles
-              // under one thumb. The start wins: a start is what a marker has
-              // always been, and it keeps the section you are reaching for, the
-              // one beginning there, under the finger.
-              if (distance === best && closest && edge !== "start") continue;
-              best = distance;
-              closest = { id: section.id, edge };
-            }
-          }
-
-          draggingMarkerRef.current = closest;
-          stateRef.current.onSelectSection(closest?.id ?? null);
-          // A tap on empty ruler is a scrub -- it is the gesture people reach
-          // for first, and refusing it would make the top of the timeline feel
-          // dead.
-          if (!closest) stateRef.current.onScrub(secondsFrom(x));
-        },
-        onPanResponderMove: (event) => {
-          if (pinchingRef.current) return;
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetX([-2, 2])
+        .activeOffsetY([-2, 2])
+        .minPointers(1)
+        .maxPointers(1)
+        .onBegin((event) => {
+          isInteractingRef.current = true;
+          suspendAutoFollow();
+          const held = pickMarkerAt(event.x);
+          draggingMarkerRef.current = held;
+          stateRef.current.onSelectSection(held?.id ?? null);
+          if (!held) stateRef.current.onScrub(secondsFrom(event.x));
+        })
+        .onUpdate((event) => {
           const held = draggingMarkerRef.current;
-          const seconds = secondsFrom(event.nativeEvent.locationX);
+          const rawSeconds = secondsFrom(event.x);
           if (held) {
-            // Section edges snap to the grid; the playhead below does not.
-            //
-            // The asymmetry is the point. A section boundary is a musical
-            // decision -- it belongs on a downbeat, and dragging one onto
-            // 0:47.3 by hand was the thing that made trimming feel like
-            // aiming. Scrubbing is the opposite: you are looking for a sound,
-            // and a cursor that keeps sliding off the moment you are trying to
-            // hear would be fighting you.
-            stateRef.current.onMoveSection(
-              held.id,
-              snapSeconds(
-                seconds,
-                stateRef.current.bpm,
-                pxPerSecondOf(stateRef.current)
-              ),
-              held.edge
+            const snapped = snapSeconds(
+              rawSeconds,
+              stateRef.current.bpm,
+              pxPerSecondOf(stateRef.current)
             );
+            const clamped = clampSectionEdge({
+              sections: stateRef.current.sections,
+              sectionId: held.id,
+              edge: held.edge,
+              targetSeconds: snapped,
+              duration: stateRef.current.duration,
+            });
+            stateRef.current.onMoveSection(held.id, clamped, held.edge);
           } else {
-            stateRef.current.onScrub(seconds);
+            stateRef.current.onScrub(rawSeconds);
           }
-        },
-        onPanResponderRelease: (event) => {
+        })
+        .onEnd((event) => {
           if (!draggingMarkerRef.current) {
-            stateRef.current.onSeek(secondsFrom(event.nativeEvent.locationX));
+            stateRef.current.onSeek(secondsFrom(event.x));
           }
           draggingMarkerRef.current = null;
-        },
-        onPanResponderTerminate: () => {
+          isInteractingRef.current = false;
+          startAutoFollowTimer();
+        })
+        .onFinalize(() => {
           draggingMarkerRef.current = null;
-        },
-      }),
+          isInteractingRef.current = false;
+          startAutoFollowTimer();
+        }),
     []
+  );
+
+  const laneGesture = useMemo(
+    () => Gesture.Simultaneous(pinch, lanePan),
+    [pinch, lanePan]
+  );
+
+  const markerGesture = useMemo(
+    () => Gesture.Simultaneous(pinch, markerPan),
+    [pinch, markerPan]
   );
 
   /* ---------------------------------------------------------------------- */
   /* Following the playhead                                                  */
   /* ---------------------------------------------------------------------- */
 
-  // Zoomed in, the playhead walks off the right-hand edge within a few bars and
-  // the view is showing a part of the song that finished a while ago. This
-  // pages it along, the way a DAW does -- jumping a screen at a time rather
-  // than sliding continuously, which at 16 reports a second would be a re-render
-  // per report and a view that never sits still long enough to read.
   useEffect(() => {
     if (!isPlaying || viewport.zoom <= MIN_ZOOM || duration <= 0) return;
 
     const id = playheadSeconds.addListener(({ value }) => {
+      if (stateRef.current.isAutoFollowDisabled) return;
+
       const { contentWidth: content, viewport: view } = stateRef.current;
       const x = (value / duration) * content - view.scrollX;
       if (x >= 0 && x <= laneWidth * 0.92) return;
 
       setViewport((current) => ({
         ...current,
-        // Landed a tenth in from the left, so there is most of a screen of
-        // song ahead of it before this has to happen again.
         scrollX: clampScroll(
           (value / duration) * (laneWidth * current.zoom) - laneWidth * 0.1,
           laneWidth * current.zoom
@@ -462,17 +511,6 @@ export default function TrackTimeline({
   /* Drawing                                                                 */
   /* ---------------------------------------------------------------------- */
 
-  // The bar grid, spaced so it stays readable rather than turning into a solid
-  // block. A five-minute song at 160bpm is two hundred bars; drawing a line for
-  // each across a phone would be a grey rectangle, so the step widens until the
-  // lines are far enough apart to read as a grid, and labels thin out further.
-  // Zooming in narrows it again, which is most of what zoom is for.
-  //
-  // Windowed to what is on screen, not built for the whole song. Zoomed to 32x
-  // a five-minute song is nine thousand pixels of content, and a bar line every
-  // bar over that is a couple of hundred SVG nodes and as many label views --
-  // almost all of them off-screen, all of them costing layout. Only the bars in
-  // view are built, so the cost of the ruler is the same at every zoom level.
   const grid = useMemo(() => {
     const perBar = secondsPerBar(bpm);
     if (duration <= 0 || perBar <= 0) return null;
@@ -486,8 +524,6 @@ export default function TrackTimeline({
     const lineStep = stepFor(9);
     const labelStep = stepFor(38);
 
-    // A bar's edge, in viewport coordinates. Anything outside the lane plus a
-    // little margin is not built at all.
     const firstVisible = Math.max(
       0,
       Math.floor(viewport.scrollX / (pxPerBar * lineStep)) * lineStep
@@ -509,10 +545,6 @@ export default function TrackTimeline({
     return { lines, labels: lines.filter((line) => line.major) };
   }, [bpm, duration, contentWidth, viewport.scrollX, laneWidth]);
 
-  // Memoised because a scroll drag re-renders this component at the frame rate,
-  // and an interpolation rebuilt on each of those frames allocates for no
-  // reason -- the mapping only changes when the song's length or the content's
-  // width does.
   const playheadX = useMemo(
     () =>
       playheadSeconds.interpolate({
@@ -523,35 +555,23 @@ export default function TrackTimeline({
     [playheadSeconds, duration, contentWidth]
   );
 
-  // Sections in view, in viewport coordinates, as spans rather than points.
-  //
-  // Clipped to the lane rather than filtered on the start alone: a section that
-  // begins off the left edge and runs across the whole screen is one you are
-  // looking straight at, and filtering by its start would draw nothing at all.
-  // A section without an end runs to the end of the song, which is where the
-  // content ends.
   const visibleSections = useMemo(
     () =>
-      // Nothing until the stems have been measured. With no duration there is
-      // no mapping from seconds to x, so every section would collapse onto the
-      // left edge and any open-ended one would span the whole ruler -- a pile
-      // of overlapping bands that looks like corrupt data and is really just a
-      // song that hasn't finished decoding.
       duration <= 0
         ? []
         : sections
-        .map((section) => {
-          const x = xOf(section.startSeconds) - viewport.scrollX;
-          const endX =
-            (section.endSeconds !== undefined
-              ? xOf(section.endSeconds)
-              : contentWidth) - viewport.scrollX;
-          return { section, x, endX, width: Math.max(1, endX - x) };
-        })
-        .filter(
-          ({ x, endX }) =>
-            endX >= -MARKER_TOUCH_WIDTH && x <= laneWidth + MARKER_TOUCH_WIDTH
-        ),
+          .map((section) => {
+            const x = xOf(section.startSeconds) - viewport.scrollX;
+            const endX =
+              (section.endSeconds !== undefined
+                ? xOf(section.endSeconds)
+                : contentWidth) - viewport.scrollX;
+            return { section, x, endX, width: Math.max(1, endX - x) };
+          })
+          .filter(
+            ({ x, endX }) =>
+              endX >= -MARKER_TOUCH_WIDTH && x <= laneWidth + MARKER_TOUCH_WIDTH
+          ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sections, viewport.scrollX, contentWidth, duration, laneWidth]
   );
@@ -564,10 +584,6 @@ export default function TrackTimeline({
   return (
     <View style={{ width }}>
       <View style={{ flexDirection: "row" }}>
-        {/* Track headers, in a fixed column that the arrangement scrolls under.
-            Names and their M/S sit beside the lane they belong to rather than
-            above it, so a stem is one horizontal read: what it is, whether it's
-            sounding, what it looks like. */}
         <View style={{ width: HEADER_WIDTH }}>
           <View style={{ height: RULER_HEIGHT + MARKER_HEIGHT }} />
           {tracks.map((track) => {
@@ -598,18 +614,16 @@ export default function TrackTimeline({
                     active={mix[track.id]?.muted === true}
                     activeColor={COLORS.danger}
                     onPress={() => onToggleMute(track.id)}
-                    accessibilityLabel={`${
-                      mix[track.id]?.muted ? "Unmute" : "Mute"
-                    } ${track.name}`}
+                    accessibilityLabel={`${mix[track.id]?.muted ? "Unmute" : "Mute"
+                      } ${track.name}`}
                   />
                   <LaneButton
                     label="S"
                     active={isSolo}
                     activeColor={COLORS.warning}
                     onPress={() => onToggleSolo(track.id)}
-                    accessibilityLabel={`${isSolo ? "Clear solo on" : "Solo"} ${
-                      track.name
-                    }`}
+                    accessibilityLabel={`${isSolo ? "Clear solo on" : "Solo"} ${track.name
+                      }`}
                   />
                 </View>
               </View>
@@ -617,11 +631,10 @@ export default function TrackTimeline({
           })}
         </View>
 
-        <GestureDetector gesture={pinch}>
-          <View style={{ width: laneWidth, overflow: "hidden" }}>
-            {/* Ruler and markers. One band, one responder. */}
+        <View style={{ width: laneWidth, overflow: "hidden" }}>
+          {/* Ruler and markers */}
+          <GestureDetector gesture={markerGesture}>
             <View
-              {...markerResponder.panHandlers}
               style={{
                 height: RULER_HEIGHT + MARKER_HEIGHT,
                 overflow: "hidden",
@@ -642,9 +655,6 @@ export default function TrackTimeline({
                 ))}
               </Svg>
 
-              {/* Bar numbers as text rather than SVG glyphs: RN's Svg <Text>
-                  does not take the app's font families, and a ruler in a
-                  different typeface to everything around it looks like a bug. */}
               {grid?.labels.map((label) => (
                 <Text
                   key={label.bar}
@@ -656,16 +666,6 @@ export default function TrackTimeline({
                 </Text>
               ))}
 
-              {/* Sections, drawn as the spans they are.
-                  A bar from start to end rather than a flag at the start, so
-                  the length you will loop is the length you can see -- which is
-                  the only way to tell a four-bar chorus loop from one that runs
-                  on into the next verse. Named, because a section you cannot
-                  read is only a line, and the whole reason for marking one is
-                  to know what you are about to launch.
-
-                  Both edges are drawn as grab handles and both are live to the
-                  responder above. */}
               {visibleSections.map(({ section, x, width }) => {
                 const isSelected = selectedSectionId === section.id;
                 const hasEnd = section.endSeconds !== undefined;
@@ -680,18 +680,12 @@ export default function TrackTimeline({
                       top: RULER_HEIGHT,
                       width,
                       height: MARKER_HEIGHT - 2,
-                      // Pushed in when the section starts off the left edge, so
-                      // a span you are sitting inside still shows its name at
-                      // the edge of the screen instead of thousands of pixels
-                      // to the left of it.
                       paddingLeft:
                         x < 0 ? Math.max(5, Math.min(width - 20, -x + 5)) : 5,
                       paddingRight: 3,
                       justifyContent: "center",
                       borderLeftWidth: 2,
                       borderLeftColor: accent,
-                      // Only when it has one. An open-ended section fades out
-                      // rather than claiming an edge it doesn't have.
                       borderRightWidth: hasEnd ? 2 : 0,
                       borderRightColor: accent,
                       backgroundColor: isSelected
@@ -712,12 +706,11 @@ export default function TrackTimeline({
                 );
               })}
             </View>
+          </GestureDetector>
 
-            {/* The lanes. */}
-            <View
-              {...laneResponder.panHandlers}
-              style={{ height: lanesHeight, overflow: "hidden" }}
-            >
+          {/* Lanes */}
+          <GestureDetector gesture={laneGesture}>
+            <View style={{ height: lanesHeight, overflow: "hidden" }}>
               <Waveforms
                 tracks={tracks}
                 peaks={peaks}
@@ -730,11 +723,6 @@ export default function TrackTimeline({
                 height={lanesHeight}
               />
 
-              {/* Sections carried down through every lane, so a span reads
-                  against the audio it covers rather than as a mark on the
-                  ruler. The selected one is washed as well as ruled: when you
-                  are trimming a loop, seeing which bars are inside it is the
-                  whole job. */}
               <View pointerEvents="none" style={FILL}>
                 <Svg width={laneWidth} height={lanesHeight}>
                   {visibleSections.map(({ section, x, endX, width }) => {
@@ -768,9 +756,6 @@ export default function TrackTimeline({
                             y2={lanesHeight}
                             stroke={isSelected ? COLORS.warning : COLORS.white}
                             strokeWidth={1}
-                            // Dashed, so an end never reads as the start of the
-                            // section after it -- which is what a second solid
-                            // line at the same weight would look like.
                             strokeDasharray="3 3"
                             opacity={isSelected ? 0.9 : 0.25}
                           />
@@ -781,76 +766,94 @@ export default function TrackTimeline({
                 </Svg>
               </View>
             </View>
+          </GestureDetector>
 
-            {/* Cursor: where play will start from. Distinct from the playhead
-                because they are different promises -- one is where the audio
-                is, the other is where you have said to go next, and while the
-                transport is stopped only the second one exists. */}
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: RULER_HEIGHT,
-                height: MARKER_HEIGHT + lanesHeight,
-                left: xOf(cursorSeconds) - viewport.scrollX,
-                width: 1,
-                backgroundColor: COLORS.white,
-                opacity: 0.55,
-              }}
-            />
+          {/* Cursor */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: RULER_HEIGHT,
+              height: MARKER_HEIGHT + lanesHeight,
+              left: xOf(cursorSeconds) - viewport.scrollX,
+              width: 1,
+              backgroundColor: COLORS.white,
+              opacity: 0.55,
+            }}
+          />
 
-            {/* Playhead. Spans the ruler and every lane, and moves without a
-                render -- see the note on playheadSeconds. */}
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                height: RULER_HEIGHT + MARKER_HEIGHT + lanesHeight,
-                left: 0,
-                width: 2,
-                backgroundColor: COLORS.brand,
-                transform: [
-                  { translateX: Animated.subtract(playheadX, viewport.scrollX) },
-                ],
-              }}
-            />
-          </View>
-        </GestureDetector>
+          {/* Playhead */}
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 0,
+              height: RULER_HEIGHT + MARKER_HEIGHT + lanesHeight,
+              left: 0,
+              width: 2,
+              backgroundColor: COLORS.brand,
+              transform: [
+                { translateX: Animated.subtract(playheadX, viewport.scrollX) },
+              ],
+            }}
+          />
+        </View>
       </View>
 
-      {/* Zoom, with the pinch it mirrors. Buttons as well as the gesture
-          because a pinch is a two-handed move and this is a one-handed screen
-          as often as not -- and because "one step in" is a thing you can ask
-          for exactly, which a pinch never is. */}
+      {/* Manual Zoom HUD & Status */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
           marginTop: 6,
         }}
       >
-        <Text className="mr-2 text-micro text-ink-muted font-satoshiRegular">
-          drag lanes to scroll · pinch to zoom
-        </Text>
-        <ZoomButton
-          label="−"
-          disabled={viewport.zoom <= MIN_ZOOM}
-          onPress={() => stepZoom(-1)}
-          accessibilityLabel="Zoom out"
-        />
-        <View style={{ width: 46, alignItems: "center" }}>
-          <Text className="text-nav text-white font-spaceBold">
-            {zoomLabel}
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text className="text-micro text-ink-muted font-satoshiRegular">
+            drag lanes to scroll · pinch to zoom
           </Text>
         </View>
-        <ZoomButton
-          label="+"
-          disabled={viewport.zoom >= MAX_ZOOM}
-          onPress={() => stepZoom(1)}
-          accessibilityLabel="Zoom in"
-        />
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {isAutoFollowDisabled && isPlaying && (
+            <TouchableOpacity
+              onPress={() => {
+                setIsAutoFollowDisabled(false);
+                if (autoFollowTimeoutRef.current) {
+                  clearTimeout(autoFollowTimeoutRef.current);
+                }
+              }}
+              className="mr-3 px-2 py-1 rounded bg-brand/10 border border-brand/20"
+            >
+              <Text className="text-[10px] text-brand font-spaceBold">FOLLOW</Text>
+            </TouchableOpacity>
+          )}
+          <ZoomButton
+            label="−"
+            disabled={viewport.zoom <= MIN_ZOOM}
+            onPress={() => {
+              suspendAutoFollow();
+              stepZoom(-1);
+              startAutoFollowTimer();
+            }}
+            accessibilityLabel="Zoom out"
+          />
+          <View style={{ width: 46, alignItems: "center" }}>
+            <Text className="text-nav text-white font-spaceBold">
+              {zoomLabel}
+            </Text>
+          </View>
+          <ZoomButton
+            label="+"
+            disabled={viewport.zoom >= MAX_ZOOM}
+            onPress={() => {
+              suspendAutoFollow();
+              stepZoom(1);
+              startAutoFollowTimer();
+            }}
+            accessibilityLabel="Zoom in"
+          />
+        </View>
       </View>
     </View>
   );
@@ -864,22 +867,6 @@ const FILL = {
   bottom: 0,
 };
 
-/**
- * The waveform lanes.
- *
- * Split out and memoised so the playhead, the cursor and every meter tick can
- * move without re-walking the path points. Mute state is in here because it
- * changes the drawing; nothing else that moves is.
- *
- * Drawn at the lane's width and windowed to the buckets actually in view,
- * rather than at the content's width and scrolled. Zoomed to 32x the content is
- * nine thousand pixels across, and handing react-native-svg a canvas that size
- * per lane is a large off-screen surface to keep around for the sake of the
- * 3% of it you can see. The window also makes scrolling cheaper the further in
- * you are: the number of buckets on screen is the total divided by the zoom, so
- * the rebuild a scroll frame costs shrinks exactly as the scroll gets more
- * likely.
- */
 const Waveforms = memo(function Waveforms({
   tracks,
   peaks,
@@ -911,8 +898,6 @@ const Waveforms = memo(function Waveforms({
         const step = contentWidth / values.length;
         if (step <= 0) return { id: track.id, d: "" };
 
-        // One bucket of margin either side, so the path does not visibly end
-        // just inside the edge it is being scrolled past.
         const first = Math.max(0, Math.floor(scrollX / step) - 1);
         const last = Math.min(
           values.length,
@@ -920,8 +905,6 @@ const Waveforms = memo(function Waveforms({
         );
         if (last <= first) return { id: track.id, d: "" };
 
-        // Mirrored around the lane's centre line, so it reads as audio rather
-        // than as a bar chart.
         let top = "";
         let bottom = "";
         for (let index = first; index < last; index++) {

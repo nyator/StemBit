@@ -56,7 +56,7 @@ import RepeatPicker, {
 } from "../../components/ui/repeatPicker";
 import CueReadout from "../../components/ui/cueReadout";
 import CueElements, {
-  CueSummary,
+  // CueSummary,
   TempoStepper,
   clampBpm,
 } from "../../components/ui/cueElements";
@@ -78,6 +78,7 @@ import {
   repeatLabel,
 } from "../../constants/barGrid";
 import {
+  AudioStart,
   Musicnote,
   PlayFilled,
   SortPad,
@@ -998,12 +999,6 @@ export default function PerformanceScreen() {
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* <CueNameField
-            value={draftTitle}
-            onChangeText={setDraftTitle}
-            onCommit={commitTitle}
-          /> */}
-
           <View onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}>
             {timelineWidth > 0 && tracks.length > 0 && (
               <TrackTimeline
@@ -1163,8 +1158,6 @@ export default function PerformanceScreen() {
             <View className="mb-4" />
           )}
 
-          {/* <Text className="mb-2 text-ink font-spaceMedium text-label">Mixer</Text> */}
-
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1189,17 +1182,6 @@ export default function PerformanceScreen() {
               />
             ))}
           </ScrollView>
-
-          {/* <Text className="mt-6 mb-2 text-ink font-spaceMedium text-label">
-            Tracks
-          </Text> */}
-          {/* {tracks.map((track) => (
-            <StemRow
-              key={track.id}
-              name={track.name}
-              onRemove={() => removeTrack(track.id)}
-            />
-          ))} */}
 
           <ImportStemsButton
             hasStems={tracks.length > 0}
@@ -1268,7 +1250,7 @@ export default function PerformanceScreen() {
           <TempoStepper
             bpm={cue.bpm}
             onChange={setCueBpm}
-            hint="Set the tempo — every quantised launch is measured from it."
+          // hint="Set the tempo — every quantised launch is measured from it."
           />
         </ScrollView>
       ) : isStemCue ? (
@@ -1330,13 +1312,7 @@ export default function PerformanceScreen() {
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* <CueNameField
-            value={draftTitle}
-            onChangeText={setDraftTitle}
-            onCommit={commitTitle}
-          /> */}
-
-          <CueElements
+          {/* <CueElements
             loopKey={cue.loopKey}
             bpm={cue.bpm}
             padPack={cue.padPack}
@@ -1347,20 +1323,7 @@ export default function PerformanceScreen() {
             onChangeBpm={setCueBpm}
             onChangePadPack={setCuePadPack}
             onEditKey={() => setEditingKey(true)}
-          />
-
-          {/*      <Text className="mt-6 mb-2 text-ink font-spaceMedium text-label">
-            Stems
-          </Text>
-          <ImportStemsButton
-            hasStems={false}
-            importing={importing}
-            onPress={pickStems}
-          />
-          <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
-            Open the folder and select every stem — they&apos;ll play locked
-            together, and this becomes a song rather than a loop cue.
-          </Text> */}
+          /> */}
         </ScrollView>
       ) : (
         <>
@@ -1384,7 +1347,7 @@ export default function PerformanceScreen() {
             style={{ height: 1, backgroundColor: COLORS.border }}
           />
 
-          <ScrollView
+          {/* <ScrollView
             className="flex-1 px-screen"
             contentContainerStyle={{ paddingBottom: 16 }}
           >
@@ -1397,43 +1360,81 @@ export default function PerformanceScreen() {
               loopIsLive={cueIsLive}
               padIsLive={padIsLive}
             />
-          </ScrollView>
+          </ScrollView> */}
         </>
       )}
 
+      {/* REDESIGNED CONTROLS STRIP */}
       {view === "studio" && (
-        <View className="flex-row items-center px-screen mb-2">
-          <TouchableOpacity
-            onPress={togglePad}
-            disabled={!padPack}
-            accessibilityRole="button"
-            accessibilityLabel={
-              padIsLive
-                ? "Stop the pad"
-                : songKey
-                  ? `Play a ${songKey} ${songMode} pad`
-                  : "Set the song key"
-            }
-            accessibilityState={{ selected: padIsLive, disabled: !padPack }}
-            activeOpacity={0.85}
-            className="flex-row items-center justify-center flex-1 py-3 mr-2 border-2 rounded-lg"
+        <View className="flex-row items-center px-screen mb-3 gap-2">
+          {/* COMBINED PAD & KEY CONTROL PILL */}
+          <View
+            className="flex-1 flex-row items-stretch rounded-xl overflow-hidden"
             style={{
-              minHeight: SIZES.minTouch,
-              backgroundColor: padIsLive ? COLORS.brand : "transparent",
+              height: 52,
               borderColor: padIsLive ? COLORS.brand : COLORS.border,
-              opacity: padPack ? 1 : 0.45,
+              backgroundColor: padIsLive
+                ? "rgba(88,190,236,0.28)"
+                : "rgba(255,255,255,0.02)",
             }}
           >
-            <Text
-              className="text-micro font-spaceBold"
-              style={{ color: padIsLive ? COLORS.white : COLORS.textMuted }}
+            {/* Play / Stop Toggle Zone */}
+            <TouchableOpacity
+              onPress={togglePad}
+              disabled={!padPack}
+              accessibilityRole="button"
+              accessibilityLabel={padIsLive ? "Stop pad" : "Start pad"}
+              activeOpacity={0.8}
+              className="flex-1 flex-row items-center pl-4 pr-2"
             >
-              {songKey
-                ? `PAD · ${songKey} ${songMode === "minor" ? "MIN" : "MAJ"}`
-                : "SET KEY"}
-            </Text>
-          </TouchableOpacity>
+              {/* Pulse status indicator */}
+              {/* <View
+                className="w-2.5 h-2.5 rounded-full mr-3"
+                style={{
+                  backgroundColor: padIsLive ? COLORS.brand : "rgba(255,255,255,0.15)",
+                  shadowColor: COLORS.brand,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: padIsLive ? 0.8 : 0,
+                  shadowRadius: 4,
+                }}
+              /> */}
+              <View className="flex-1 pl-2">
+                <Text className="text-[10px] tracking-wider font-spaceBold text-ink-muted uppercase">
+                  PAD - Tap to Play
+                </Text>
+                <Text
+                  className="text-sm font-satoshiBold"
+                  style={{ color: padIsLive ? COLORS.brand : COLORS.white }}
+                >
+                  {songKey
+                    ? `${songKey} ${songMode === "minor" ? "Minor" : "Major"}`
+                    : "SELECT A KEY"}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
+            {/* Change/Edit Key Target Area */}
+            <TouchableOpacity
+              onPress={() => {
+                hapticImpact(prefs.haptics, "light");
+                setEditingKey(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Change song key"
+              activeOpacity={0.7}
+              className="px-4 justify-center items-center border-l"
+              style={{
+                borderColor: padIsLive ? "rgba(88,190,236,0.2)" : COLORS.border,
+                backgroundColor: "rgba(255,255,255,0.03)",
+              }}
+            >
+              <Text className="text-[10px] font-spaceBold text-brand">
+                {songKey ? "KEY" : "SET KEY"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* METRONOME CLICK PILL */}
           {isStemCue && (
             <TouchableOpacity
               onPress={() => {
@@ -1442,88 +1443,40 @@ export default function PerformanceScreen() {
               }}
               accessibilityRole="button"
               accessibilityLabel={
-                prefs.stemClick ? "Turn the click off" : "Play a click with the song"
+                prefs.stemClick ? "Turn click off" : "Turn click on"
               }
-              accessibilityState={{ selected: prefs.stemClick }}
               activeOpacity={0.8}
-              className="items-center justify-center px-4 py-3 mr-2 border-2 rounded-lg"
+              className="px-5 items-center justify-center rounded-xl"
               style={{
-                minHeight: SIZES.minTouch,
-                backgroundColor: prefs.stemClick ? COLORS.brand : "transparent",
-                borderColor: prefs.stemClick ? COLORS.brand : COLORS.border,
+                height: 52,
+                backgroundColor: prefs.stemClick
+                  ? "rgba(245,158,11,0.38)"
+                  : "transparent",
+                borderColor: prefs.stemClick ? COLORS.warning : COLORS.border,
               }}
             >
-              <Text
-                className="text-micro font-spaceBold"
-                style={{
-                  color: prefs.stemClick ? COLORS.white : COLORS.textMuted,
-                }}
-              >
-                CLICK
-              </Text>
+              <View className="flex-row items-center gap-1.5">
+                {/* <View
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    backgroundColor: prefs.stemClick ? COLORS.warning : "rgba(255,255,255,0.2)",
+                  }}
+                /> */}
+                <Text
+                  className="text-micro font-spaceBold tracking-wider"
+                  style={{
+                    color: prefs.stemClick ? COLORS.warning : COLORS.textMuted,
+                  }}
+                >
+                  CLICK
+                </Text>
+              </View>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            onPress={() => {
-              hapticImpact(prefs.haptics, "light");
-              setEditingKey(true);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Change the song key"
-            accessibilityHint={
-              songKey
-                ? `Currently ${songKey} ${songMode}.`
-                : "No key set for this song yet."
-            }
-            activeOpacity={0.8}
-            className="items-center justify-center px-4 py-3 border-2 rounded-lg"
-            style={{ minHeight: SIZES.minTouch, borderColor: COLORS.border }}
-          >
-            <Text className="text-micro text-ink-muted font-spaceBold">KEY</Text>
-          </TouchableOpacity>
         </View>
       )}
 
       <View className="px-screen pb-4">
-        {view === "studio" && isStemCue && (
-          <View className="flex-row mb-2">
-            <TouchableOpacity
-              onPress={returnToZero}
-              accessibilityLabel="Return to the start"
-              activeOpacity={0.8}
-              className="items-center justify-center flex-1 py-2 mr-2 border rounded-lg"
-              style={{ borderColor: COLORS.border }}
-            >
-              <Text className="text-micro text-ink-muted font-spaceBold">
-                RTZ
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                hapticImpact(prefs.haptics, "light");
-                setLoopEnabled((previous) => !previous);
-              }}
-              accessibilityLabel={loopEnabled ? "Turn looping off" : "Loop the section"}
-              accessibilityState={{ selected: loopEnabled }}
-              activeOpacity={0.8}
-              className="items-center justify-center flex-1 py-2 border rounded-lg"
-              style={{
-                backgroundColor: loopEnabled ? COLORS.brand : "transparent",
-                borderColor: loopEnabled ? COLORS.brand : COLORS.border,
-              }}
-            >
-              <Text
-                className="text-micro font-spaceBold"
-                style={{ color: loopEnabled ? COLORS.white : COLORS.textMuted }}
-              >
-                LOOP
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {!isStemCue ? (
           <TouchableOpacity
             onPress={toggleCueTransport}
@@ -1544,26 +1497,48 @@ export default function PerformanceScreen() {
             </Text>
           </TouchableOpacity>
         ) : view === "studio" ? (
-          <TouchableOpacity
-            onPress={toggleStudioTransport}
-            disabled={tracks.length === 0}
-            accessibilityLabel={session.isPlaying ? "Stop" : "Play"}
-            activeOpacity={0.85}
-            className="flex-row items-center justify-center rounded-lg"
-            style={{
-              height: 60,
-              backgroundColor: session.isPlaying ? COLORS.danger : COLORS.brand,
-              opacity: tracks.length === 0 ? 0.4 : 1,
-              ...SHADOWS.float,
-            }}
-          >
-            {session.isPlaying ? <Stop size={40} /> : <PlayFilled size={40} />}
-            <Text className="ml-3 text-heading text-white font-spaceBold">
-              {session.isPlaying ? "STOP" : "PLAY"}
-            </Text>
-          </TouchableOpacity>
+          <View className="flex-row items-center w-full gap-2" style={{ height: 60 }}>
+            {/* Return to Zero (RTZ) Button */}
+            <TouchableOpacity
+              onPress={returnToZero}
+              disabled={tracks.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Return to start"
+              activeOpacity={0.85}
+              className="items-center justify-center rounded-lg border border-hairline"
+              style={{
+                width: 60,
+                height: 60,
+                borderColor: COLORS.border,
+                backgroundColor: COLORS.surfaceMuted,
+                opacity: tracks.length === 0 ? 0.4 : 1,
+              }}
+            >
+              <AudioStart size={28} color={COLORS.white} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={toggleStudioTransport}
+              disabled={tracks.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel={session.isPlaying ? "Stop" : "Play"}
+              activeOpacity={0.85}
+              className="flex-1 flex-row items-center justify-center rounded-lg"
+              style={{
+                height: 60,
+                backgroundColor: session.isPlaying ? COLORS.danger : COLORS.brand,
+                opacity: tracks.length === 0 ? 0.4 : 1,
+                ...SHADOWS.float,
+              }}
+            >
+              {session.isPlaying ? <Stop size={34} /> : <PlayFilled size={34} />}
+              <Text className="ml-3 text-heading text-white font-spaceBold">
+                {session.isPlaying ? "STOP" : "PLAY"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <View className="flex-row" style={{ height: 84 }}>
+          <View className="flex-row" style={{ height: 60 }}>
             <TouchableOpacity
               onPress={togglePerformTransport}
               disabled={tracks.length === 0}
@@ -1589,7 +1564,7 @@ export default function PerformanceScreen() {
                 ...SHADOWS.float,
               }}
             >
-              {session.isPlaying ? <Stop size={34} /> : <PlayFilled size={34} />}
+              {session.isPlaying ? <Stop size={40} /> : <PlayFilled size={40} />}
               <Text className="ml-3 text-readout text-white font-spaceBold">
                 {session.isPlaying ? "STOP" : "PLAY"}
               </Text>
@@ -1617,10 +1592,10 @@ export default function PerformanceScreen() {
               }}
             >
               <Text
-                className="text-overline font-spaceBold"
+                className="text-title text-center font-spaceBold"
                 style={{ color: masterMuted ? COLORS.white : COLORS.textMuted }}
               >
-                MUTE
+                SOLO CLICK
               </Text>
             </TouchableOpacity>
           </View>
