@@ -730,7 +730,7 @@ export default function PerformanceScreen() {
           tempoMoves ? `Its tempo goes to ${picked.bpm} BPM.` : null,
         ]
           .filter(Boolean)
-          .join(" ")
+          .join(" ")  
         : "The cue keeps everything else, but has nothing to play.",
       confirmLabel: key ? (replacing ? "Replace" : "Use it") : "Remove",
       destructive: !key,

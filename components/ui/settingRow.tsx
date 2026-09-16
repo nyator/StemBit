@@ -147,7 +147,7 @@ export function SettingStatus({
       {...base}
       right={
         value ? (
-          <Text className="text-label text-white/50 font-satoshiRegular">
+          <Text className="text-label text-white/50 font-spaceMedium">
             {value}
           </Text>
         ) : null

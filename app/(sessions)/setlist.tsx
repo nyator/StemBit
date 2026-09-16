@@ -79,14 +79,43 @@ function ArmedPulse({ active }: { active: boolean }) {
         top: 0,
         right: 0,
         bottom: 0,
-        borderRadius: 50,
+        borderRadius: 16,
         backgroundColor: COLORS.brandFrom,
         opacity: pulse.interpolate({
           inputRange: [0, 1],
-          outputRange: [0.15, 0.5],
+          outputRange: [0.12, 0.42],
         }),
       }}
     />
+  );
+}
+
+// A small numbered chip standing in for the plain "N." prefix. Reads as a
+// setlist position at a glance, and gives the row a left edge to anchor on
+// instead of the title just floating flush with the play button.
+function IndexBadge({ index, live }: { index: number; live: boolean }) {
+  return (
+    <View
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 8,
+        backgroundColor: live ? COLORS.brandFrom : "rgba(255,255,255,0.06)",
+      }}
+    >
+      <Text
+        className="font-spaceBold"
+        style={{
+          fontSize: 11,
+          color: live ? "#000" : COLORS.textMuted,
+        }}
+      >
+        {index}
+      </Text>
+    </View>
   );
 }
 
@@ -267,18 +296,7 @@ export default function SetlistScreen() {
       return;
     }
 
-    // One cue at a time -- except when the section belongs to the song
-    // already running. That's not a new cue starting, it's the same one
-    // moving, and stop() resets the engine's transport, which is exactly the
-    // running clock the quantised launch below needs to land on the next bar.
-    // Stopping it first is what was turning every "wait for the bar" launch
-    // into an instant one. A loop cue left running underneath a *different*
-    // song is still worth guarding against, so this only skips the stop for
-    // the one case where there's nothing else that could be sounding.
     if (!(section && isRunning)) stop();
-
-    // Returns immediately for a song already decoded, so re-firing the live one
-    // doesn't stall. play() holds until the stems are in either way.
     stems.loadCue(item.id, stemTracks).catch((error) => {
       console.error("Failed to load stems", error);
     });
@@ -286,15 +304,8 @@ export default function SetlistScreen() {
     stems.play(
       stemTracks,
       item.bpm ?? 120,
-      // On the bar only when the song is already running: landing a section
-      // change where the band expects it is the whole point of quantising, but
-      // waiting a bar for the first sound is just a delay.
       section && isRunning ? 4 : 0,
       section ?? {
-        // Spelled out rather than handing over the first section. A section
-        // carries the end of itself and the engine loops a span by default --
-        // which is what a section pad wants and the opposite of what the
-        // transport means, so passing one here would repeat the intro.
         id: "song",
         startSeconds: item.sections?.[0]?.startSeconds ?? 0,
         loop: false,
@@ -329,16 +340,6 @@ export default function SetlistScreen() {
       { cancelable: true }
     );
 
-  // Editing and removing both live behind the long press rather than on the row
-  // itself. The row is the stage surface -- one tap fires the cue, and every
-  // extra control on it is something to hit by mistake in the dark. Changing a
-  // setlist is something you do beforehand, and it can afford a second step.
-  //
-  // Performance mode is here too, and for a loop cue this is the only way in.
-  // A stem row opens to a button for it, but a loop cue's row has no sections
-  // to expand and so nothing to hang one off -- and it needs the screen just as
-  // much, since that is where its loop, tempo and pad can be changed against a
-  // room rather than in a form.
   const openCueActions = (item: SessionItem) =>
     Alert.alert(
       item.title,
@@ -381,9 +382,7 @@ export default function SetlistScreen() {
         <>
           <ScrollView
             className="flex-1 px-screen"
-            contentContainerStyle={{ paddingBottom: 24 }}
-            // The list holds still while a row is in hand, or the drag and the
-            // scroll fight each other for the same finger.
+            contentContainerStyle={{ paddingTop: 4, paddingBottom: 24 }}
             scrollEnabled={!dragId}
           >
             {session.items.length === 0 ? (
@@ -398,39 +397,29 @@ export default function SetlistScreen() {
             {items.map((item, index) => {
               const isStemCue = (item.tracks?.length ?? 0) > 0;
               const isLoaded = stems.loadedCueId === item.id;
-              // Sounding right now, whichever engine is doing it.
+
               const live = isStemCue
                 ? isLoaded && stems.isPlaying
                 : liveItemId === item.id;
-              // Pressed, and waiting on the next downbeat to take over from
-              // whatever is running.
+
               const armed = armedItemId === item.id;
               const held = dragId === item.id;
               const expanded = expandedId === item.id;
-              // Decoding. A song is tens of megabytes and the engine holds the
-              // press until its stems are in, so without this the row would sit
-              // there looking untouched for the second or two before it sounds.
+
               const isLoading = isStemCue && isLoaded && !stems.isReady;
 
-              // One handler behind both the transport and the title, so the two
-              // can never disagree about what a tap on this row does.
               const fire = () => {
                 if (isStemCue) {
                   fireStems(item);
                   return;
                 }
                 hapticImpact(prefs.haptics, "medium");
-                // A loop cue and a stem song can't sound at once, so firing one
-                // silences the other.
+
                 stems.stop();
                 if (live) stop();
                 else play(item);
               };
 
-              // The title opens a stem song's sections instead of firing it. It
-              // is the one row with something more to say, the transport beside
-              // it is 68pt of unmissable target, and a song you can only fire
-              // from the top is a song you can't rehearse the last chorus of.
               const openOrFire = () => {
                 if (!isStemCue) {
                   fire();
@@ -444,49 +433,39 @@ export default function SetlistScreen() {
                 <View
                   key={item.id}
                   onLayout={(event) => {
-                    // Measured rather than assumed: the row's height is the unit a
-                    // drag counts in, and it moves with the system font size.
-                    //
-                    // Only while collapsed, since an open row is taller than its
-                    // neighbours and the drag maths counts in one uniform row.
                     if (expanded) return;
-                    rowHeightRef.current = event.nativeEvent.layout.height + 12;
+                    rowHeightRef.current = event.nativeEvent.layout.height;
                   }}
-                  // overflow-hidden so the sweeping fill is clipped to the row's
-                  // rounded corners instead of squaring them off.
-                  // Armed sits between live and idle on purpose: it has been
-                  // pressed and is coming, so it can't look untouched, but it is
-                  // not what you are hearing either.
-                  className={`mb-3 border-hairline border-2 rounded-lg overflow-hidden ${live
+                  className={`mb-2.5 rounded-2xl overflow-hidden ${live
                     ? "bg-surface border-brand"
                     : armed
                       ? "bg-surface border-brand-from"
                       : held
-                        ? "bg-surface border-white"
+                        ? "bg-surface border-white/40"
                         : "bg-surface border-hairline"
                     }`}
-                  style={
+                  style={[
+                    {
+                      shadowColor: "#000",
+                      shadowOffset: { width: 0, height: held ? 8 : 2 },
+                      shadowOpacity: held ? 0.35 : 0.18,
+                      shadowRadius: held ? 14 : 6,
+                      elevation: held ? 10 : 2,
+                    },
                     held
-                      ? {
-                        transform: [{ translateY: dragOffset }],
-                        // Lifted clear of its neighbours so it's obvious which
-                        // row is in hand.
-                        zIndex: 10,
-                        elevation: 10,
-                      }
-                      : undefined
-                  }
+                      ? { transform: [{ translateY: dragOffset }, { scale: 1.015 }], zIndex: 10 }
+                      : undefined,
+                  ]}
                 >
-
-                  <ArmedPulse active={armed} />
+                  {/* <ArmedPulse active={armed} /> */}
 
                   <View
-                    className="flex-row items-center p-3"
+                    className="flex-row items-center px-3"
                     style={{ minHeight: 84 }}
                   >
-
                     <TouchableOpacity
                       onPress={fire}
+                      activeOpacity={0.75}
                       accessibilityLabel={
                         live
                           ? `Stop ${item.title}`
@@ -494,32 +473,28 @@ export default function SetlistScreen() {
                             ? `${item.title} starts on the next bar`
                             : `Play ${item.title}`
                       }
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
-                      className="items-center justify-center mr-3 rounded-full"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      className="items-center justify-center mr-3 rounded-xl"
                       style={{
-                        width: 68,
-                        height: 68,
-                        // Filled while live so the thing you need to hit next --
-                        // stop -- is the brightest object on the row. Armed gets
-                        // the paler fill: pressed and coming, but not the thing
-                        // making the sound. The pulse itself now lives on the row
-                        // as a whole, not this button -- see below.
+                        width: 52,
+                        height: 52,
                         backgroundColor: live
-                          ? COLORS.brand
+                          ? COLORS.surfaceField
                           : armed
                             ? COLORS.brandFrom
-                            : "rgba(255,255,255,0.08)",
+                            : COLORS.borderBrand,
+                        // borderWidth: live ? 1.5 : 0,
+                        // borderColor: live ? COLORS.brand : "transparent",
                       }}
                     >
-                      {live ? <Stop size={40} /> : <PlayFilled size={40} />}
+                      {live ? <Stop size={30} /> : <PlayFilled size={30} />}
                     </TouchableOpacity>
 
-                    {/* Long-press still removes, so the destructive action stays
-                      behind a deliberate gesture rather than a tap. */}
                     <TouchableOpacity
                       onPress={openOrFire}
                       onLongPress={() => openCueActions(item)}
                       delayLongPress={400}
+                      activeOpacity={0.7}
                       accessibilityLabel={
                         isStemCue
                           ? `${expanded ? "Hide" : "Show"} sections of ${item.title}`
@@ -530,26 +505,20 @@ export default function SetlistScreen() {
                       className="flex-row items-center"
                       style={{ flex: 1, minHeight: 68 }}
                     >
+                      {/* <IndexBadge index={index + 1} live={live} /> */}
+
                       <View style={{ flex: 1, justifyContent: "center" }}>
                         <Text
                           className="text-title text-white font-satoshiBold"
                           numberOfLines={1}
                         >
-                          {index + 1}. {item.title}
+                          {item.title}
                         </Text>
                         <Text
-                          className="text-label font-satoshiRegular mt-1"
+                          className="text-ink-muted font-spaceMedium"
                           numberOfLines={1}
-                          style={{
-                            color:
-                              isLoading || armed ? COLORS.brand : COLORS.textMuted,
-                          }}
                         >
-                          {/* Armed no longer overrides this with "Starts on the
-                            next bar" -- the pulse on the transport button says
-                            that now, and this line keeps saying what the cue
-                            actually holds instead of losing it for a beat. */}
-                          {isLoading ? "Loading stems…" : describeCue(item)}
+                          {isLoading ? "Loading…" : describeCue(item)}
                         </Text>
                       </View>
 
@@ -564,16 +533,21 @@ export default function SetlistScreen() {
                       )}
                     </TouchableOpacity>
 
-                    {/* The grip. Dragging is confined to it rather than the whole
-                      row, because the row has to stay tappable -- on stage, a
-                      thumb that drags when it meant to fire a cue is a worse
-                      mistake than one that doesn't reorder. */}
+                    <View
+                      style={{
+                        width: 1,
+                        height: 32,
+                        marginHorizontal: 6,
+                        backgroundColor: "rgba(255,255,255,0.08)",
+                      }}
+                    />
+
                     <View
                       {...(dragResponders[item.id]?.panHandlers ?? {})}
                       accessibilityLabel={`Reorder ${item.title}`}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      className="items-center justify-center ml-1"
-                      style={{ width: 40, height: 68 }}
+                      className="items-end justify-center"
+                      style={{ width: 34, height: 68 }}
                     >
                       <DragHandle
                         size={24}
@@ -582,14 +556,33 @@ export default function SetlistScreen() {
                     </View>
                   </View>
 
-                  {/* The song's sections, in the row. The same pads the
-                    performance screen draws, at the size a row can spare: what
-                    they do is identical, so they had better look and behave
-                    identically too. */}
                   {isStemCue && expanded && (
-                    <View className="px-3 pb-3">
+                    <View
+                      style={{
+                        marginHorizontal: 10,
+                        marginBottom: 12,
+                        borderRadius: 14,
+                        padding: 10,
+                        backgroundColor: "rgba(255,255,255,0.03)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.01)",
+                      }}
+                    >
+                      <Text
+                        className="font-spaceBold"
+                        style={{
+                          fontSize: 10,
+                          letterSpacing: 1.5,
+                          color: COLORS.textMuted,
+                          marginBottom: 8,
+                          marginLeft: 2,
+                        }}
+                      >
+                        SECTIONS
+                      </Text>
+
                       {(item.sections?.length ?? 0) === 0 ? (
-                        <Text className="mb-3 text-micro text-ink-muted font-satoshiRegular">
+                        <Text className="mb-2 text-micro text-ink-muted font-satoshiRegular">
                           No sections yet — mark them on the timeline in studio.
                         </Text>
                       ) : (
@@ -619,8 +612,10 @@ export default function SetlistScreen() {
 
                       <TouchableOpacity
                         onPress={() => openPerformance(item)}
+                        activeOpacity={0.75}
                         accessibilityLabel={`Open ${item.title} in performance mode`}
-                        className="items-center py-3 mt-1 border rounded-lg border-hairline"
+                        className="items-center py-3 mt-2 rounded-xl"
+                        style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
                       >
                         <Text className="text-micro text-brand font-spaceBold tracking-widest">
                           PERFORMANCE MODE
@@ -631,59 +626,68 @@ export default function SetlistScreen() {
                 </View>
               );
             })}
-
-            {items.length > 0 && (
-              <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
-                Tap the transport to play a cue, tap again to stop. Tap a song&apos;s
-                name to open its sections. Drag the grip to reorder, hold a cue to
-                open, edit or remove it.
-              </Text>
-            )}
           </ScrollView>
 
-          {/* Performance mode, where a thumb actually lands.
-            The set is a list you scroll and then act on, and the act is nearly
-            always "take me into the cue I'm on". As a pill in the top corner
-            that lived in the one part of a phone a hand holding it can't
-            reach. Full width along the bottom edge instead, outside the scroll
-            so it is the same target whether the set is empty or forty long.
-
-            Deliberately not shaped like a row's transport. Those are round,
-            brand-filled, and make a sound the moment they're hit; this one
-            opens a screen, and a control that looks like PLAY but navigates is
-            the worst thing to find under a thumb in the dark. Hence a name,
-            an outline, and the cue it will open written underneath. */}
           {performCue && (
-            <View className="px-screen pt-2 pb-1">
+            <View
+              className="absolute bottom-0 left-0 right-0 px-screen pb-6 pt-3 bg-canvas/95 border-t border-white/[0.08]"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: -4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 10,
+                elevation: 12,
+              }}
+            >
               <TouchableOpacity
                 onPress={() => openPerformance(performCue)}
-                accessibilityLabel={`Open ${performCue.title} in performance mode`}
+                accessibilityRole="button"
+                accessibilityLabel={`Go to performance view for ${performCue.title}`}
                 activeOpacity={0.85}
-                className="flex-row items-center px-4 border-2 rounded-lg"
+                className="flex-row items-center justify-between px-4 py-3.5 rounded-2xl bg-surface"
                 style={{
-                  height: 60,
-                  borderColor: COLORS.brand,
-                  backgroundColor: COLORS.surface,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.06)",
                 }}
               >
-                <View className="flex-1">
-                  <Text className="text-nav text-brand font-spaceBold tracking-widest">
-                    PERFORM
-                  </Text>
+                <View className="flex-1 mr-3">
+                  <View className="flex-row items-center gap-2">
+                    <View
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: COLORS.brand,
+                      }}
+                    />
+                    <Text className="text-[10px] text-brand font-spaceBold tracking-widest">
+                      PERFORM DECK
+                    </Text>
+                  </View>
                   <Text
-                    className="mt-0.5 text-white font-satoshiBold text-body"
+                    className="text-body font-satoshiBold text-white mt-0.5"
                     numberOfLines={1}
                   >
                     {performCue.title}
                   </Text>
                 </View>
-                <ArrowRight size={18} color={COLORS.brand} />
+
+                <View
+                  className="flex-row items-center justify-center rounded-xl"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <ArrowRight size={18} color={COLORS.brand} />
+                </View>
               </TouchableOpacity>
             </View>
           )}
+
         </>
       )}
     </Screen>
   );
 }
-
