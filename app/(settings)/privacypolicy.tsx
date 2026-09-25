@@ -22,19 +22,19 @@ const GUIDES: {
         },
         {
             title: "04. Security Protocols",
-            body: "We leverage secure transport layers and technical guardrails to prevent external tampering. Stembits never sells user interaction metrics or audio profiles to third-party ad networks.",
+            body: "We leverage secure transport layers and technical guardrails to prevent external tampering. StemBit never sells user interaction metrics or audio profiles to third-party ad networks.",
         },
     ];
 
 const privacypolicy = () => {
     return (
         <Screen glows={["topLeft"]}>
-            <ScreenHeader title="Privacy Policy" />
+            <ScreenHeader title="Privacy policy" />
 
             <ScrollView className="flex-1 px-screen">
                 <View className="mb-10">
-                    <Text className="self-stretch justify-start text-ink-muted text-center text-label font-light leading-10">
-                        At Stembits, protecting your operational data and profile details is our topmost priority.
+                    <Text className="self-stretch justify-start text-ink-muted text-center text-label font-satoshiRegular leading-10">
+                        At StemBit, protecting your operational data and profile details is our topmost priority.
                         This policy outlines how we capture and store telemetry.
                     </Text>
                 </View>

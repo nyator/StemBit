@@ -30,7 +30,7 @@ export default function LaunchScreenSettingsScreen() {
 
   return (
     <Screen glows={["topLeft"]}>
-      <ScreenHeader title="Launch Screen" />
+      <ScreenHeader title="Launch screen" />
 
       <ScrollView className="flex-1 px-screen">
         <SettingSection title="Screens">

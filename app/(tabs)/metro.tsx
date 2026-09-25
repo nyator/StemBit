@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { Keyboard, Pressable, View, Text, TouchableOpacity } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
@@ -33,7 +33,6 @@ import {
   TransportRow,
 } from "../../components/ui/instrument";
 import SegmentedControl from "../../components/ui/segmentedControl";
-import { BpmInputAccessory } from "../../components/ui/bpmInputAccessory";
 import Screen from "../../components/ui/screen";
 import Slider from "../../components/ui/slider";
 import { COLORS, SIZES, SPACING } from "../../constants/theme";
@@ -222,7 +221,13 @@ export default function MetroScreen() {
     <Screen glows={["topLeftFar"]} className="items-center justify-start">
       <HeaderComponent />
 
-      <View className="items-center justify-center flex-1 w-full px-instrument">
+      {/* A tap on any empty space closes the tempo keyboard. The controls
+          inside still get their own taps first. */}
+      <Pressable
+        onPress={Keyboard.dismiss}
+        accessible={false}
+        className="items-center justify-center flex-1 w-full px-instrument"
+      >
         {/* Time Signature — the same picker the Loop screen names its loop
             with, kept to segmentWidth so it lines up with the dial above it. */}
         <View className="items-center gap-1 mb-5">
@@ -292,10 +297,9 @@ export default function MetroScreen() {
             respondOnPressIn
           />
         </View>
-      </View>
+      </Pressable>
 
       {renderTimeSignatureModal()}
-      <BpmInputAccessory />
     </Screen>
   );
 }

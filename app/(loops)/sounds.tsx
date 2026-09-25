@@ -1,5 +1,12 @@
 import React, { useMemo, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+import {
+  Keyboard,
+  Pressable,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
@@ -225,6 +232,10 @@ const LoopBrowserScreen = () => {
           </View>
         }
       />
+      {/* A tap on any empty space closes the search keyboard, as on the Loop
+          and Metronome screens. The controls inside still get their own taps
+          first. */}
+      <Pressable onPress={Keyboard.dismiss} accessible={false} className="flex-1">
       <View className="px-screen mb-3">
         <SearchField
           value={query}
@@ -304,6 +315,7 @@ const LoopBrowserScreen = () => {
               : undefined
         }
       />
+      </Pressable>
 
       {/* Every axis at once, rather than one at a time behind a picker --
           Category, Artist and Meter combine, so seeing all three together is

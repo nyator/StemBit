@@ -41,7 +41,7 @@ const GUIDES: {
 const Help = () => {
   return (
     <Screen glows={["topLeft"]}>
-      <ScreenHeader title="Help & Support" />
+      <ScreenHeader title="Help & support" />
 
       <ScrollView className="flex-1 px-screen">
         {GUIDES.map((guide) => (
@@ -72,7 +72,7 @@ const Help = () => {
           }
         >
           <Text className="ml-2 text-body text-black font-satoshiBold">
-            Email Support
+            Email support
           </Text>
         </TouchableOpacity>
       </ScrollView>

@@ -167,6 +167,10 @@ export const TYPE = {
 export const SIZES = {
   minTouch: 44,
   buttonHeight: 55,
+  // One height for every control on the instrument screens -- tap tempo, the
+  // buttons beside it, steppers, the picker, the subdivision row -- so they
+  // share an edge instead of each landing wherever its padding put it.
+  control: 42,
   rowIcon: 20,
   navIcon: 24,
   transportPrimary: 80,

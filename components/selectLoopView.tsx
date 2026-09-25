@@ -244,6 +244,7 @@ const SelectLoopView = ({
       <ScrollView
         className="flex-1 px-screen"
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {loops.map((item, i) => (
           <TouchableOpacity

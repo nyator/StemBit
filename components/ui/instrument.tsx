@@ -4,7 +4,6 @@ import { Text, TextInput, TouchableOpacity, View, type ViewStyle } from "react-n
 import InfoButton from "./infoButton";
 import { DialGlowRings } from "./dialGlowRing";
 import BeatGlow, { BEAT_GLOW_SIZE } from "./beatGlow";
-import { BPM_ACCESSORY_ID } from "./bpmInputAccessory";
 import { AddCircle, MinusCircle, PlayFilled, Stop } from "../icons";
 import type { InfoTopicKey } from "../../constants/infoCopy";
 import type { BpmControls } from "../../hooks/useBpmControl";
@@ -88,10 +87,10 @@ export function PickerButton({
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={style}
+      style={[{ height: SIZES.control }, style]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      className="flex-row items-center justify-center gap-2 px-4 py-2 bg-white rounded-sm"
+      className="flex-row items-center justify-center gap-2 px-4 bg-white rounded-sm"
     >
       <Icon size={SIZES.rowIcon} color={COLORS.black} />
       <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
@@ -161,11 +160,13 @@ export function BpmDial({
         value={controls.bpmText}
         onChangeText={controls.handleBpmTextChange}
         onEndEditing={controls.commitBpmText}
-        keyboardType="numeric"
+        keyboardType="number-pad"
+        // No Done key: the keyboard closes on a tap outside the field (see the
+        // Loop and Metronome screens), which commits the typed BPM.
+        keyboardAppearance="dark"
         maxLength={3}
         selectTextOnFocus
         underlineColorAndroid="transparent"
-        inputAccessoryViewID={BPM_ACCESSORY_ID}
         onFocus={onFocus}
         onBlur={onBlur}
         accessibilityLabel="Tempo in beats per minute"
@@ -212,7 +213,8 @@ export function StepperButton({
       onPress={up ? controls.increase : controls.decrease}
       onLongPress={up ? controls.startHoldIncrease : controls.startHoldDecrease}
       onPressOut={controls.endHold}
-      className="p-2 rounded-lg bg-white/10"
+      className="items-center justify-center rounded-sm bg-white/10"
+      style={{ width: SIZES.control, height: SIZES.control }}
     >
       <Icon size={SIZES.transportSecondary} color={COLORS.white} />
     </TouchableOpacity>
@@ -286,7 +288,8 @@ export function TapTempoButton({
       onPressIn={onPress}
       accessibilityRole="button"
       accessibilityLabel="Tap tempo"
-      className={`items-center justify-center px-3 py-3 border-2 border-hairline-strong rounded-sm ${className}`}
+      className={`items-center justify-center px-4 border-2 border-hairline-strong rounded-sm ${className}`}
+      style={{ height: SIZES.control }}
     >
       <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
     </TouchableOpacity>
@@ -315,8 +318,12 @@ export function InstrumentIconButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !!disabled, selected: active }}
-      style={disabled ? { opacity: 0.4 } : undefined}
-      className={`items-center justify-center px-3 py-3 rounded-sm border-2 ${
+      style={{
+        width: SIZES.control,
+        height: SIZES.control,
+        opacity: disabled ? 0.4 : 1,
+      }}
+      className={`items-center justify-center rounded-sm border-2 ${
         active ? "bg-white border-white" : "border-hairline-strong"
       }`}
     >

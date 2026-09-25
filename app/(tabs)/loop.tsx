@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { Keyboard, Pressable, View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
@@ -17,7 +17,6 @@ import { useSaveLoopAsMine } from "../../hooks/useSaveLoopAsMine";
 import { PLAYBACK_FEELS } from "../../context/MetronomeContext";
 
 import HeaderComponent from "../../components/headerComponent";
-import { BpmInputAccessory } from "../../components/ui/bpmInputAccessory";
 import Screen from "../../components/ui/screen";
 import SegmentedControl from "../../components/ui/segmentedControl";
 import {
@@ -150,7 +149,13 @@ export default function LoopScreen() {
     <Screen glows={["topLeftFar"]} className="items-center justify-start">
       <HeaderComponent />
 
-      <View className="items-center justify-center flex-1 w-full px-instrument">
+      {/* A tap on any empty space closes the tempo keyboard. The controls
+          inside still get their own taps first. */}
+      <Pressable
+        onPress={Keyboard.dismiss}
+        accessible={false}
+        className="items-center justify-center flex-1 w-full px-instrument"
+      >
         {/* Which loop is loaded, and the two things you can do to it: swap it,
             or make it your own. */}
         <View className="items-center gap-1 mb-5">
@@ -268,9 +273,7 @@ export default function LoopScreen() {
             respondOnPressIn
           />
         </View>
-      </View>
-
-      <BpmInputAccessory />
+      </Pressable>
     </Screen>
   );
 }

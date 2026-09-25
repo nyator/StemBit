@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View } from "react-native";
+import { Keyboard, Pressable, View } from "react-native";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import Screen from "../../components/ui/screen";
@@ -39,7 +39,14 @@ export default function PadSoundsScreen() {
     <Screen glows={["topLeftFar", "bottomLeft"]} className="items-center justify-start">
       <ScreenHeader title="Select Pad" />
 
-      <View className="flex-1 w-full px-screen">
+      {/* A tap on any empty space closes the search keyboard, as on the Loop
+          and Metronome screens. The controls inside still get their own taps
+          first. */}
+      <Pressable
+        onPress={Keyboard.dismiss}
+        accessible={false}
+        className="flex-1 w-full px-screen"
+      >
         {/* Find one by name, artist or genre -- combined with All/By Artist
             below rather than replacing it. The same field the loop browser
             searches with, so the two catalogues are searched the same way. */}
@@ -77,7 +84,7 @@ export default function PadSoundsScreen() {
           }
         />
         <PadMixer />
-      </View>
+      </Pressable>
     </Screen>
   );
 }

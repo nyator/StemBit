@@ -1,6 +1,6 @@
 import { Text, TouchableOpacity, View } from "react-native";
 
-import { COLORS } from "../../constants/theme";
+import { COLORS, SIZES } from "../../constants/theme";
 
 // One-of-N, in the two shapes the design uses for it.
 //
@@ -80,10 +80,14 @@ export default function SegmentedControl<T extends string | number>({
         const selectedText = accent === COLORS.white ? "text-ink-inverse" : "text-white";
 
         const segment = isRow
-          ? `flex-1 items-center justify-center py-2 rounded-sm ${
+          ? `flex-1 items-center justify-center rounded-sm ${
               selected ? "" : "bg-surface-muted border border-hairline-segment"
             }`
           : `${trackPaddingX} py-2 rounded-lg items-center justify-center`;
+        const segmentStyle = {
+          ...(isRow ? { height: SIZES.control } : null),
+          ...(selected ? { backgroundColor: accent } : null),
+        };
 
         return (
           <TouchableOpacity
@@ -94,7 +98,7 @@ export default function SegmentedControl<T extends string | number>({
             onPress={respondOnPressIn ? undefined : handler}
             onPressIn={respondOnPressIn ? handler : undefined}
             className={segment}
-            style={selected ? { backgroundColor: accent } : undefined}
+            style={segmentStyle}
           >
             <Text
               numberOfLines={1}

@@ -50,7 +50,7 @@ import {
   type LoopAnalysis,
   type LoopPreviewHandle,
 } from "../../components/loopPreviewEngine";
-import { COLORS } from "../../constants/theme";
+import { COLORS, SIZES } from "../../constants/theme";
 import {
   AddCircle,
   Folder,
@@ -994,7 +994,8 @@ export default function ImportLoopScreen() {
               <TouchableOpacity
                 onPressIn={controls.handleTapTempo}
                 accessibilityLabel="Tap along to set the tempo"
-                className="items-center justify-center flex-1 py-2.5 border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-sm"
+                style={{ height: SIZES.control }}
               >
                 <Text className="text-white text-title font-spaceBold">
                   TAP IT OUT
@@ -1003,9 +1004,9 @@ export default function ImportLoopScreen() {
               <TouchableOpacity
                 onPress={redetectTempo}
                 disabled={detecting}
-                style={detecting ? { opacity: 0.5 } : undefined}
+                style={{ height: SIZES.control, opacity: detecting ? 0.5 : 1 }}
                 accessibilityLabel="Find the tempo in the audio again"
-                className="items-center justify-center flex-1 py-2.5 border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-sm"
               >
                 <Text className="text-white text-title font-spaceBold">
                   {detecting ? "LISTENING…" : "FIND IT"}

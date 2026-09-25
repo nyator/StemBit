@@ -91,7 +91,7 @@ const UserScreen = () => {
     if (!account) return;
     if (Platform.OS !== "ios") return; // Alert.prompt is iOS-only
     Alert.prompt(
-      "Display Name",
+      "Display name",
       undefined,
       [
         { text: "Cancel", style: "cancel" },
@@ -300,7 +300,7 @@ const UserScreen = () => {
             <SettingSection title="Account">
               <SettingLink
                 icon={Edit2}
-                label="Display Name"
+                label="Display name"
                 value={account.name}
                 onPress={handleRename}
               />
@@ -312,7 +312,7 @@ const UserScreen = () => {
               />
               <SettingNoLink
                 icon={Calendar}
-                label="Member Since"
+                label="Member since"
                 value={account.memberSince}
                 onPress={() => {}}
               />
@@ -322,20 +322,21 @@ const UserScreen = () => {
           {/* Its own section, below everything else and visibly separated.
               Deleting an account is not one of the things you do to a profile
               -- it is the end of having one -- and putting it in the same group
-              as "Display Name" is how it gets tapped by mistake. */}
+              as "Display name" is how it gets tapped by mistake. */}
           {account ? (
             <View className="mt-6">
               <SettingSection title="Danger zone">
                 <SettingLink
                   icon={Warning2}
-                  label={deleting ? "Deleting…" : "Delete Account"}
+                  label={deleting ? "Deleting…" : "Delete account"}
                   danger
                   onPress={deleting ? () => {} : confirmDelete}
                 />
               </SettingSection>
               <Text className="px-2 mt-2 text-ink-faint text-overline font-satoshiRegular leading-4">
                 Removes your account and everything StemBit has stored on this
-                device — imported loops, downloaded packs, setlists and
+                device.
+                Imported loops, downloaded packs, setlists and
                 settings. It can&apos;t be undone.
               </Text>
             </View>

@@ -11,7 +11,7 @@ const GUIDES: {
 }[] = [
     {
       title: "01. Acceptance of Terms",
-      body: "Stembits provides hardware metrics and interactive controller tools. By utilizing our mobile application, you explicitly consent to these terms. If you disagree, please discontinue use immediately.",
+      body: "StemBit provides hardware metrics and interactive controller tools. By utilizing our mobile application, you explicitly consent to these terms. If you disagree, please discontinue use immediately.",
     },
     {
       title: "02. User Account Duty",
@@ -23,19 +23,19 @@ const GUIDES: {
     },
     {
       title: "04. Limitation of Liability",
-      body: "Stembits is provided 'as is' without express warranty of absolute uptime. We are not liable for peripheral system failures, audio synchronization delays, or device overheating caused by maximum haptic feedback.",
+      body: "StemBit is provided 'as is' without express warranty of absolute uptime. We are not liable for peripheral system failures, audio synchronization delays, or device overheating caused by maximum haptic feedback.",
     },
   ];
 
 const termsOfService = () => {
   return (
     <Screen glows={["topLeft"]}>
-      <ScreenHeader title="Terms Of Service" />
+      <ScreenHeader title="Terms of service" />
 
       <ScrollView className="flex-1 px-screen">
         <View className="mb-10">
-          <Text className="self-stretch justify-start text-ink-muted text-label text-center font-light leading-10">
-            Please read these Terms of Service carefully before using Stembits.
+          <Text className="self-stretch justify-start text-ink-muted text-label text-center font-satoshiRegular leading-10">
+            Please read these Terms of Service carefully before using StemBit.
             By accessing our services, you agree to be bound by these operating rules.
           </Text>
         </View>

@@ -143,6 +143,7 @@ const SelectPadView = ({
         className="flex-1"
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {packs.map((item, i) => {
           const isNewArtistGroup =

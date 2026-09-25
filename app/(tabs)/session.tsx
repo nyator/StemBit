@@ -1,11 +1,18 @@
 import { useRef, useState } from "react";
-import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import {
   BottomSheetModal,
   BottomSheetView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { useSessions } from "../../context/SessionsContext";
 import HeaderComponent from "../../components/headerComponent";
@@ -22,45 +29,63 @@ import { BrandButton } from "../../components/ui/brandButton";
 import { COLORS, LAYOUT, SHADOWS, SIZES } from "../../constants/theme";
 import { Add, Folder, Musicnote } from "../../components/icons";
 
-// Sessions: what's been set up in advance so nothing is hunted for on stage.
-//
-// A session is a body of work -- a tour, a residency, a season -- and holds the
-// setlists for its nights. The tab lists sessions; a session lists its setlists;
-// a setlist is the running order you actually tap through.
+// A device's glass support can't change mid-session, so this is read once.
+const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
 
 export default function SessionsScreen() {
   const router = useRouter();
-  const { sessions, addSession, removeSession } = useSessions();
+
+  // Cast to allow renameSession or updateSession regardless of context naming
+  const sessionsContext = useSessions() as ReturnType<typeof useSessions> & {
+    renameSession?: (id: string, title: string) => void;
+    updateSession?: (id: string, updates: Partial<{ title: string }>) => void;
+  };
+  const { sessions, addSession, removeSession } = sessionsContext;
+
   const sheetRef = useRef<BottomSheetModal>(null);
   const [title, setTitle] = useState("");
-  // Nothing made yet and not in the middle of making one -- the state the screen
-  // is in the very first time it's opened, which is the one worth designing for.
-  // The new-session form used to be an inline panel that pushed the list down,
-  // so this also excluded it -- the empty-state invitation had to get out of its
-  // way. The sheet covers the list instead, and keeping that guard only made the
-  // invitation flicker away and back as the sheet opened and closed.
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+
   const isEmpty = sessions.length === 0;
 
   const close = () => {
     sheetRef.current?.dismiss();
     setTitle("");
+    setEditingSessionId(null);
   };
 
-  const create = () => {
-    if (!title.trim()) return;
-    const session = addSession(title.trim());
-    close();
-    router.push({ pathname: "/setlist", params: { id: session.id } });
+  const openCreateSheet = () => {
+    setEditingSessionId(null);
+    setTitle("");
+    sheetRef.current?.present();
   };
 
-  // Same backdrop as the info sheets and the loop picker, so every sheet in the
-  // app dims the screen by the same amount and closes the same way.
+  const openRenameSheet = (id: string, currentTitle: string) => {
+    setEditingSessionId(id);
+    setTitle(currentTitle);
+    sheetRef.current?.present();
+  };
+
+  const save = () => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+
+    if (editingSessionId) {
+      if (typeof sessionsContext.renameSession === "function") {
+        sessionsContext.renameSession(editingSessionId, trimmed);
+      } else if (typeof sessionsContext.updateSession === "function") {
+        sessionsContext.updateSession(editingSessionId, { title: trimmed });
+      }
+      close();
+    } else {
+      const session = addSession(trimmed);
+      close();
+      router.push({ pathname: "/setlist", params: { id: session.id } });
+    }
+  };
+
   const renderBackdrop = useSheetBackdrop();
 
-  // Placeholder for bringing a whole project in -- stems, cues and running
-  // order in one file, rather than building a set a cue at a time. It's here
-  // rather than hidden until it's built because this is where someone will look
-  // for it, and being told it's coming is more use than finding nothing.
   const importProject = () =>
     Alert.alert(
       "Import project",
@@ -83,88 +108,95 @@ export default function SessionsScreen() {
       { cancelable: true }
     );
 
+  const openSessionActions = (id: string, currentTitle: string) => {
+    Alert.alert(
+      currentTitle,
+      undefined,
+      [
+        {
+          text: "Rename",
+          onPress: () => openRenameSheet(id, currentTitle),
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => confirmRemove(id, currentTitle),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+      { cancelable: true }
+    );
+  };
+
   return (
     <Screen glows={["topLeftFar"]}>
       <HeaderComponent />
 
-
-      {/* The same sheet the subdivision hints and the loop picker use, so
-          everything that comes up from the bottom of this app looks and
-          behaves the same way.
-
-          enableDynamicSizing rather than a fixed snap point: this is a short
-          form, and a fixed height would leave it floating in empty space. */}
       <BottomSheetModal
         ref={sheetRef}
         enableDynamicSizing
-        // The name field lives in here, so the sheet has to ride the keyboard
-        // rather than sit under it.
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
-        // Without this Android pans the whole window instead of resizing it,
-        // and the sheet has no room to move into -- the field stays under the
-        // keyboard however the sheet is configured.
         android_keyboardInputMode="adjustResize"
         backdropComponent={renderBackdrop}
         backgroundStyle={SHEET_BACKGROUND}
         handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
+        onDismiss={() => {
+          setTitle("");
+          setEditingSessionId(null);
+        }}
       >
         <BottomSheetView style={SHEET_CONTENT}>
           <Text className="mb-3 text-white font-satoshiBold text-title">
-            New session
+            {editingSessionId ? "Rename session" : "New session"}
           </Text>
 
           <BrandInput
-            // Gorhom's input, not React Native's: the sheet only lifts itself
-            // clear of the keyboard for fields it can see the focus of, so a
-            // plain TextInput here would end up underneath it.
             InputComponent={BottomSheetTextInput}
             label="Session name"
             value={title}
             onChangeText={setTitle}
             placeholder="Summer tour, Sunday services…"
             maxLength={40}
-            onSubmitEditing={create}
+            selectTextOnFocus
+            onSubmitEditing={save}
           />
-          <BrandButton label="Create session" onPress={create} />
+          <BrandButton
+            label={editingSessionId ? "Save changes" : "Create session"}
+            onPress={save}
+          />
 
-          <View className="flex-row items-center my-5">
-            <View className="flex-1 h-px bg-hairline" />
-            <Text className="mx-3 text-micro text-ink-muted font-satoshiRegular">
-              OR
-            </Text>
-            <View className="flex-1 h-px bg-hairline" />
-          </View>
+          {!editingSessionId && (
+            <>
+              <View className="flex-row items-center my-5">
+                <View className="flex-1 h-px bg-hairline" />
+                <Text className="mx-3 text-micro text-ink-muted font-satoshiRegular">
+                  OR
+                </Text>
+                <View className="flex-1 h-px bg-hairline" />
+              </View>
 
-          <TouchableOpacity
-            onPress={importProject}
-            accessibilityLabel="Import project"
-            activeOpacity={0.8}
-            className="flex-row items-center p-4 border rounded-lg border-hairline"
-          >
-            <Folder size={22} color={COLORS.textMuted} />
-            <View className="flex-1 ml-3">
-              <Text className="text-white font-satoshiMedium">
-                Import project
-              </Text>
-              <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
-                Stems and running order from a file — coming soon
-              </Text>
-            </View>
-          </TouchableOpacity>
+              <TouchableOpacity
+                onPress={importProject}
+                accessibilityLabel="Import project"
+                activeOpacity={0.8}
+                className="flex-row items-center p-4 border rounded-lg border-hairline"
+              >
+                <Folder size={22} color={COLORS.textMuted} />
+                <View className="flex-1 ml-3">
+                  <Text className="text-white font-satoshiMedium">
+                    Import project
+                  </Text>
+                  <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
+                    Stems and running order from a file — coming soon
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
         </BottomSheetView>
       </BottomSheetModal>
 
-      {/* Empty, the invitation is centred by Yoga in a plain view rather than
-          by a scroll view's content container.
-
-          It used to live inside the ScrollView below, centred with
-          flexGrow + justifyContent. That only works once the scroll view has
-          been measured, which is a frame later -- and since a hidden tab is
-          laid out from scratch when it comes back, the message visibly jumped
-          from the top of the page to the middle on every switch to this tab.
-          There is nothing to scroll when there is nothing here, so there is no
-          reason for a scroll view to be deciding where it sits. */}
       {isEmpty ? (
         <View
           className="items-center justify-center flex-1 px-screen"
@@ -191,8 +223,9 @@ export default function SessionsScreen() {
                     params: { id: session.id },
                   })
                 }
-                onLongPress={() => confirmRemove(session.id, session.title)}
-                delayLongPress={400}
+                onLongPress={() => openSessionActions(session.id, session.title)}
+                delayLongPress={350}
+                activeOpacity={0.75}
                 className="p-4 mb-3 border rounded-lg bg-surface border-hairline"
               >
                 <Text
@@ -209,30 +242,53 @@ export default function SessionsScreen() {
           })}
 
           <Text className="mt-2 text-micro text-ink-muted font-satoshiRegular">
-            Hold a session to delete it.
+            Hold a session to rename or delete it.
           </Text>
         </ScrollView>
       )}
 
-      {/* Sits beside the floating tab bar rather than in the header: the tab
-          pill is 228pt wide and centred, so the right-hand corner is empty, and
-          a thumb reaches it without crossing the screen. */}
+      {/* Liquid Glass tinted brand on iOS 26+, the same treatment BrandButton
+          uses; the flat brand circle everywhere else. */}
+      {/* A plain style object, not Pressable's style function: NativeWind
+          doesn't apply a function style here, and the button loses its
+          absolute position and drops into the layout. Glass handles its own
+          press feedback, so the fade is only for the flat fallback. */}
       <TouchableOpacity
-        onPress={() => sheetRef.current?.present()}
+        onPress={openCreateSheet}
+        accessibilityRole="button"
         accessibilityLabel="New session"
-        activeOpacity={0.85}
-        className="absolute items-center justify-center rounded-full bg-brand"
+        activeOpacity={HAS_LIQUID_GLASS ? 1 : 0.85}
         style={{
+          position: "absolute",
           right: LAYOUT.screenPaddingX,
           bottom: 10,
-          width: SIZES.fab,
-          height: SIZES.fab,
           ...SHADOWS.float,
         }}
       >
-        {/* No longer rotates to a close: the sheet owns its own dismissal, so
-            the button only ever means "new". */}
-        <Add size={26} color={COLORS.white} />
+        {HAS_LIQUID_GLASS ? (
+          <GlassView
+            glassEffectStyle="regular"
+            isInteractive
+            tintColor={COLORS.brand}
+            style={{
+              width: SIZES.fab,
+              height: SIZES.fab,
+              borderRadius: SIZES.fab / 2,
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+            }}
+          >
+            <Add size={26} color={COLORS.white} />
+          </GlassView>
+        ) : (
+          <View
+            className="items-center justify-center rounded-full bg-brand"
+            style={{ width: SIZES.fab, height: SIZES.fab }}
+          >
+            <Add size={26} color={COLORS.white} />
+          </View>
+        )}
       </TouchableOpacity>
     </Screen>
   );

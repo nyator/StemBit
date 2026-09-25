@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.nehtek.stembit",
+      "bundleIdentifier": "com.builtelo.stembit",
       "runtimeVersion": "1.0.0",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,7 +24,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "runtimeVersion": "1.0.0",
-      "package": "com.nehtek.stembit"
+      "package": "com.builtelo.stembit"
     },
     "web": {
       "favicon": "./assets/favicon.png",

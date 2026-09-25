@@ -59,13 +59,13 @@ const AudioVolume = () => {
 
     return (
         <Screen glows={["topLeft"]}>
-            <ScreenHeader title="Audio Output / Volume" />
+            <ScreenHeader title="Audio output / volume" />
 
             <ScrollView className="flex-1 px-screen">
-                <SettingSection title=" Volume">
+                <SettingSection title="Volume">
                     <SettingSlider
                         icon={Loop}
-                        label="Loop Volume"
+                        label="Loops"
                         value={volumes.loop}
                         onValueChange={setVolume("loop")}
                         onComplete={(v) => setPref("loopVolume", v)}
@@ -74,7 +74,7 @@ const AudioVolume = () => {
                     />
                     <SettingSlider
                         icon={Pad}
-                        label="Pad Volume"
+                        label="Pad"
                         value={volumes.pad}
                         onValueChange={setVolume("pad")}
                         onComplete={(v) => setPref("padVolume", v)}
@@ -84,7 +84,7 @@ const AudioVolume = () => {
                     
                     <SettingSlider
                         icon={Metromone}
-                        label="Metro... Volume"
+                        label="Metronome"
                         // sublabel="100% is the click as recorded"
                         value={volumes.metronome}
                         onValueChange={setVolume("metronome")}
@@ -94,10 +94,10 @@ const AudioVolume = () => {
                     />
                 </SettingSection>
 
-                <SettingSection title="Loop Click">
+                <SettingSection title="Loop click">
                     <SettingSwitch
                         icon={Loop}
-                        label="Loop Click"
+                        label="Loop click"
                         sublabel="Play a metronome click along with loops"
                         value={prefs.loopClick}
                         onValueChange={(value) => setPref("loopClick", value)}
@@ -112,11 +112,11 @@ const AudioVolume = () => {
                     />
                 </SettingSection>
 
-                <SettingSection title=" General">
+                <SettingSection title="General">
                     <SettingSwitch
                         icon={PhoneVibration}
-                        label="Vibrate on Ring"
-                        sublabel="Set to Vibrate for phone calls and notifications"
+                        label="Vibrate on ring"
+                        sublabel="Vibrate for phone calls and notifications"
                         value={prefs.haptics}
                         onValueChange={(value) => setPref("haptics", value)}
                     />

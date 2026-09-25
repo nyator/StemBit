@@ -2,7 +2,7 @@
 
 Project root: `C:/Users/hnyator/Desktop/StemBit`
 Detected ecosystems: nodejs
-Generated at: 2026-09-07T20:09:36Z
+Generated at: 2026-09-25T10:28:51Z
 
 ### Manifests present
 
@@ -25,6 +25,10 @@ Generated at: 2026-09-07T20:09:36Z
 Tool: `npm audit` (nodejs)
 
 ```
+npm ERR! Cannot read property '@clerk/expo' of undefined
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     C:\Users\hnyator\AppData\Roaming\npm-cache\_logs\2026-09-25T10_29_07_334Z-debug.log
 
 ```
 

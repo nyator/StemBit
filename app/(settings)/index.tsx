@@ -55,10 +55,10 @@ const SettingsScreen = () => {
   const { signOut } = useAuth();
 
   const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
+    Alert.alert("Log out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Log Out",
+        text: "Log out",
         style: "destructive",
         onPress: async () => {
           // The engines behind a session (loop, pad, stems) and the standalone
@@ -106,7 +106,7 @@ const SettingsScreen = () => {
         <SettingSection title="Audio / Playback">
           <SettingLink
             icon={VolumeHigh}
-            label="Audio Output / Volume"
+            label="Audio output / volume"
             onPress={() => router.push("/audiovolume")}
           />
         </SettingSection>
@@ -114,21 +114,21 @@ const SettingsScreen = () => {
         <SettingSection title="App">
           <SettingSwitch
             icon={NotificationBing}
-            label="Notification"
+            label="Notifications"
             value={prefs.meterAccents}
             border={true}
             onValueChange={(value) => setPref("meterAccents", value)}
           />
           <SettingSwitch
             icon={Flash}
-            label="Haptic Feedback"
+            label="Haptic feedback"
             sublabel="Vibrate on pad presses and tap tempo"
             value={prefs.haptics}
             border={true}
             onValueChange={(value) => setPref("haptics", value)}
           />
           <SettingLink
-            label="Launch Screen"
+            label="Launch screen"
             value={LAUNCH_SCREEN_LABELS[prefs.launchScreen]}
             onPress={() => router.push("/launchscreen")}
           />
@@ -137,19 +137,19 @@ const SettingsScreen = () => {
         <SettingSection title="About">
           <SettingLink
             icon={MessageQuestion}
-            label="Help & Support"
+            label="Help & support"
             border={true}
             onPress={() => router.push("/help")}
           />
           <SettingLink
             icon={DocumentText}
-            label="Terms of Service"
+            label="Terms of service"
             border={true}
             onPress={() => router.push("/termsofservice")}
           />
           <SettingLink
             icon={ShieldSecurity}
-            label="Privacy Policy"
+            label="Privacy policy"
             onPress={() => router.push("/privacypolicy")}
           />
         </SettingSection>
@@ -157,17 +157,17 @@ const SettingsScreen = () => {
         {/* The same white button the profile screen signs out with, rather
             than a second one shaped like it. */}
         <InverseButton
-          label="Log Out"
+          label="Log out"
           onPress={handleLogout}
           style={{ alignSelf: "center" }}
         />
 
         <View className="items-center mt-3 mb-10">
-          <Text className="text-label text-ink-muted font-spaceRegular">
-            version {VERSION}
+          <Text className="text-label text-ink-muted font-satoshiRegular">
+            Version {VERSION}
           </Text>
-          <Text className="text-overline text-ink-muted font-spaceRegular">
-            build {BUILD}
+          <Text className="text-overline text-ink-muted font-satoshiRegular">
+            Build {BUILD}
           </Text>
         </View>
       </ScrollView>

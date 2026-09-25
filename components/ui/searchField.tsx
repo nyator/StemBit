@@ -1,7 +1,8 @@
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, TextInput, TouchableOpacity } from "react-native";
 
 import { COLORS, SIZES } from "../../constants/theme";
-import { SearchNormal } from "../icons";
+import { Close, SearchNormal } from "../icons";
 
 // A real filter, not just the pills: the loop and pad browsers narrow by a
 // fixed set of axes (category, artist, meter...), which only gets you as far
@@ -9,13 +10,11 @@ import { SearchNormal } from "../icons";
 // drums" by typing it, combined with whatever pills are already set rather
 // than replacing them.
 //
-// Same input surface as BrandInput (bg-surface-field, the same border and
-// radius) so a text field reads as one thing across the app, but shorter and
-// unlabelled -- this sits above a list being browsed, not a form being filled
-// in, and doesn't need BrandInput's height or error slot.
-
-/** Lighter than BrandInput's 55pt form field -- a browse bar, not a form. */
-const FIELD_HEIGHT = SIZES.minTouch;
+// A pill rather than BrandInput's squared form field: this sits above a list
+// being browsed, not a form being filled in. Same height as the instrument
+// controls, a glass fill that lets the screen's glow through, and the brand
+// colour on the border and icon while it has focus -- the same focus signal
+// BrandInput gives.
 
 export default function SearchField({
   value,
@@ -28,23 +27,41 @@ export default function SearchField({
   placeholder?: string;
   accessibilityLabel?: string;
 }) {
+  const inputRef = useRef<TextInput>(null);
+  const [focused, setFocused] = useState(false);
+
   return (
-    <View
-      className="flex-row items-center w-full px-4 border rounded-md bg-surface-field border-hairline"
-      style={{ height: FIELD_HEIGHT }}
+    // The whole pill is the target, not just the text -- tapping the icon or
+    // the padding focuses the field too.
+    <Pressable
+      onPress={() => inputRef.current?.focus()}
+      accessible={false}
+      className="flex-row items-center w-full px-4 rounded-full bg-white/5"
+      style={{
+        height: SIZES.control,
+        // borderWidth: 1,
+        borderColor: focused ? COLORS.brand : COLORS.borderGlass,
+      }}
     >
-      <SearchNormal size={SIZES.rowIcon} color={COLORS.textMuted} />
+      <SearchNormal
+        size={SIZES.rowIcon}
+        color={focused ? COLORS.brand : COLORS.textMuted}
+      />
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
         placeholderTextColor={COLORS.textFaint}
         selectionColor={COLORS.brand}
+        keyboardAppearance="dark"
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
         accessibilityLabel={accessibilityLabel ?? placeholder}
-        className="flex-1 ml-2 text-white font-satoshiRegular text-body"
+        className="flex-1 ml-3 text-white font-satoshiMedium text-body"
         style={{ height: "100%", padding: 0, textAlignVertical: "center" }}
       />
       {value.length > 0 && (
@@ -53,15 +70,12 @@ export default function SearchField({
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Clear search"
+          className="items-center justify-center ml-2 rounded-full bg-white/15"
+          style={{ width: 22, height: 22 }}
         >
-          <View
-            className="items-center justify-center rounded-full bg-white/10"
-            style={{ width: 20, height: 20 }}
-          >
-            <Text className="text-ink-muted text-overline">✕</Text>
-          </View>
+          <Close size={12} color={COLORS.white} />
         </TouchableOpacity>
       )}
-    </View>
+    </Pressable>
   );
 }
