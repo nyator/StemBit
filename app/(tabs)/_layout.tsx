@@ -1,7 +1,7 @@
 import { Redirect, Tabs } from "expo-router";
 import { View } from "react-native";
 import { useAuth } from "@clerk/expo";
-import FloatingTabBar from "../../components/ui/floatingTabBar";
+import LiquidGlassTabBar from "../../components/ui/liquidGlassTabBar";
 import { COLORS } from "../../constants/theme";
 
 // The playback engines (PlaybackLock/Metronome/Loop) and FloatingEngineControls
@@ -31,7 +31,7 @@ export default function TabLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.canvas }}>
       <Tabs
-        tabBar={(props) => <FloatingTabBar {...props} />}
+        tabBar={(props) => <LiquidGlassTabBar {...props} />}
         // Keep every tab's scene attached in the view hierarchy. Left to the
         // defaults, inactive tabs are detached (Android) and mounted lazily, so
         // switching to one re-attaches/re-mounts its scene -- a blank frame and

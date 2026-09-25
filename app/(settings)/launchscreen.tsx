@@ -11,7 +11,7 @@ import {
   SortPadFill,
 } from "../../components/icons";
 
-// The same four tabs FloatingTabBar renders, in the same filled icon
+// The same four tabs LiquidGlassTabBar renders, in the same filled icon
 // treatment it uses for whichever tab is active -- there's no "idle" state
 // to speak of here, so every row gets the bold version.
 const LAUNCH_SCREEN_OPTIONS: {
