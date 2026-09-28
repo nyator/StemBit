@@ -80,7 +80,7 @@ export default function SegmentedControl<T extends string | number>({
         const selectedText = accent === COLORS.white ? "text-ink-inverse" : "text-white";
 
         const segment = isRow
-          ? `flex-1 items-center justify-center rounded-sm ${
+          ? `flex-1 items-center justify-center rounded-md ${
               selected ? "" : "bg-surface-muted border border-hairline-segment"
             }`
           : `${trackPaddingX} py-2 rounded-lg items-center justify-center`;

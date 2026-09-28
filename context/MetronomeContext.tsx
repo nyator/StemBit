@@ -55,6 +55,12 @@ export const TIME_SIGNATURE_CATEGORIES: {
 // the full bright click; the other listed beats get a softer bright click so
 // compound and odd meters are felt in their natural groupings instead of as
 // a flat pulse (e.g. 6/8 = 3+3, 7/8 = 2+2+3, 12/8 = 3+3+3+3).
+//
+// Every entry must SOUND different from every other. The engine plays `beats`
+// clicks per bar with `accents` on top, one click per BPM tick -- `note` is a
+// label, not a tempo unit. So two meters with the same beats and accents are
+// the same metronome under two names. That's why 2/2 (= 2/4), 3/8 (= 3/4) and
+// 6/4 (= 6/8) aren't here, and why 5/8 groups 2+3 where 5/4 groups 3+2.
 export const TIME_SIGNATURES: {
   label: string;
   beats: number;
@@ -63,19 +69,16 @@ export const TIME_SIGNATURES: {
   category: TimeSignatureCategory;
 }[] = [
   // Standard (simple meters)
-  { label: "2 / 2", beats: 2, note: 2, accents: [0], category: "standard" },
   { label: "2 / 4", beats: 2, note: 4, accents: [0], category: "standard" },
   { label: "3 / 4", beats: 3, note: 4, accents: [0], category: "standard" },
   { label: "4 / 4", beats: 4, note: 4, accents: [0], category: "standard" },
   { label: "5 / 4", beats: 5, note: 4, accents: [0, 3], category: "standard" }, // 3+2
-  { label: "6 / 4", beats: 6, note: 4, accents: [0, 3], category: "standard" }, // 3+3
   // Compound (dotted-beat meters)
-  { label: "3 / 8", beats: 3, note: 8, accents: [0], category: "compound" },
   { label: "6 / 8", beats: 6, note: 8, accents: [0, 3], category: "compound" }, // 3+3
   { label: "9 / 8", beats: 9, note: 8, accents: [0, 3, 6], category: "compound" }, // 3+3+3
   { label: "12 / 8", beats: 12, note: 8, accents: [0, 3, 6, 9], category: "compound" }, // 3+3+3+3
   // Odd meters (asymmetric groupings)
-  { label: "5 / 8", beats: 5, note: 8, accents: [0, 3], category: "odd" }, // 3+2
+  { label: "5 / 8", beats: 5, note: 8, accents: [0, 2], category: "odd" }, // 2+3
   { label: "7 / 8", beats: 7, note: 8, accents: [0, 2, 4], category: "odd" }, // 2+2+3
   { label: "11 / 8", beats: 11, note: 8, accents: [0, 3, 6, 9], category: "odd" }, // 3+3+3+2
   { label: "13 / 8", beats: 13, note: 8, accents: [0, 3, 6, 9, 11], category: "odd" }, // 3+3+3+2+2
@@ -348,11 +351,21 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engineReady]);
 
+  // Share the audio with other apps, or take it (Settings -> Audio). This
+  // engine's messages aren't queued, so it waits for "ready" -- and re-sends on
+  // every one, since a rebuilt engine starts with the default.
+  useEffect(() => {
+    if (!engineReady) return;
+    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineReady, prefs.mixWithOthers]);
+
   const handleWebViewMessage = (event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === "ready") {
         setEngineReady(true);
+        postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
       } else if (data.type === "pong") {
         if (pongTimerRef.current) {
           clearTimeout(pongTimerRef.current);

@@ -78,7 +78,7 @@ export default function Page() {
             // Signed in already: straight to the instrument they chose, with
             // no sign-in screen flashing past on the way. The stored session is
             // read by Clerk before this fires -- that's what authLoaded gates.
-            isSignedIn
+            isSignedIn || prefs.guest
               ? (`/(tabs)/${prefs.launchScreen}` as const)
               : prefs.seenOnboarding
                 ? "/(auths)/login"

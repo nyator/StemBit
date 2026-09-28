@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- I, Stack: three chunky discs stacked like layered stems. 3D, on white. -->
+  <defs>
+    <clipPath id="icon"><rect width="1024" height="1024" rx="230"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E8EDF3"/>
+    </linearGradient>
+    <!-- side bands: light on the left, shading round to the right -->
+    <linearGradient id="side1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0A6FA3"/><stop offset="0.35" stop-color="#0B86C0"/><stop offset="1" stop-color="#034A70"/>
+    </linearGradient>
+    <linearGradient id="side2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2A9FD6"/><stop offset="0.35" stop-color="#3DB3E8"/><stop offset="1" stop-color="#136C9A"/>
+    </linearGradient>
+    <linearGradient id="side3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6CC9F0"/><stop offset="0.35" stop-color="#8ED8F7"/><stop offset="1" stop-color="#3A98C6"/>
+    </linearGradient>
+    <linearGradient id="top1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1EA2DD"/><stop offset="1" stop-color="#0879B0"/>
+    </linearGradient>
+    <linearGradient id="top2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5CC4F0"/><stop offset="1" stop-color="#2A9FD6"/>
+    </linearGradient>
+    <linearGradient id="top3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#D9F3FF"/><stop offset="1" stop-color="#9FDDF8"/>
+    </linearGradient>
+    <filter id="contact" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="drop" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#023A58" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#icon)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <g transform="translate(0 -44)">
+    <ellipse cx="512" cy="792" rx="300" ry="64" fill="#0B3A55" opacity="0.22" filter="url(#contact)"/>
+
+    <!-- bottom disc -->
+    <g filter="url(#drop)">
+      <path d="M232 640 A280 110 0 0 0 792 640 L792 700 A280 110 0 0 1 232 700 Z" fill="url(#side1)"/>
+      <ellipse cx="512" cy="640" rx="280" ry="110" fill="url(#top1)"/>
+    </g>
+    <!-- middle disc, a step smaller -->
+    <g filter="url(#drop)">
+      <path d="M272 520 A240 94 0 0 0 752 520 L752 580 A240 94 0 0 1 272 580 Z" fill="url(#side2)"/>
+      <ellipse cx="512" cy="520" rx="240" ry="94" fill="url(#top2)"/>
+    </g>
+    <!-- top disc -->
+    <g filter="url(#drop)">
+      <path d="M312 400 A200 78 0 0 0 712 400 L712 460 A200 78 0 0 1 312 460 Z" fill="url(#side3)"/>
+      <ellipse cx="512" cy="400" rx="200" ry="78" fill="url(#top3)"/>
+      <ellipse cx="470" cy="382" rx="120" ry="30" fill="#FFFFFF" opacity="0.6"/>
+    </g>
+    </g>
+  </g>
+</svg>

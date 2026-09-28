@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Linking } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Linking, Alert } from "react-native";
 
 import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
@@ -67,8 +67,13 @@ const Help = () => {
           className="flex-row items-center justify-center py-4 mt-2 mb-10 rounded-2xl bg-brand"
           onPress={() =>
             Linking.openURL(
-              `mailto:${SUPPORT_EMAIL}?subject=StemBit Support`
-            ).catch(() => { })
+              `mailto:${SUPPORT_EMAIL}?subject=Stembits Support`
+            ).catch(() =>
+              // No mail account on the device (common on review iPads): a
+              // button that silently does nothing reads as broken, so say
+              // where to write instead.
+              Alert.alert("Email support", `Write to us at ${SUPPORT_EMAIL}`)
+            )
           }
         >
           <Text className="ml-2 text-body text-black font-satoshiBold">

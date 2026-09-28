@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- D — Glass Bit: a frosted glass tile (a "bit") over coloured light, play mark inside. -->
+  <defs>
+    <clipPath id="icon"><rect width="1024" height="1024" rx="230"/></clipPath>
+    <clipPath id="tile"><rect x="232" y="232" width="560" height="560" rx="150"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C1E27"/><stop offset="1" stop-color="#0A0B0F"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.75"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.4"/>
+    </linearGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>
+    <filter id="frost" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="80"/></filter>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="30" stdDeviation="30" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#icon)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <!-- light behind the glass -->
+    <g filter="url(#soft)">
+      <circle cx="360" cy="380" r="210" fill="#38BDF8"/>
+      <circle cx="680" cy="640" r="220" fill="#A855F7"/>
+      <circle cx="660" cy="330" r="140" fill="#EC4899"/>
+    </g>
+    <!-- the glass tile: the same light, frosted harder, under a milky sheet -->
+    <g filter="url(#lift)">
+      <rect x="232" y="232" width="560" height="560" rx="150" fill="#FFFFFF" fill-opacity="0.001"/>
+    </g>
+    <g clip-path="url(#tile)">
+      <g filter="url(#frost)">
+        <circle cx="360" cy="380" r="210" fill="#38BDF8"/>
+        <circle cx="680" cy="640" r="220" fill="#A855F7"/>
+        <circle cx="660" cy="330" r="140" fill="#EC4899"/>
+      </g>
+      <rect x="232" y="232" width="560" height="560" fill="#FFFFFF" fill-opacity="0.16"/>
+      <rect x="232" y="232" width="560" height="200" fill="#FFFFFF" fill-opacity="0.08"/>
+    </g>
+    <rect x="235" y="235" width="554" height="554" rx="147" fill="none" stroke="url(#rim)" stroke-width="6"/>
+    <!-- play: a triangle with a fat round-joined stroke, which rounds its corners -->
+    <polygon points="462,420 462,604 612,512" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="56" stroke-linejoin="round"/>
+  </g>
+</svg>

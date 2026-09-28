@@ -28,6 +28,8 @@ import * as FileSystem from "expo-file-system/legacy";
 //   natureNoise   -> the ambience bed layered over every pad. A mixer channel
 //                    of its own, muted until the user brings it in.
 //   launchScreen  -> which tab opens after signing in
+//   mixWithOthers -> loop, metronome and session engines share the audio with
+//                    other apps instead of taking it (see silentModeKeepAlive)
 /**
  * How far the metronome's master gain can be pushed, where 1 is the click as
  * its sample was recorded.
@@ -64,8 +66,25 @@ export type Preferences = {
   natureNoise: MixSettings;
   seenOnboarding: boolean;
   seenFeatureTour: boolean;
+  /**
+   * Chose "Continue without an account" on the sign-in screen.
+   *
+   * The instruments are all local, so an account is only needed for the
+   * profile -- and App Store guideline 5.1.1(v) rejects apps that demand a
+   * sign-in for features that don't use it. Cleared on log out, so an explicit
+   * sign-out lands on the sign-in screen rather than straight back in.
+   */
+  guest: boolean;
   /** Which tab opens after signing in (Settings -> Launch Screen). */
   launchScreen: "loop" | "pad" | "metro" | "session";
+  /**
+   * Play the WebView engines (loop, metronome, session) alongside other apps'
+   * audio -- practising over a YouTube video -- rather than taking the audio
+   * from them. Costs the silent-switch override for those three engines, which
+   * is why it's opt-in. Pads mix either way: they're native, and don't have to
+   * choose.
+   */
+  mixWithOthers: boolean;
 };
 
 /** A mixer channel's own settings. Muting keeps the level for when it returns. */
@@ -137,7 +156,11 @@ const DEFAULTS: Preferences = {
   // actually in the app -- so the two are reached at different moments and a
   // user who skipped one should still get the other.
   seenFeatureTour: false,
+  guest: false,
   launchScreen: "loop",
+  // Off: out of the box the engines take the audio, which keeps them audible
+  // with the silent switch on -- the right default for a phone on a stand.
+  mixWithOthers: false,
 };
 
 type PreferencesContextValue = {

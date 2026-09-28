@@ -30,7 +30,7 @@ export function useProfilePhoto() {
     if (!permission.granted) {
       Alert.alert(
         "Photo access is off",
-        "StemBit needs permission to open your photos. You can turn it on in Settings."
+        "Stembits needs permission to open your photos. You can turn it on in Settings."
       );
       return;
     }

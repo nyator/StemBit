@@ -21,7 +21,7 @@ import {
     Pad,
     Metromone,
     Loop,
-    PhoneVibration
+    Musicnote,
 } from "../../components/icons";
 
 // No output-device section here on purpose. Listing and switching audio outputs
@@ -113,12 +113,16 @@ const AudioVolume = () => {
                 </SettingSection>
 
                 <SettingSection title="General">
+                    {/* Loops, the metronome and sessions can either take the
+                        audio (heard even on silent) or share it with other
+                        apps (muted by the silent switch). iOS offers them no
+                        way to do both; pads always mix. */}
                     <SettingSwitch
-                        icon={PhoneVibration}
-                        label="Vibrate on ring"
-                        sublabel="Vibrate for phone calls and notifications"
-                        value={prefs.haptics}
-                        onValueChange={(value) => setPref("haptics", value)}
+                        icon={Musicnote}
+                        label="Play alongside other apps"
+                        sublabel="Keep YouTube or music playing under loops and the metronome. The silent switch will mute them."
+                        value={prefs.mixWithOthers}
+                        onValueChange={(value) => setPref("mixWithOthers", value)}
                     />
                 </SettingSection>
             </ScrollView>

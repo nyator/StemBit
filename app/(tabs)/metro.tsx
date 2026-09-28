@@ -48,14 +48,12 @@ import {
 const SHEET_SNAP_POINTS = ["50%"];
 
 /**
- * One meter chip, held to a fixed width rather than sized to its label.
- *
- * "4/4" and "12/8" are different widths of text, and left to themselves the
- * chips make a ragged grid that is harder to scan than the six meters in it
- * deserve. They still wrap, so a narrow phone gets three to a row instead of
- * four rather than a row that overflows.
+ * Meter chips sit in a grid this many columns wide, stretched to the sheet's
+ * width. A family with fewer meters than that pads its row with empty cells,
+ * so every chip in the sheet is the same width and the columns line up from
+ * one family to the next.
  */
-const METER_CHIP_WIDTH = 71;
+const METER_COLUMNS = 4;
 
 export default function MetroScreen() {
   const {
@@ -129,7 +127,7 @@ export default function MetroScreen() {
     onCommit: (v: number) => void
   ) => (
     <View className="flex-row items-center w-full gap-2 px-3 py-4 bg-surface-muted rounded-lg">
-      <View className="items-center justify-center px-2 py-1 rounded-sm bg-surface-badge">
+      <View className="items-center justify-center px-2 py-1 rounded-md bg-surface-badge">
         <Text className="text-white text-overline font-spaceBold">{badge}</Text>
       </View>
       <Slider
@@ -167,45 +165,56 @@ export default function MetroScreen() {
         }}
       >
         {/* Time signature categories: tap a chip to pick the meter. */}
-        <View className="w-full gap-3">
-          {TIME_SIGNATURE_CATEGORIES.map((cat) => (
-            <View key={cat.key} className="w-full gap-2">
-              <Text
-                className="uppercase text-overline font-spaceBold text-white/70"
-                style={{ letterSpacing: 0.72 }}
-              >
-                {cat.label}
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {TIME_SIGNATURES.filter((ts) => ts.category === cat.key).map(
-                  (ts) => {
-                    const selected = ts.label === timeSignature.label;
-                    return (
-                      <TouchableOpacity
-                        key={ts.label}
-                        onPress={() => {
-                          setTimeSignature(ts);
-                          closeSheet();
-                        }}
-                        style={{ width: METER_CHIP_WIDTH }}
-                        className={`items-center justify-center px-2 py-2 rounded-sm border ${selected
-                          ? "bg-white border-white"
-                          : "border-hairline-segment"
-                          }`}
-                      >
-                        <Text
-                          className={`text-label font-spaceBold ${selected ? "text-[#151515]" : "text-white"
+        <View className="w-full gap-4">
+          {TIME_SIGNATURE_CATEGORIES.map((cat) => {
+            const meters = TIME_SIGNATURES.filter((ts) => ts.category === cat.key);
+            // Split into rows of METER_COLUMNS; the last row is padded with
+            // empty cells so its chips keep the same width as the rows above.
+            const rows: (typeof meters[number] | null)[][] = [];
+            for (let i = 0; i < meters.length; i += METER_COLUMNS) {
+              const row: (typeof meters[number] | null)[] = meters.slice(i, i + METER_COLUMNS);
+              while (row.length < METER_COLUMNS) row.push(null);
+              rows.push(row);
+            }
+            return (
+              <View key={cat.key} className="w-full gap-2">
+                <Text
+                  className="uppercase text-overline font-spaceBold text-white/70"
+                  style={{ letterSpacing: 0.72 }}
+                >
+                  {cat.label}
+                </Text>
+                {rows.map((row, r) => (
+                  <View key={r} className="flex-row w-full gap-2">
+                    {row.map((ts, c) => {
+                      if (!ts) return <View key={`empty-${c}`} className="flex-1" />;
+                      const selected = ts.label === timeSignature.label;
+                      return (
+                        <TouchableOpacity
+                          key={ts.label}
+                          onPress={() => {
+                            setTimeSignature(ts);
+                            closeSheet();
+                          }}
+                          className={`flex-1 items-center justify-center py-3 rounded-md border ${selected
+                            ? "bg-white border-white"
+                            : "border-hairline-segment"
                             }`}
                         >
-                          {ts.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  }
-                )}
+                          <Text
+                            className={`text-label font-spaceBold ${selected ? "text-[#151515]" : "text-white"
+                              }`}
+                          >
+                            {ts.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         {/* Beat grid: accent + beat volumes */}

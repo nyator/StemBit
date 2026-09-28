@@ -195,8 +195,15 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               // Read-only in this implementation; the default stands.
             }
           }
-          if (audioContext.state === "suspended") {
-            audioContext.resume();
+          // Anything but running wakes it -- "interrupted" as well as
+          // "suspended". iOS marks the context interrupted when another app
+          // takes the audio (a YouTube video in picture-in-picture, say), and
+          // it stays that way until someone asks for it back. Checking only
+          // for suspended meant nobody ever did: a loop loaded and "played"
+          // against a clock that never moved.
+          if (audioContext.state !== "running" && audioContext.state !== "closed") {
+            var waking = audioContext.resume();
+            if (waking && waking.catch) waking.catch(function () {});
           }
           return audioContext;
         }
@@ -1527,7 +1534,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // song rather than restarting it.
         function resumeAudio() {
           if (!audioContext) return;
-          if (audioContext.state !== "suspended") return;
+          // Suspended or interrupted -- see ensureContext.
+          if (audioContext.state === "running" || audioContext.state === "closed") return;
           var resumed = audioContext.resume();
           if (resumed && resumed.catch) {
             resumed.catch(function () {
@@ -1620,6 +1628,9 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             // nobody left to answer, and the app rebuilds the engine.
             case "resume":
               resumeAudio();
+              break;
+            case "setMixWithOthers":
+              setMixWithOthers(data.enabled);
               break;
             case "ping":
               post({ type: "pong" });

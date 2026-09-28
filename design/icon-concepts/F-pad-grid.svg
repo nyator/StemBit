@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- F — Pad Grid: four launch pads, one lit in brand blue. -->
+  <defs>
+    <clipPath id="icon"><rect width="1024" height="1024" rx="230"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#132131"/><stop offset="1" stop-color="#07090D"/>
+    </linearGradient>
+    <linearGradient id="padDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A3040"/><stop offset="1" stop-color="#161A24"/>
+    </linearGradient>
+    <linearGradient id="padLit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8ADCFB"/><stop offset="0.5" stop-color="#2AA7E0"/><stop offset="1" stop-color="#007EB7"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/><stop offset="0.35" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="litGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="40" flood-color="#008BC2" flood-opacity="0.9"/>
+    </filter>
+    <filter id="padShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#icon)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <g filter="url(#padShadow)">
+      <rect x="240" y="240" width="250" height="250" rx="64" fill="url(#padDark)" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="3"/>
+      <rect x="240" y="534" width="250" height="250" rx="64" fill="url(#padDark)" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="3"/>
+      <rect x="534" y="534" width="250" height="250" rx="64" fill="url(#padDark)" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="3"/>
+    </g>
+    <rect x="534" y="240" width="250" height="250" rx="64" fill="url(#padLit)" filter="url(#litGlow)"/>
+    <rect x="240" y="240" width="250" height="250" rx="64" fill="url(#sheen)"/>
+    <rect x="240" y="534" width="250" height="250" rx="64" fill="url(#sheen)"/>
+    <rect x="534" y="534" width="250" height="250" rx="64" fill="url(#sheen)"/>
+    <rect x="534" y="240" width="250" height="250" rx="64" fill="url(#sheen)"/>
+  </g>
+</svg>

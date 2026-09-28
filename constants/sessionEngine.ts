@@ -38,6 +38,7 @@
 // hold another one.
 import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
 import { TEMPO_DETECT_SOURCE } from "./tempoDetect";
+import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 
 export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 <html>
@@ -53,6 +54,12 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         ${BPM_ANALYZER_SOURCE}
         window.bpmAnalyzer = module.exports;
       })();
+    </script>
+    <script>
+      // setMixWithOthers, shared with the loop and metronome engines. Its own
+      // script rather than inside the engine's, whose source is kept free of
+      // interpolation; top-level functions here are visible to it.
+      ${SILENT_MODE_KEEP_ALIVE_SOURCE}
     </script>
     <script id="engine">
       (function () {
@@ -160,7 +167,14 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             master.gain.value = 1;
             master.connect(audioContext.destination);
           }
-          if (audioContext.state === "suspended") audioContext.resume();
+          // Anything but running wakes it -- "interrupted" as well as
+          // "suspended". iOS marks the context interrupted when another app
+          // takes the audio (a YouTube video in picture-in-picture, say), and
+          // it stays that way until someone asks for it back.
+          if (audioContext.state !== "running" && audioContext.state !== "closed") {
+            var waking = audioContext.resume();
+            if (waking && waking.catch) waking.catch(function () {});
+          }
           return audioContext;
         }
 
@@ -1077,7 +1091,8 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // song rather than restarting it.
         function resumeAudio() {
           if (!audioContext) return;
-          if (audioContext.state !== "suspended") return;
+          // Suspended or interrupted -- see ensureContext.
+          if (audioContext.state === "running" || audioContext.state === "closed") return;
           var resumed = audioContext.resume();
           if (resumed && resumed.catch) {
             resumed.catch(function () {
@@ -1172,6 +1187,9 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               break;
             case "resume":
               resumeAudio();
+              break;
+            case "setMixWithOthers":
+              setMixWithOthers(data.enabled);
               break;
             case "ping":
               post({ type: "pong" });

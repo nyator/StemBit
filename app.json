@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "StemBit",
+    "name": "Stembits",
     "slug": "StemBit",
     "scheme": "stembit",
     "version": "1.0.0",
@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.builtelo.stembit",
+      "bundleIdentifier": "com.builtelo.stembits",
       "runtimeVersion": "1.0.0",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,7 +24,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "runtimeVersion": "1.0.0",
-      "package": "com.builtelo.stembit"
+      "package": "com.builtelo.stembits"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -49,7 +49,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "StemBit uses your photo library so you can pick a profile picture.",
+          "photosPermission": "Stembits uses your photo library so you can pick a profile picture.",
           "cameraPermission": false,
           "microphonePermission": false
         }

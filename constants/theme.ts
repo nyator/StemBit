@@ -170,7 +170,7 @@ export const SIZES = {
   // One height for every control on the instrument screens -- tap tempo, the
   // buttons beside it, steppers, the picker, the subdivision row -- so they
   // share an edge instead of each landing wherever its padding put it.
-  control: 42,
+  control: 48,
   rowIcon: 20,
   navIcon: 24,
   transportPrimary: 80,

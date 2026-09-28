@@ -90,7 +90,7 @@ export function PickerButton({
       style={[{ height: SIZES.control }, style]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      className="flex-row items-center justify-center gap-2 px-4 bg-white rounded-sm"
+      className="flex-row items-center justify-center gap-2 px-4 bg-white rounded-md"
     >
       <Icon size={SIZES.rowIcon} color={COLORS.black} />
       <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
@@ -213,7 +213,7 @@ export function StepperButton({
       onPress={up ? controls.increase : controls.decrease}
       onLongPress={up ? controls.startHoldIncrease : controls.startHoldDecrease}
       onPressOut={controls.endHold}
-      className="items-center justify-center rounded-sm bg-white/10"
+      className="items-center justify-center rounded-md bg-white/10"
       style={{ width: SIZES.control, height: SIZES.control }}
     >
       <Icon size={SIZES.transportSecondary} color={COLORS.white} />
@@ -288,7 +288,7 @@ export function TapTempoButton({
       onPressIn={onPress}
       accessibilityRole="button"
       accessibilityLabel="Tap tempo"
-      className={`items-center justify-center px-4 border-2 border-hairline-strong rounded-sm ${className}`}
+      className={`items-center justify-center px-4 border-2 border-hairline-strong rounded-md ${className}`}
       style={{ height: SIZES.control }}
     >
       <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
@@ -323,7 +323,7 @@ export function InstrumentIconButton({
         height: SIZES.control,
         opacity: disabled ? 0.4 : 1,
       }}
-      className={`items-center justify-center rounded-sm border-2 ${
+      className={`items-center justify-center rounded-md border-2 ${
         active ? "bg-white border-white" : "border-hairline-strong"
       }`}
     >

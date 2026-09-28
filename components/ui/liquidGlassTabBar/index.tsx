@@ -116,14 +116,18 @@ export default function LiquidGlassTabBar({ state, navigation }: TabBarProps) {
   return (
     <View pointerEvents="box-none" style={styles.dock}>
       {HAS_LIQUID_GLASS ? (
-        <GlassView
-          glassEffectStyle="regular"
-          isInteractive
-          tintColor={COLORS.surfaceGlass}
-          style={styles.bar}
-        >
-          {row}
-        </GlassView>
+        // The bar's glass is a background layer, and the row sits over it in a
+        // plain view -- not inside it. Glass nested in another glass view's
+        // content is flattened by the system, so the active-tab pill (itself a
+        // GlassView) would render as nothing if it lived in here.
+        <View style={styles.glassShell}>
+          <GlassView
+            glassEffectStyle="regular"
+            tintColor={COLORS.surfaceGlass}
+            style={[StyleSheet.absoluteFill, { borderRadius: RADII.nav }]}
+          />
+          <View style={[styles.bar, { overflow: "visible" }]}>{row}</View>
+        </View>
       ) : (
         <View style={[{ borderRadius: RADII.nav }, SHADOWS.float]}>
           <BlurView
@@ -158,6 +162,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: RADII.nav,
     overflow: "hidden",
+  },
+  glassShell: {
+    borderRadius: RADII.nav,
   },
   fallbackBar: {
     borderWidth: 1,

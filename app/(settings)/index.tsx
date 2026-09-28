@@ -19,7 +19,7 @@ import {
   VolumeHigh,
   DocumentText,
   ShieldSecurity,
-  NotificationBing,
+  Musicnote,
   Flash,
   MessageQuestion,
 } from "../../components/icons";
@@ -52,7 +52,11 @@ const SettingsScreen = () => {
   const { prefs, setPref } = usePreferences();
   const { endSession } = useSessionCue();
   const { stopMetronome } = useMetronome();
-  const { signOut } = useAuth();
+  const { signOut, isSignedIn } = useAuth();
+
+  // A guest has nothing to log out of. replace, for the same reason log out
+  // uses it below.
+  const handleSignIn = () => router.replace("/login");
 
   const handleLogout = () => {
     Alert.alert("Log out", "Are you sure you want to log out?", [
@@ -68,6 +72,9 @@ const SettingsScreen = () => {
           // up the phone hears whatever the last one left running.
           endSession();
           stopMetronome();
+          // An explicit sign-out should land on the sign-in screen next launch
+          // too, not straight back into the app as a guest.
+          setPref("guest", false);
           try {
             await signOut();
           } catch {
@@ -113,8 +120,9 @@ const SettingsScreen = () => {
 
         <SettingSection title="App">
           <SettingSwitch
-            icon={NotificationBing}
-            label="Notifications"
+            icon={Musicnote}
+            label="Meter accents"
+            sublabel="Accent the strong beats in compound and odd meters"
             value={prefs.meterAccents}
             border={true}
             onValueChange={(value) => setPref("meterAccents", value)}
@@ -157,8 +165,8 @@ const SettingsScreen = () => {
         {/* The same white button the profile screen signs out with, rather
             than a second one shaped like it. */}
         <InverseButton
-          label="Log out"
-          onPress={handleLogout}
+          label={isSignedIn ? "Log out" : "Sign in"}
+          onPress={isSignedIn ? handleLogout : handleSignIn}
           style={{ alignSelf: "center" }}
         />
 

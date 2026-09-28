@@ -12,7 +12,7 @@ import {
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ScreenHeader from "../../components/ui/screenHeader";
 import Screen from "../../components/ui/screen";
@@ -78,7 +78,13 @@ const matchesQuery = (loop: Loop, query: string) => {
 
 const LoopBrowserScreen = () => {
   const router = useRouter();
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  // `?artist=` opens the browser already narrowed to one artist -- how the
+  // store's "Open in Bits" lands on the loops it just downloaded. It sets the
+  // ordinary Artist filter, so it shows as a chip and clears like any other.
+  const { artist } = useLocalSearchParams<{ artist?: string }>();
+  const [filters, setFilters] = useState<Filters>(() =>
+    artist ? { ...NO_FILTERS, artists: [artist] } : NO_FILTERS
+  );
   const [query, setQuery] = useState("");
 
   const sheetRef = useRef<BottomSheetModal>(null);

@@ -101,11 +101,15 @@ function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
 // Small persistent indicators shown on the *other* tabs while a playback
 // engine keeps running in the background, so an engine is never silently
 // playing with no way to see or stop it. Mounted at the app root
-// (app/_layout.tsx), but only rendered while on one of the three tab screens
+// (app/_layout.tsx), but only rendered while on one of the four tab screens
 // -- hidden on Settings, the loop/pad pickers, and auth screens. Laid out in
 // a single positioned row so the Metronome, Loop and Pad pills sit side by
 // side (wrapping if they don't fit) when more than one happens to be playing.
-const TAB_PATHS = ["/loop", "/pad", "/metro"];
+//
+// Every tab in (tabs)/_layout belongs here. Session was added after this list
+// was written and left off it, so a loop playing while you were on Session
+// had no pill at all.
+const TAB_PATHS = ["/session", "/loop", "/pad", "/metro"];
 
 export default function FloatingEngineControls() {
   const router = useRouter();

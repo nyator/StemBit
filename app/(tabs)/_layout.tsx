@@ -1,6 +1,7 @@
 import { Redirect, Tabs } from "expo-router";
 import { View } from "react-native";
 import { useAuth } from "@clerk/expo";
+import { usePreferences } from "../../context/PreferencesContext";
 import LiquidGlassTabBar from "../../components/ui/liquidGlassTabBar";
 import { COLORS } from "../../constants/theme";
 
@@ -9,6 +10,7 @@ import { COLORS } from "../../constants/theme";
 // audio survives navigating to non-tab screens. This layout is just the tabs.
 export default function TabLayout() {
   const { isLoaded, isSignedIn } = useAuth();
+  const { prefs } = usePreferences();
 
   // The gate for the whole instrument surface.
   //
@@ -24,7 +26,8 @@ export default function TabLayout() {
     return <View style={{ flex: 1, backgroundColor: COLORS.canvas }} />;
   }
 
-  if (!isSignedIn) {
+  // Guests are let through: nothing behind the tabs needs an account.
+  if (!isSignedIn && !prefs.guest) {
     return <Redirect href="/(auths)/login" />;
   }
 

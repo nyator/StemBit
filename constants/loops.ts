@@ -92,7 +92,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro",
     title: "Afro",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 96,
     timeSignature: "4 / 4",
@@ -104,7 +104,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_97",
     title: "Afro 97",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 97,
     timeSignature: "4 / 4",
@@ -116,7 +116,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_97_ii",
     title: "Afro 97 II",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 97,
     timeSignature: "4 / 4",
@@ -128,7 +128,7 @@ export const LOOPS: Loop[] = [
   {
     key: "back_home",
     title: "Back Home",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 128,
     timeSignature: "4 / 4",
@@ -140,7 +140,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_dancehall",
     title: "Afro Dancehall",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 131,
     timeSignature: "4 / 4",
@@ -152,7 +152,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_local",
     title: "Afro Local",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 136,
     timeSignature: "4 / 4",
@@ -164,7 +164,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_oi",
     title: "Afro OI",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 107,
     timeSignature: "4 / 4",
@@ -176,7 +176,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_p",
     title: "Afro P",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 122,
     timeSignature: "4 / 4",
@@ -188,7 +188,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_piano",
     title: "Afro Piano",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Afro",
     bpm: 124,
     timeSignature: "4 / 4",
@@ -200,7 +200,7 @@ export const LOOPS: Loop[] = [
   {
     key: "afro_praise",
     title: "Afro Praise",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Praise",
     bpm: 135,
     timeSignature: "4 / 4",
@@ -212,7 +212,7 @@ export const LOOPS: Loop[] = [
   {
     key: "drill",
     title: "Drill",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Drill",
     bpm: 132,
     timeSignature: "4 / 4",
@@ -224,7 +224,7 @@ export const LOOPS: Loop[] = [
   {
     key: "pst_nath",
     title: "Pst Nath",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Highlife",
     bpm: 87,
     timeSignature: "4 / 4",
@@ -236,7 +236,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_80",
     title: "Worship 80",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 80,
     timeSignature: "4 / 4",
@@ -248,7 +248,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_80_ii",
     title: "Worship 80 II",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 80,
     timeSignature: "4 / 4",
@@ -260,7 +260,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_80_iii",
     title: "Worship 80 III",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 80,
     timeSignature: "4 / 4",
@@ -272,7 +272,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_mm",
     title: "Worship MM",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 80,
     timeSignature: "4 / 4",
@@ -284,7 +284,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_68",
     title: "Worship 6/8",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 80,
     timeSignature: "3 / 4",
@@ -296,7 +296,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_82",
     title: "Worship 82",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 82,
     timeSignature: "4 / 4",
@@ -308,7 +308,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_mover",
     title: "Worship Mover",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 82,
     timeSignature: "4 / 4",
@@ -320,7 +320,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_91",
     title: "Worship 91",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 91,
     timeSignature: "4 / 4",
@@ -332,7 +332,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_underdog",
     title: "Worship Underdog",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 94,
     timeSignature: "4 / 4",
@@ -344,7 +344,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_war_drum",
     title: "Worship War Drum",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 94,
     timeSignature: "4 / 4",
@@ -356,7 +356,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_war",
     title: "Worship War",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 98,
     timeSignature: "4 / 4",
@@ -368,7 +368,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_135",
     title: "Worship 135",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 135,
     timeSignature: "4 / 4",
@@ -380,7 +380,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_155",
     title: "Worship 155",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 155,
     timeSignature: "3 / 4",
@@ -392,7 +392,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_155_ii",
     title: "Worship 155 II",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 155,
     timeSignature: "3 / 4",
@@ -404,7 +404,7 @@ export const LOOPS: Loop[] = [
   {
     key: "worship_155_iii",
     title: "Worship 155 III",
-    artist: "Stembit",
+    artist: "Stembits",
     category: "Worship",
     bpm: 155,
     timeSignature: "3 / 4",

@@ -3,9 +3,10 @@ import { View, Text } from "react-native";
 import { router } from "expo-router";
 
 import Screen from "../../components/ui/screen";
-import { BrandButton } from "../../components/ui/brandButton";
+import { BrandButton, GhostButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
 import { useEmailCodeAuth } from "../../hooks/useEmailCodeAuth";
+import { usePreferences } from "../../context/PreferencesContext";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -15,6 +16,16 @@ const LoginScreen = () => {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { sendCode, isLoaded } = useEmailCodeAuth();
+  const { prefs, setPref } = usePreferences();
+
+  // Every instrument works offline and on-device; the account only carries a
+  // profile. So the way in without one is on this screen, not buried -- App
+  // Store guideline 5.1.1(v) rejects a sign-in wall in front of features that
+  // don't need it.
+  const continueAsGuest = () => {
+    setPref("guest", true);
+    router.replace(`/(tabs)/${prefs.launchScreen}`);
+  };
 
   // One field and one button, because there is no password to collect. An
   // address with no account gets one made for it -- see useEmailCodeAuth --
@@ -83,6 +94,11 @@ const LoginScreen = () => {
             onPress={submit}
             loading={isSubmitting}
             disabled={!isLoaded}
+          />
+
+          <GhostButton
+            label="Continue without an account"
+            onPress={continueAsGuest}
           />
 
           <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5 mt-3">

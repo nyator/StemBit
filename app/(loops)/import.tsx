@@ -890,7 +890,7 @@ export default function ImportLoopScreen() {
                 <TouchableOpacity
                   onPress={() => snapTrimToGrid(wholeBars, bpm)}
                   accessibilityLabel="Snap the region to whole bars"
-                  className="px-3 py-2 ml-2 bg-white rounded-sm"
+                  className="px-3 py-2 ml-2 bg-white rounded-md"
                 >
                   <Text className="text-black text-overline font-spaceBold">FIX</Text>
                 </TouchableOpacity>
@@ -898,7 +898,7 @@ export default function ImportLoopScreen() {
               <TouchableOpacity
                 onPress={resetTrimToAudible}
                 accessibilityLabel="Reset to the whole file"
-                className="px-3 py-2 ml-2 rounded-sm bg-white/10"
+                className="px-3 py-2 ml-2 rounded-md bg-white/10"
               >
                 <Text className="text-white text-overline font-spaceBold">RESET</Text>
               </TouchableOpacity>
@@ -994,7 +994,7 @@ export default function ImportLoopScreen() {
               <TouchableOpacity
                 onPressIn={controls.handleTapTempo}
                 accessibilityLabel="Tap along to set the tempo"
-                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-md"
                 style={{ height: SIZES.control }}
               >
                 <Text className="text-white text-title font-spaceBold">
@@ -1006,7 +1006,7 @@ export default function ImportLoopScreen() {
                 disabled={detecting}
                 style={{ height: SIZES.control, opacity: detecting ? 0.5 : 1 }}
                 accessibilityLabel="Find the tempo in the audio again"
-                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-md"
               >
                 <Text className="text-white text-title font-spaceBold">
                   {detecting ? "LISTENING…" : "FIND IT"}
@@ -1037,7 +1037,7 @@ export default function ImportLoopScreen() {
                   clickOn ? "Turn off the check click" : "Turn on the check click"
                 }
                 onPress={() => setClickOn((on) => !on)}
-                className={`items-center justify-center px-2 py-2 rounded-sm border-2 ${clickOn ? "bg-white border-white" : "border-hairline-strong"
+                className={`items-center justify-center px-2 py-2 rounded-md border-2 ${clickOn ? "bg-white border-white" : "border-hairline-strong"
                   }`}
               >
                 {clickOn ? (

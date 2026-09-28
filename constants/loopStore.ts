@@ -92,6 +92,13 @@ export type RemotePack = {
    * somebody open a "pack" to find a single track in it.
    */
   single: boolean;
+  /** Put in the store's banner ahead of everything else. */
+  featured?: boolean;
+  /**
+   * When it was published, as an ISO date. Orders the banner's "new" picks
+   * when nothing is featured. Absent is fine -- it just doesn't count as new.
+   */
+  addedAt?: string;
 };
 
 export const isPackFree = (pack: RemotePack) => !pack.price;
@@ -231,6 +238,11 @@ const parsePack = (value: unknown, single: boolean): RemotePack[] => {
       currency: typeof record.currency === "string" ? record.currency : undefined,
       loops,
       single,
+      featured: record.featured === true ? true : undefined,
+      addedAt:
+        typeof record.addedAt === "string" && !Number.isNaN(Date.parse(record.addedAt))
+          ? record.addedAt
+          : undefined,
     },
   ];
 };
@@ -266,6 +278,8 @@ export const parseCatalog = (value: unknown): RemotePack[] => {
             artist: loop.artist,
             price: loop.price,
             currency: loop.currency,
+            featured: loop.featured,
+            addedAt: loop.addedAt,
             loops: [loop],
           },
           true

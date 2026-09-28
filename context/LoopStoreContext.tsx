@@ -50,6 +50,17 @@ const CACHE_FILE = `${FileSystem.documentDirectory}loopCatalog.json`;
 // resident that only the index's existence check would ever notice.
 const DOWNLOAD_DIR = `${FileSystem.cacheDirectory}loop-downloads/`;
 
+/**
+ * What the store lists: only packs this device can actually get.
+ *
+ * Paid packs stay out of the app until they can be bought through StoreKit /
+ * Play Billing. A price tag on something that can't be purchased is an App
+ * Store rejection twice over -- an unfinished feature (2.1) and a digital good
+ * with no in-app purchase behind it (3.1.1). The manifest can keep listing
+ * them; when purchasing lands, this filter is what goes.
+ */
+const listable = (packs: RemotePack[]) => packs.filter(isPackUnlocked);
+
 type StoreStatus = "loading" | "ready" | "error";
 
 type LoopStoreContextValue = {
@@ -126,7 +137,7 @@ export function LoopStoreProvider({ children }: { children: ReactNode }) {
       // error page, most likely) fails as a parse error we can report rather
       // than as an exception from inside fetch's own json().
       const text = await response.text();
-      const parsed = parseCatalog(JSON.parse(text));
+      const parsed = listable(parseCatalog(JSON.parse(text)));
 
       setPacks(parsed);
       setStatus("ready");
@@ -159,8 +170,8 @@ export function LoopStoreProvider({ children }: { children: ReactNode }) {
       try {
         const info = await FileSystem.getInfoAsync(CACHE_FILE);
         if (info.exists) {
-          const cached = parseCatalog(
-            JSON.parse(await FileSystem.readAsStringAsync(CACHE_FILE))
+          const cached = listable(
+            parseCatalog(JSON.parse(await FileSystem.readAsStringAsync(CACHE_FILE)))
           );
           if (isMounted && cached.length > 0) {
             setPacks(cached);

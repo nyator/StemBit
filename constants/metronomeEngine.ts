@@ -90,8 +90,13 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (!audioContext) {
             audioContext = new AudioContextClass();
           }
-          if (audioContext.state === "suspended") {
-            audioContext.resume();
+          // Anything but running wakes it -- "interrupted" as well as
+          // "suspended". iOS marks the context interrupted when another app
+          // takes the audio (a YouTube video in picture-in-picture, say), and
+          // it stays that way until someone asks for it back.
+          if (audioContext.state !== "running" && audioContext.state !== "closed") {
+            var waking = audioContext.resume();
+            if (waking && waking.catch) waking.catch(function () {});
           }
           return audioContext;
         }
@@ -246,14 +251,19 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           var resuming = ctx.resume();
           if (resuming && typeof resuming.then === "function") {
-            resuming.then(
-              function () {
-                beginPlayback(ctx);
-              },
-              function () {
-                beginPlayback(ctx);
-              }
-            );
+            // Whichever comes first: the resume settling, or a short wait. A
+            // context another app has interrupted can leave resume() pending
+            // rather than settled, and waiting on it alone would leave the
+            // transport "playing" with nothing scheduled. beginPlayback runs
+            // once -- the second call finds it already started.
+            var begun = false;
+            var beginOnce = function () {
+              if (begun) return;
+              begun = true;
+              beginPlayback(ctx);
+            };
+            resuming.then(beginOnce, beginOnce);
+            setTimeout(beginOnce, 300);
           } else {
             beginPlayback(ctx);
           }
@@ -331,7 +341,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // song rather than restarting it.
         function resumeAudio() {
           if (!audioContext) return;
-          if (audioContext.state !== "suspended") return;
+          // Suspended or interrupted -- see ensureContext.
+          if (audioContext.state === "running" || audioContext.state === "closed") return;
           var resumed = audioContext.resume();
           if (resumed && resumed.catch) {
             resumed.catch(function () {
@@ -381,6 +392,9 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             // nobody left to answer, and the app rebuilds the engine.
             case "resume":
               resumeAudio();
+              break;
+            case "setMixWithOthers":
+              setMixWithOthers(data.enabled);
               break;
             case "ping":
               post({ type: "pong" });

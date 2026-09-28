@@ -84,16 +84,17 @@ describe("session engine page", () => {
   });
 
   it("compiles the page it renders", () => {
-    // Compiled, not run. A syntax error anywhere in either script leaves the
+    // Compiled, not run. A syntax error anywhere in any script leaves the
     // app with no session engine at all, and nothing else would catch it --
-    // TypeScript never looks inside a template literal.
+    // TypeScript never looks inside a template literal. Three: the tempo
+    // analyser, the shared audio-session switch, and the engine.
     const { buildSessionEngineHtml } = require("../../constants/sessionEngine");
     const scripts = [
       ...buildSessionEngineHtml().matchAll(
         /<script[^>]*>([\s\S]*?)<\/script>/g
       ),
     ].map((match) => match[1]);
-    expect(scripts).toHaveLength(2);
+    expect(scripts).toHaveLength(3);
     scripts.forEach((each) => {
       expect(() => new Function(each)).not.toThrow();
     });

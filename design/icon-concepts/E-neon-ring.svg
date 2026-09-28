@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- E — Neon Ring: the wordmark "s" in white, circled by a glowing iridescent ring. -->
+  <defs>
+    <clipPath id="icon"><rect width="1024" height="1024" rx="230"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#15161C"/><stop offset="1" stop-color="#060709"/>
+    </linearGradient>
+    <linearGradient id="holo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5EEAD4"/>
+      <stop offset="0.3" stop-color="#58BEEC"/>
+      <stop offset="0.55" stop-color="#A78BFA"/>
+      <stop offset="0.8" stop-color="#F472B6"/>
+      <stop offset="1" stop-color="#FCD34D"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="28"/></filter>
+    <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#icon)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <circle cx="512" cy="512" r="330" fill="none" stroke="url(#holo)" stroke-width="44" filter="url(#glow)" opacity="0.9"/>
+    <circle cx="512" cy="512" r="330" fill="none" stroke="url(#holo)" stroke-width="30"/>
+    <!-- Gochi Hand, the wordmark's face. Nudge vertically in Figma if needed. -->
+    <text x="512" y="690" text-anchor="middle" font-family="Gochi Hand" font-size="640" fill="#FFFFFF" filter="url(#textShadow)">s</text>
+  </g>
+</svg>

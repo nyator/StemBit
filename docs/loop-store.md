@@ -88,6 +88,11 @@ browser, add a CORS rule on the bucket allowing `GET` from your web origin.
 - **`bytes`** is optional and only drives the size shown on the row.
 - **`loops`** at the root is for singles: same shape, plus its own `artist`, and
   each one lists on its own row instead of behind a pack holding one thing.
+- **`featured`** (`true`) and **`addedAt`** (an ISO date, `"2026-09-20"`) are
+  optional, on a pack or a single, and decide what fills the big banner at the
+  top of the store: everything featured first, then the newest by `addedAt`,
+  up to five. With neither set anywhere, the banner shows the first few entries
+  in the manifest, so an old catalogue still gets one.
 
 Anything malformed is dropped entry by entry — a pack with one bad loop lists
 its other eleven, and a manifest that won't parse at all leaves the last cached

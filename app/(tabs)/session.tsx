@@ -247,12 +247,6 @@ export default function SessionsScreen() {
         </ScrollView>
       )}
 
-      {/* Liquid Glass tinted brand on iOS 26+, the same treatment BrandButton
-          uses; the flat brand circle everywhere else. */}
-      {/* A plain style object, not Pressable's style function: NativeWind
-          doesn't apply a function style here, and the button loses its
-          absolute position and drops into the layout. Glass handles its own
-          press feedback, so the fade is only for the flat fallback. */}
       <TouchableOpacity
         onPress={openCreateSheet}
         accessibilityRole="button"
