@@ -33,15 +33,42 @@ import "../global.css";
  */
 const MIN_DISPLAY_MS = 700;
 
+/**
+ * How long the gate waits before saying what it's waiting for.
+ *
+ * Both things it waits on -- preferences read from disk, and Clerk loading the
+ * session -- normally land in well under a second. Past this, one of them is
+ * stuck, and a bare wordmark gives no hint which; a release build can't be
+ * inspected, so the screen itself has to name it.
+ */
+const STALL_NOTICE_MS = 6000;
+
 export default function Page() {
   const { prefs, isLoaded } = usePreferences();
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const [minDisplayElapsed, setMinDisplayElapsed] = useState(false);
+  const [stalled, setStalled] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setMinDisplayElapsed(true), MIN_DISPLAY_MS);
-    return () => clearTimeout(timer);
+    const stall = setTimeout(() => setStalled(true), STALL_NOTICE_MS);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(stall);
+    };
   }, []);
+
+  const waitingFor = [
+    !isLoaded && "settings",
+    !authLoaded && "sign-in service (Clerk)",
+  ].filter(Boolean) as string[];
+
+  useEffect(() => {
+    if (stalled && waitingFor.length > 0) {
+      console.warn(`[StemBits] Startup stuck waiting for: ${waitingFor.join(", ")}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stalled, isLoaded, authLoaded]);
 
   // Entrance: the wordmark settles in once, on mount -- not looping, so it
   // never competes with the glow behind it for attention.
@@ -71,6 +98,15 @@ export default function Page() {
           stembits
         </Text>
       </Animated.View>
+
+      {stalled && waitingFor.length > 0 && (
+        <Text
+          className="absolute text-center text-overline text-ink-muted font-satoshiRegular"
+          style={{ bottom: 80, left: 24, right: 24 }}
+        >
+          Still starting… waiting for {waitingFor.join(" and ")}
+        </Text>
+      )}
 
       {isLoaded && authLoaded && minDisplayElapsed && (
         <Redirect

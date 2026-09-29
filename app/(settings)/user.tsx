@@ -334,7 +334,7 @@ const UserScreen = () => {
                 />
               </SettingSection>
               <Text className="px-2 mt-2 text-ink-faint text-overline font-satoshiRegular leading-4">
-                Removes your account and everything Stembits has stored on this
+                Removes your account and everything StemBits has stored on this
                 device.
                 Imported loops, downloaded packs, setlists and
                 settings. It can&apos;t be undone.
@@ -345,7 +345,7 @@ const UserScreen = () => {
               <ProfileCircle size={40}
                 color="rgba(255,255,255,0.3)" />
               <Text className="mt-3 text-center text-white/50 font-satoshiMedium">
-                You're using Stembits without an account. Sign in to sync your
+                You're using StemBits without an account. Sign in to sync your
                 profile across devices.
               </Text>
               <TouchableOpacity

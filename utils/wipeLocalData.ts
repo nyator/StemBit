@@ -3,7 +3,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 
 /**
- * Everything StemBit has written to this device on the user's behalf.
+ * Everything StemBits has written to this device on the user's behalf.
  *
  * Listed in one place because the alternative is each context deleting its own
  * file and a new one quietly not being added here -- which is how a "delete my

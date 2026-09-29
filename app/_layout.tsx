@@ -1,7 +1,7 @@
-import {SplashScreen, Stack} from "expo-router";
+import {SplashScreen, Stack, type ErrorBoundaryProps} from "expo-router";
 import {useFonts} from "expo-font";
 import {useEffect} from "react";
-import {Text, View} from "react-native";
+import {ScrollView, Text, TouchableOpacity, View} from "react-native";
 import {ClerkProvider} from "@clerk/expo";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {tokenCache} from "../lib/tokenCache";
@@ -28,6 +28,52 @@ import {COLORS} from "../constants/theme";
 // than read inside the SDK: env vars are not inlined inside node_modules, so a
 // production build would hand it undefined.
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+/**
+ * What the app shows instead of crashing when something throws while it renders.
+ *
+ * Without it, an error before the first screen is fatal, and expo-updates'
+ * error recovery then aborts the app on purpose -- so a release build just
+ * vanishes on launch, and the crash report names expo-updates rather than the
+ * JavaScript that actually failed (the message isn't in iOS crash logs at all).
+ * Here the message is on screen, where a TestFlight tester can screenshot it.
+ *
+ * Plain styles and the system font only: this can render before the fonts or
+ * any provider have loaded, so it must depend on neither.
+ */
+export function ErrorBoundary({error, retry}: ErrorBoundaryProps) {
+    // The splash is held until fonts load; an error first would leave it up
+    // over this screen forever.
+    useEffect(() => {
+        SplashScreen.hideAsync().catch(() => {});
+    }, []);
+
+    return (
+        <View style={{flex: 1, backgroundColor: COLORS.canvas, paddingTop: 80, paddingHorizontal: 24}}>
+            <Text style={{color: COLORS.white, fontSize: 22, fontWeight: "700"}}>
+                StemBits hit a problem
+            </Text>
+            <Text style={{color: COLORS.textMuted, fontSize: 15, marginTop: 8}}>
+                Screenshot this and send it to the developer.
+            </Text>
+            <ScrollView style={{flex: 1, marginTop: 20}}>
+                <Text selectable style={{color: COLORS.danger, fontSize: 15, fontWeight: "600"}}>
+                    {error.name}: {error.message}
+                </Text>
+                <Text selectable style={{color: COLORS.textMuted, fontSize: 12, marginTop: 12}}>
+                    {(error.stack ?? "").split("\n").slice(0, 12).join("\n")}
+                </Text>
+            </ScrollView>
+            <TouchableOpacity
+                onPress={retry}
+                accessibilityRole="button"
+                style={{alignItems: "center", paddingVertical: 16, marginBottom: 40, borderRadius: 14, backgroundColor: COLORS.brand}}
+            >
+                <Text style={{color: COLORS.white, fontSize: 16, fontWeight: "700"}}>Try again</Text>
+            </TouchableOpacity>
+        </View>
+    );
+}
 
 function RootLayout() {
     // Every face is registered under its PostScript-style name, and those names

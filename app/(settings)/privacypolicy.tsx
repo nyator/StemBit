@@ -4,7 +4,7 @@ import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
 import { SUPPORT_EMAIL } from "../../constants/theme";
 
-// What Stembits actually does with data, and nothing it doesn't.
+// What StemBits actually does with data, and nothing it doesn't.
 //
 // App Review reads this against the app and against the App Privacy answers in
 // App Store Connect, and a policy that describes collection the app doesn't do
@@ -19,7 +19,7 @@ const SECTIONS: {
 }[] = [
         {
             title: "01. What we collect",
-            body: "Stembits works without an account. If you create one, we store your email address, and optionally a display name and a profile photo you choose. Nothing else about you is collected.",
+            body: "StemBits works without an account. If you create one, we store your email address, and optionally a display name and a profile photo you choose. Nothing else about you is collected.",
         },
         {
             title: "02. What stays on your device",
@@ -31,19 +31,19 @@ const SECTIONS: {
         },
         {
             title: "04. What we don't do",
-            body: "Stembits has no advertising, no analytics and no tracking across apps or websites. We never sell or share your data with advertisers or data brokers.",
+            body: "StemBits has no advertising, no analytics and no tracking across apps or websites. We never sell or share your data with advertisers or data brokers.",
         },
         {
             title: "05. Photos",
-            body: "Stembits only reads the single photo you pick as your profile picture. It is uploaded to your account so it appears on your profile, and removed when you remove it or delete your account.",
+            body: "StemBits only reads the single photo you pick as your profile picture. It is uploaded to your account so it appears on your profile, and removed when you remove it or delete your account.",
         },
         {
             title: "06. Deleting your data",
-            body: "Settings → Profile → Delete account permanently deletes your account and everything Stembits has stored on your device. Without an account, deleting the app removes everything.",
+            body: "Settings → Profile → Delete account permanently deletes your account and everything StemBits has stored on your device. Without an account, deleting the app removes everything.",
         },
         {
             title: "07. Children",
-            body: "Stembits is not directed at children under 13, and we do not knowingly collect their personal information.",
+            body: "StemBits is not directed at children under 13, and we do not knowingly collect their personal information.",
         },
         {
             title: "08. Contact",
@@ -59,7 +59,7 @@ const privacypolicy = () => {
             <ScrollView className="flex-1 px-screen">
                 <View className="mb-10">
                     <Text className="self-stretch justify-start text-ink-muted text-center text-label font-satoshiRegular leading-10">
-                        How Stembits handles your information. Last updated {UPDATED}.
+                        How StemBits handles your information. Last updated {UPDATED}.
                     </Text>
                 </View>
                 {SECTIONS.map((section) => (

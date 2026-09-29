@@ -15,7 +15,7 @@ import { useSessionPlayback } from "../context/SessionPlaybackContext";
 // exactly when the user is playing an instrument rather than touching the
 // phone.
 //
-// Scoped to actual playback rather than the whole app: an idle StemBit on
+// Scoped to actual playback rather than the whole app: an idle StemBits on
 // screen has no claim on the user's battery.
 //
 // Renders nothing; mounted at the app root alongside FloatingEngineControls.

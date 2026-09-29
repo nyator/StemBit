@@ -67,7 +67,7 @@ const Help = () => {
           className="flex-row items-center justify-center py-4 mt-2 mb-10 rounded-2xl bg-brand"
           onPress={() =>
             Linking.openURL(
-              `mailto:${SUPPORT_EMAIL}?subject=Stembits Support`
+              `mailto:${SUPPORT_EMAIL}?subject=StemBits Support`
             ).catch(() =>
               // No mail account on the device (common on review iPads): a
               // button that silently does nothing reads as broken, so say

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Stembits",
+    "name": "StemBits",
     "slug": "StemBit",
     "scheme": "stembit",
     "version": "1.0.0",
@@ -40,6 +40,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
+          "imageWidth": 129,
           "resizeMode": "contain",
           "backgroundColor": "#101116"
         }
@@ -49,7 +50,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Stembits uses your photo library so you can pick a profile picture.",
+          "photosPermission": "StemBits uses your photo library so you can pick a profile picture.",
           "cameraPermission": false,
           "microphonePermission": false
         }
