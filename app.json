@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.builtelo.stembits",
+      "appleTeamId": "2TB72JR5D3",
       "runtimeVersion": "1.0.0",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
