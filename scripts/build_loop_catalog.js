@@ -14,6 +14,7 @@
  *   loops-to-upload/
  *     kwame-afro-vol1/
  *       pack.json
+ *       cover.jpg          <- the pack's artwork, square; .png and .webp work too
  *       deep-groove.wav
  *       ...
  *
@@ -24,13 +25,22 @@
  *     "title": "Afro Vol. 1",
  *     "artist": "Kwame Mensah",
  *     "description": "Twelve bars cut from the Sunday sets.",
+ *     "genre": "Afrobeats",
+ *     "tags": ["Live drums", "Percussion"],
+ *     "license": "Royalty-free",
+ *     "addedAt": "2026-10-01",
+ *     "featured": false,
  *     "price": 0,
  *     "single": false,
  *     "loops": [
  *       { "file": "deep-groove.wav", "title": "Deep Groove",
- *         "category": "Afro", "bpm": 104, "timeSignature": "4 / 4" }
+ *         "category": "Afro", "bpm": 104, "timeSignature": "4 / 4",
+ *         "musicalKey": "A minor" }
  *     ]
  *   }
+ *
+ * Everything from genre down is optional. A pack.json can name its artwork with
+ * "cover": "art.png"; otherwise the first cover.* in the folder is used.
  *
  * Usage:  node scripts/build_loop_catalog.js ./loops-to-upload [> catalog.json]
  *
@@ -54,14 +64,19 @@ if (!fs.existsSync(root)) {
   process.exit(1);
 }
 
-/** Exact duration, in seconds, from the frame count rather than the header. */
-function durationOf(file) {
+const COVER_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+
+/**
+ * Exact duration, in seconds, from the frame count rather than the header --
+ * plus the sample rate and bit depth the store lists on the product page.
+ */
+function probe(file) {
   const out = execFileSync(
     "ffprobe",
     [
       "-v", "error",
       "-select_streams", "a:0",
-      "-show_entries", "stream=duration_ts,sample_rate",
+      "-show_entries", "stream=duration_ts,sample_rate,bits_per_sample,bits_per_raw_sample",
       "-of", "default=noprint_wrappers=1",
       file,
     ],
@@ -69,7 +84,24 @@ function durationOf(file) {
   );
   const rate = Number(out.match(/sample_rate=(\d+)/)[1]);
   const frames = Number(out.match(/duration_ts=(\d+)/)[1]);
-  return frames / rate;
+  // PCM reports bits_per_sample; FLAC and friends report bits_per_raw_sample;
+  // lossy formats report 0 for both, and then there is no bit depth to state.
+  const depth =
+    Number((out.match(/bits_per_sample=(\d+)/) || [])[1]) ||
+    Number((out.match(/bits_per_raw_sample=(\d+)/) || [])[1]) ||
+    undefined;
+  return { duration: frames / rate, sampleRate: rate, bitDepth: depth };
+}
+
+/** The pack's artwork file name, from pack.json or the first cover.* present. */
+function coverFileOf(dir, meta) {
+  if (meta.cover) return fs.existsSync(path.join(dir, meta.cover)) ? meta.cover : null;
+  return (
+    fs
+      .readdirSync(dir)
+      .find((name) => /^cover\./i.test(name) && COVER_EXTENSIONS.includes(path.extname(name).toLowerCase())) ||
+    null
+  );
 }
 
 const problems = [];
@@ -111,7 +143,7 @@ for (const folder of folders) {
       );
     }
 
-    const duration = durationOf(source);
+    const { duration, sampleRate, bitDepth } = probe(source);
     const bytes = fs.statSync(source).size;
 
     // The whole-bars check import_loops.js runs on the shipped catalogue,
@@ -145,6 +177,12 @@ for (const folder of folders) {
       // paid loop with no file lists and locks rather than disappearing.
       ...(paid ? {} : { file: `packs/${id}/${entry.file}` }),
       bytes,
+      // Stated rather than left to the file path, which a paid loop doesn't
+      // have -- its product page still needs to say what you'd be buying.
+      format: path.extname(entry.file).slice(1).toLowerCase(),
+      sampleRate,
+      ...(bitDepth ? { bitDepth } : {}),
+      ...(entry.musicalKey ? { musicalKey: entry.musicalKey } : {}),
     });
   }
 
@@ -153,11 +191,30 @@ for (const folder of folders) {
     continue;
   }
 
+  // The artwork is public even for a paid pack -- it's the shop window -- so
+  // unlike paid audio it always gets a path.
+  const coverFile = coverFileOf(dir, meta);
+  if (!coverFile) {
+    problems.push(`${id}: no cover art (add cover.jpg), the store will draw one`);
+  }
+
+  // What describes the pack rather than its audio, shared by a pack and a
+  // single alike.
+  const details = {
+    ...(coverFile ? { cover: `packs/${id}/${coverFile}` } : {}),
+    ...(meta.genre ? { genre: meta.genre } : {}),
+    ...(Array.isArray(meta.tags) && meta.tags.length ? { tags: meta.tags } : {}),
+    ...(meta.license ? { license: meta.license } : {}),
+    ...(meta.featured ? { featured: true } : {}),
+    ...(meta.addedAt ? { addedAt: meta.addedAt } : {}),
+  };
+
   const built = {
     id,
     title: meta.title,
     artist: meta.artist,
     ...(meta.description ? { description: meta.description } : {}),
+    ...details,
     ...(paid ? { price: meta.price, currency: meta.currency || "USD" } : {}),
     loops,
   };
@@ -166,7 +223,12 @@ for (const folder of folders) {
   // lists them one per row instead of behind a pack that holds one thing.
   if (meta.single) {
     for (const entry of loops) {
-      singles.push({ ...entry, artist: meta.artist, ...(paid ? { price: meta.price } : {}) });
+      singles.push({
+        ...entry,
+        artist: meta.artist,
+        ...details,
+        ...(paid ? { price: meta.price, currency: meta.currency || "USD" } : {}),
+      });
     }
   } else {
     packs.push(built);

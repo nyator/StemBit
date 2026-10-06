@@ -34,8 +34,8 @@ import {
   type Loop,
 } from "../../constants/loops";
 import { useUserLoops } from "../../context/UserLoopsContext";
-import { Add, Download, MusicFilter, TickCircle } from "../../components/icons";
-import { COLORS, SIZES } from "../../constants/theme";
+import { Add, ChevronDown, Download, Filter } from "../../components/icons";
+import { COLORS, LAYOUT, SIZES } from "../../constants/theme";
 
 // The three axes a loop can be narrowed by. Within an axis, checking more than
 // one value is an OR -- "Worship" and "Afro" together get you either. Across
@@ -157,66 +157,110 @@ const LoopBrowserScreen = () => {
 
   const activeCount = active.length + (query.trim().length > 0 ? 1 : 0);
 
-  const renderSection = (axis: Axis) => (
-    <View key={axis} className="w-full gap-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="uppercase text-overline font-spaceBold text-white/70">
-          {AXIS_LABEL[axis]}
-        </Text>
-        {filters[axis].length > 0 && (
+  // Which sheet sections are unfolded. They start folded so all three
+  // headings fit on one screen -- the artist list alone can run long -- except
+  // one already narrowed (an `?artist=` arrival), which opens to show it.
+  const [open, setOpen] = useState<Record<Axis, boolean>>(() => ({
+    categories: false,
+    artists: !!artist,
+    meters: false,
+  }));
+  const toggleOpen = (axis: Axis) =>
+    setOpen((current) => ({ ...current, [axis]: !current[axis] }));
+
+  const renderSection = (axis: Axis) => {
+    const isOpen = open[axis];
+    const ticked = filters[axis].length;
+    return (
+      // One row per section, ruled above and below like a settings list: the
+      // first section draws the top rule, every section draws its bottom one.
+      <View
+        key={axis}
+        className={`w-full border-b border-white/10 ${axis === "categories" ? "border-t" : ""}`}
+      >
+        <View className="flex-row items-center" style={{ minHeight: 52 }}>
+          {/* The whole row folds the section; folded, it still says how many
+              are ticked inside so nothing is hidden silently. */}
           <TouchableOpacity
-            onPress={() => clearAxis(axis)}
-            accessibilityLabel={`Clear ${AXIS_LABEL[axis]} filter`}
+            onPress={() => toggleOpen(axis)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isOpen }}
+            accessibilityLabel={`${AXIS_LABEL[axis]}${ticked ? `, ${ticked} selected` : ""}`}
+            className="flex-row items-center flex-1 gap-2 py-3"
           >
-            <Text className="text-brand-from text-overline font-satoshiMedium">
-              Clear
+            <Text className="flex-1 text-white text-body font-satoshiMedium">
+              {AXIS_LABEL[axis]}
             </Text>
+            {/* What's picked, by name -- readable without unfolding. */}
+            {ticked > 0 && (
+              <Text
+                className="text-brand-from text-overline font-satoshiMedium"
+                style={{ maxWidth: "55%" }}
+                numberOfLines={1}
+              >
+                {filters[axis].join(", ")}
+              </Text>
+            )}
+            <ChevronDown
+              size={16}
+              color={COLORS.textMuted}
+              style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}
+            />
           </TouchableOpacity>
+        </View>
+        {isOpen && (
+          <View className="pb-2">
+            {ticked > 0 && (
+              <TouchableOpacity
+                onPress={() => clearAxis(axis)}
+                accessibilityLabel={`Clear ${AXIS_LABEL[axis]} filter`}
+                className="self-end pb-1"
+              >
+                <Text className="text-brand-from text-overline font-satoshiMedium">
+                  Clear
+                </Text>
+              </TouchableOpacity>
+            )}
+            {axisValues[axis].map((value, i) => {
+              const selected = filters[axis].includes(value);
+              return (
+                <TouchableOpacity
+                  key={value}
+                  onPress={() => toggle(axis, value)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                  activeOpacity={0.75}
+                  // Plain rows with a rule between them, indented under the
+                  // section's heading.
+                  className={`flex-row items-center gap-3 py-3 pl-2 ${
+                    i > 0 ? "border-t border-white/5" : ""
+                  }`}
+                >
+                  {/* Just the circle: outlined when off, filled brand blue when on. */}
+                  <View
+                    className="rounded-full"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      backgroundColor: selected ? COLORS.brand : "transparent",
+                      borderWidth: selected ? 0 : 1,
+                      borderColor: "rgba(255,255,255,0.2)",
+                    }}
+                  />
+                  <Text className="flex-1 text-white text-body font-satoshiMedium">
+                    {value}
+                  </Text>
+                  <Text className="text-ink-muted text-overline font-satoshiRegular">
+                    {countFor(axis, value)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
       </View>
-      <View className="gap-2">
-        {axisValues[axis].map((value) => {
-          const selected = filters[axis].includes(value);
-          return (
-            <TouchableOpacity
-              key={value}
-              onPress={() => toggle(axis, value)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: selected }}
-              activeOpacity={0.75}
-              className="flex-row items-center gap-3 p-3 rounded-md"
-              style={{
-                backgroundColor: selected
-                  ? "rgba(0,139,194,0.14)"
-                  : COLORS.surface,
-                borderWidth: 1,
-                borderColor: selected ? COLORS.brand : "transparent",
-              }}
-            >
-              <View
-                className="items-center justify-center rounded-full"
-                style={{
-                  width: 16,
-                  height: 16,
-                  backgroundColor: selected ? COLORS.brand : "transparent",
-                  borderWidth: selected ? 0 : 1,
-                  borderColor: "rgba(255,255,255,0.2)",
-                }}
-              >
-                {selected && <TickCircle size={12} color={COLORS.white} />}
-              </View>
-              <Text className="flex-1 text-white text-body font-satoshiMedium">
-                {value}
-              </Text>
-              <Text className="text-ink-muted text-overline font-satoshiRegular">
-                {countFor(axis, value)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <Screen glows={["topLeftFar", "bottomLeft"]}>
@@ -242,58 +286,55 @@ const LoopBrowserScreen = () => {
           and Metronome screens. The controls inside still get their own taps
           first. */}
       <Pressable onPress={Keyboard.dismiss} accessible={false} className="flex-1">
-      <View className="px-screen mb-3">
-        <SearchField
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search loops"
-          accessibilityLabel="Search loops by name, artist or category"
-        />
-      </View>
-      <View className="flex-row items-center mb-3 px-screen gap-2">
+      {/* Search and the filter button share a row, as in the Loop Store: the
+          search takes what's left, the button sits at its end at the same
+          height. */}
+      <View className="flex-row items-center gap-2 px-screen mb-3">
+        <View className="flex-1">
+          <SearchField
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search loops"
+            accessibilityLabel="Search loops by name, artist or category"
+          />
+        </View>
         <TouchableOpacity
           onPress={openFilters}
+          accessibilityRole="button"
           accessibilityLabel={
-            activeCount > 0 ? `Filters, ${activeCount} active` : "Filters"
+            active.length > 0 ? `Filters, ${active.length} active` : "Filters"
           }
-          className="flex-row items-center gap-2 px-4 rounded-full bg-white/5"
-          style={{ height: SIZES.minTouch }}
+          className="items-center justify-center rounded-full bg-white/5"
+          style={{ width: SIZES.control, height: SIZES.control }}
         >
-          <MusicFilter size={SIZES.rowIcon} color={COLORS.white} />
-          <Text className="text-white text-label font-satoshiMedium">
-            Filters
-          </Text>
-          {activeCount > 0 && (
+          <Filter size={SIZES.rowIcon} color={COLORS.white} />
+          {/* Filters only: the search is right beside it and says itself. */}
+          {active.length > 0 && (
             <View
-              className="items-center justify-center rounded-full bg-brand"
-              style={{ minWidth: 18, height: 18, paddingHorizontal: 4 }}
+              className="absolute items-center justify-center rounded-full bg-brand"
+              style={{ top: -2, right: -2, minWidth: 18, height: 18, paddingHorizontal: 4 }}
             >
               <Text className="text-white text-micro font-spaceBold">
-                {activeCount}
+                {active.length}
               </Text>
             </View>
           )}
         </TouchableOpacity>
+      </View>
 
-        {activeCount > 0 && (
+      {/* Each active filter is a pill that removes itself -- on its own row,
+          so it never squeezes the search. */}
+      {active.length > 0 && (
+        <View className="mb-3">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, alignItems: "center" }}
-            style={{ flexShrink: 1 }}
+            contentContainerStyle={{
+              paddingHorizontal: LAYOUT.screenPaddingX,
+              gap: 6,
+              alignItems: "center",
+            }}
           >
-            {query.trim().length > 0 && (
-              <TouchableOpacity
-                onPress={() => setQuery("")}
-                accessibilityLabel={`Remove "${query.trim()}" search`}
-                className="flex-row items-center px-3 py-1 rounded-full gap-2 bg-brand/20 border border-brand/40"
-              >
-                <Text className="text-brand-from text-overline font-satoshiMedium">
-                  &quot;{query.trim()}&quot;
-                </Text>
-                <Text className="text-brand-from text-overline">✕</Text>
-              </TouchableOpacity>
-            )}
             {active.map(({ axis, value }) => (
               <TouchableOpacity
                 key={`${axis}:${value}`}
@@ -308,8 +349,8 @@ const LoopBrowserScreen = () => {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        )}
-      </View>
+        </View>
+      )}
 
       <SelectLoopView
         loops={filteredLoops}
@@ -356,7 +397,8 @@ const LoopBrowserScreen = () => {
 
         <BottomSheetScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ ...SHEET_CONTENT, paddingTop: 0, gap: 20 }}
+          // No gap: each section rules its own edges, and the rows meet.
+          contentContainerStyle={{ ...SHEET_CONTENT, paddingTop: 0 }}
         >
           {renderSection("categories")}
           {renderSection("artists")}

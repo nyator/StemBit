@@ -469,6 +469,17 @@ export function MusicFilter({ size = 24, color = DEFAULT_COLOR, style }: IconPro
   );
 }
 
+/** Three bars narrowing downward: the filter buttons in Bits and the Loop Store. */
+export function Filter({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path d="M3 7H21" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+      <Path d="M6 12H18" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+      <Path d="M10 17H14" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function Clipboard({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>

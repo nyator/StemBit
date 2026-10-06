@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Image,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -10,15 +11,23 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { Musicnote } from "../icons";
-import { COLORS, LAYOUT } from "../../constants/theme";
-import type { RemotePack } from "../../constants/loopStore";
-import { countOf, coverColors, usePackStatus } from "./storeParts";
+import { COLORS, LAYOUT, SHADOWS } from "../../constants/theme";
+import { coverUrlFor, type RemotePack } from "../../constants/loopStore";
+import { PackCover, PriceTag, productMetaOf, usePackStatus } from "./storeParts";
 
 // The big banner at the top of the Loop Store: featured and new packs and
 // loops, one full-width slide at a time, advancing on its own.
+//
+// Each slide is the pack's artwork twice: blurred out to fill the card as a
+// backdrop, and sharp on top of it as the product -- the way a digital shop
+// heads a release, and a way of making any square cover fill a wide card
+// without cropping the artist's art.
 
-const BANNER_HEIGHT = 300;
+const BANNER_HEIGHT = 220;
+/** Leaves the text column ~150pt on a 390pt phone: enough for a two-line title. */
+const BANNER_COVER = 136;
+/** The card behind every slide: the brand blue sinking into the app's dark. */
+const BANNER_GRADIENT: [string, string, string] = [COLORS.brandTo, COLORS.glow, COLORS.canvas];
 const MAX_SLIDES = 5;
 /** Long enough to read a slide; short enough that the row visibly moves. */
 const AUTO_ADVANCE_MS = 5000;
@@ -58,10 +67,11 @@ function BannerSlide({
 }) {
   const { pack, label } = slide;
   const status = usePackStatus(pack);
+  const uri = coverUrlFor(pack);
   const loop = pack.loops[0];
-  const subtitle = pack.single
-    ? `${pack.artist} · ${loop.bpm} bpm · ${loop.timeSignature}`
-    : `${pack.artist} · ${countOf(pack)}`;
+  const meta = pack.single
+    ? `${loop.bpm} BPM · ${loop.timeSignature}`
+    : productMetaOf(pack);
 
   return (
     <View style={{ width, paddingHorizontal: LAYOUT.screenPaddingX }}>
@@ -69,46 +79,66 @@ function BannerSlide({
         onPress={onPress}
         activeOpacity={0.9}
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${pack.title}, ${subtitle}, ${status.text}`}
+        accessibilityLabel={`${label}: ${pack.title} by ${pack.artist}, ${meta}, ${status.text}`}
       >
         <LinearGradient
-          colors={coverColors(pack.id)}
+          colors={BANNER_GRADIENT}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ height: BANNER_HEIGHT, borderRadius: 20, overflow: "hidden" }}
+          style={{
+            height: BANNER_HEIGHT,
+            borderRadius: 22,
+            overflow: "hidden",
+            // borderWidth: 1,
+            borderColor: COLORS.borderBrand,
+          }}
         >
-          {/* The cover mark, huge and faded, off the top-right corner. */}
-          <View style={{ position: "absolute", top: -30, right: -40, opacity: 0.2 }}>
-            <Musicnote size={260} color={COLORS.white} />
-          </View>
-
-          {/* A dark fade under the text, so it reads on any cover colour. */}
+          {/* The artwork, blurred to fill the card. Over the brand gradient
+              rather than instead of it, so a cover that fails to load still
+              leaves a StemBits-blue card behind. */}
+          {uri && (
+            <Image
+              source={{ uri }}
+              blurRadius={40}
+              resizeMode="cover"
+              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+          )}
+          {/* Darkened toward the app's canvas, heaviest on the text side, so
+              white type reads on any art. */}
           <LinearGradient
-            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
-            style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "65%" }}
+            colors={["rgba(16,17,22,0.15)", "rgba(16,17,22,0.7)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0.4 }}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
           />
 
-          <View className="justify-end flex-1 p-5">
-            <View className="self-start px-2.5 py-1 mb-3 rounded-full bg-white/20">
-              <Text className="uppercase text-micro tracking-widest text-white font-spaceBold">
-                {label}
-              </Text>
+          <View className="flex-row items-center flex-1 gap-4 p-5">
+            <View style={[{ borderRadius: 12 }, SHADOWS.float]}>
+              <PackCover pack={pack} size={BANNER_COVER} radius={22} />
             </View>
-            <Text
-              className="text-white font-satoshiBold"
-              style={{ fontSize: 30, lineHeight: 34 }}
-              numberOfLines={2}
-            >
-              {pack.title}
-            </Text>
-            <View className="flex-row items-center justify-between mt-2">
-              <Text className="flex-1 text-label text-white/80 font-satoshiMedium" numberOfLines={1}>
-                {subtitle}
-              </Text>
-              <View className="px-4 py-2 ml-3 rounded-full bg-white">
-                <Text className="uppercase text-overline font-spaceBold text-ink-inverse">
-                  {status.text}
+
+            <View className="flex-1 gap-1">
+              <View className="self-start px-2.5 py-1 mb-1 rounded-full bg-white/20">
+                <Text className="uppercase text-micro tracking-widest text-white font-spaceBold">
+                  {label}
                 </Text>
+              </View>
+              <Text
+                className="text-white font-satoshiBold"
+                style={{ fontSize: 22, lineHeight: 26 }}
+                numberOfLines={2}
+              >
+                {pack.title}
+              </Text>
+              <Text className="text-label text-white/80 font-satoshiMedium" numberOfLines={1}>
+                {pack.artist}
+              </Text>
+              <Text className="text-overline text-white/60 font-satoshiRegular" numberOfLines={1}>
+                {meta}
+              </Text>
+              <View className="self-start mt-2">
+                <PriceTag pack={pack} />
               </View>
             </View>
           </View>

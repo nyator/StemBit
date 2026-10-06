@@ -68,6 +68,21 @@ export type RemoteLoop = {
   file?: string;
   /** Download size, for the row's caption. */
   bytes?: number;
+  /**
+   * The musical key, as written by whoever made it: "A minor", "F#". Called
+   * musicalKey in the manifest because `key` is already the loop's identity.
+   */
+  musicalKey?: string;
+  /**
+   * The file type, lower-case, without the dot: "wav". Stated in the manifest
+   * because a paid loop has no file path to read an extension from, and a
+   * product page that can't say what you'd be buying isn't one.
+   */
+  format?: string;
+  /** Hz, from ffprobe at publish time. */
+  sampleRate?: number;
+  /** Bits per sample, from ffprobe. Absent for compressed formats. */
+  bitDepth?: number;
   /** Copied down from the pack while parsing, so a loop always knows its own. */
   artist: string;
   packId: string;
@@ -78,6 +93,18 @@ export type RemotePack = {
   title: string;
   artist: string;
   description?: string;
+  /**
+   * Cover art: an object path in the bucket or an absolute URL, square, JPEG or
+   * PNG. Public even for a paid pack -- the cover is the shop window. Absent,
+   * or failing to load, the store draws a cover from the pack's id instead.
+   */
+  cover?: string;
+  /** A storefront genre: "Afrobeats", "Gospel". Free text, unlike a loop's category. */
+  genre?: string;
+  /** Short descriptors shown as tags on the product page: "Live drums", "Dry". */
+  tags?: string[];
+  /** What a buyer may do with the audio, in one line: "Royalty-free". */
+  license?: string;
   /**
    * Absent or 0 is free. Anything else is paid, and paid means locked: see
    * isPackUnlocked.
@@ -151,12 +178,110 @@ export const formatBytes = (bytes?: number) => {
 export const packBytes = (pack: RemotePack) =>
   pack.loops.reduce((total, loop) => total + (loop.bytes ?? 0), 0);
 
+/* -------------------------------------------------------------------------- */
+/* Product details                                                             */
+/* -------------------------------------------------------------------------- */
+
+// What the product page lists under "What's included". Every one of these is
+// derived from fields the manifest may or may not carry, and each returns
+// nothing rather than a guess when it can't say -- a spec sheet with a wrong
+// sample rate on it is worse than one without the line.
+
+/** The cover's full URL, or undefined when the pack has none. */
+export const coverUrlFor = (pack: RemotePack) =>
+  pack.cover ? objectUrl(pack.cover) : undefined;
+
+/** "WAV", from the manifest's format or else the file's extension. */
+export const fileFormatOf = (loop: RemoteLoop) => {
+  const fromPath = loop.file?.split("/").pop()?.split(".");
+  const ext = loop.format ?? (fromPath && fromPath.length > 1 ? fromPath.pop() : undefined);
+  return ext ? ext.toUpperCase() : undefined;
+};
+
+/** The one value every loop agrees on, or undefined if any differ or none say. */
+const shared = <T>(values: (T | undefined)[]) => {
+  const present = values.filter((value): value is T => value !== undefined);
+  if (present.length !== values.length || present.length === 0) return undefined;
+  return present.every((value) => value === present[0]) ? present[0] : undefined;
+};
+
+const formatRate = (hz: number) => `${Number((hz / 1000).toFixed(1))} kHz`;
+
+/**
+ * "WAV · 24-bit · 48 kHz" -- each part only when the whole pack shares it, so a
+ * pack mixing 44.1 and 48 kHz files says "WAV" and nothing it can't stand by.
+ */
+export const formatSpecOf = (pack: RemotePack) => {
+  const format = shared(pack.loops.map(fileFormatOf));
+  const depth = shared(pack.loops.map((loop) => loop.bitDepth));
+  const rate = shared(pack.loops.map((loop) => loop.sampleRate));
+  return [format, depth && `${depth}-bit`, rate && formatRate(rate)]
+    .filter(Boolean)
+    .join(" · ");
+};
+
+/** "104 BPM" or "92–128 BPM". */
+export const tempoRangeOf = (pack: RemotePack) => {
+  const tempos = pack.loops.map((loop) => Math.round(loop.bpm));
+  const low = Math.min(...tempos);
+  const high = Math.max(...tempos);
+  return low === high ? `${low} BPM` : `${low}–${high} BPM`;
+};
+
+/** Distinct meters across the pack, in manifest order: "4 / 4, 6 / 8". */
+export const metersOf = (pack: RemotePack) =>
+  [...new Set(pack.loops.map((loop) => loop.timeSignature))].join(", ");
+
+/** Distinct musical keys, or an empty string when no loop states one. */
+export const keysOf = (pack: RemotePack) =>
+  [...new Set(pack.loops.map((loop) => loop.musicalKey).filter(Boolean))].join(", ");
+
+/**
+ * Whole bars in the loop region, or undefined when the region isn't a whole
+ * number of them -- the catalogue script flags that case at publish time, and
+ * "7.98 bars" on a product row would only advertise it.
+ */
+export const barsOf = (loop: RemoteLoop) => {
+  const beatsPerBar = parseInt(loop.timeSignature.split("/")[0], 10) || 4;
+  const bars = ((loop.trimEnd - loop.trimStart) * loop.bpm) / 60 / beatsPerBar;
+  const rounded = Math.round(bars);
+  return rounded > 0 && Math.abs(bars - rounded) < 0.05 ? rounded : undefined;
+};
+
+/** "Sep 2026" from an ISO date; empty when there isn't one. */
+export const formatReleased = (iso?: string) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" }).format(date);
+  } catch {
+    return String(date.getUTCFullYear());
+  }
+};
+
+/**
+ * The storefront genre: the pack's own if it states one, otherwise the loop
+ * category most of its loops share, so a catalogue that never set a genre
+ * still has something to filter by.
+ */
+export const genreOf = (pack: RemotePack) => {
+  if (pack.genre) return pack.genre;
+  const counts = new Map<string, number>();
+  for (const loop of pack.loops) counts.set(loop.category, (counts.get(loop.category) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+};
+
 const isCategory = (value: unknown): value is LoopCategory =>
   typeof value === "string" &&
   (LOOP_CATEGORIES as readonly string[]).includes(value);
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+/** A trimmed string, or undefined for anything else including "". */
+const nonEmpty = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
 
 // The manifest is a hand-authored file fetched over the network. Every shape
 // assumption below is one an editing mistake can break, and the failure that
@@ -200,6 +325,12 @@ const parseLoop = (
       trimEnd,
       file,
       bytes: isFiniteNumber(record.bytes) && record.bytes > 0 ? record.bytes : undefined,
+      musicalKey: nonEmpty(record.musicalKey),
+      format: nonEmpty(record.format)?.replace(/^\./, "").toLowerCase(),
+      sampleRate:
+        isFiniteNumber(record.sampleRate) && record.sampleRate > 0 ? record.sampleRate : undefined,
+      bitDepth:
+        isFiniteNumber(record.bitDepth) && record.bitDepth > 0 ? record.bitDepth : undefined,
       artist: pack.artist,
       packId: pack.id,
     },
@@ -234,6 +365,12 @@ const parsePack = (value: unknown, single: boolean): RemotePack[] => {
       artist,
       description:
         typeof record.description === "string" ? record.description : undefined,
+      cover: nonEmpty(record.cover),
+      genre: nonEmpty(record.genre),
+      tags: Array.isArray(record.tags)
+        ? record.tags.flatMap((tag) => nonEmpty(tag) ?? [])
+        : undefined,
+      license: nonEmpty(record.license),
       price,
       currency: typeof record.currency === "string" ? record.currency : undefined,
       loops,
@@ -280,6 +417,10 @@ export const parseCatalog = (value: unknown): RemotePack[] => {
             currency: loop.currency,
             featured: loop.featured,
             addedAt: loop.addedAt,
+            cover: loop.cover,
+            genre: loop.genre,
+            tags: loop.tags,
+            license: loop.license,
             loops: [loop],
           },
           true
