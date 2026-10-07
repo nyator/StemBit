@@ -5,7 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { type WebViewMessageEvent } from "react-native-webview";
+import EngineView, { type EngineViewHandle } from "./engineView";
 
 import { buildLoopEngineHtml } from "../constants/loopEngine";
 import {
@@ -14,6 +15,7 @@ import {
   METRONOME_SOUNDS,
 } from "../context/MetronomeContext";
 import { usePreferences } from "../context/PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 
 // A second, throwaway instance of the loop engine, for the import screen.
@@ -135,7 +137,9 @@ export const LoopPreviewEngine = forwardRef<
   ref
 ) {
   const { prefs } = usePreferences();
-  const webViewRef = useRef<WebView>(null);
+  const nativeAudio = useNativeAudio();
+  const [nativeAtMount] = useState(nativeAudio);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
 
   // Same handshake as LoopPlaybackContext: anything posted before the page has
@@ -266,9 +270,12 @@ export const LoopPreviewEngine = forwardRef<
   };
 
   return (
-    <WebView
+    <EngineView
       ref={webViewRef}
-      source={{ html: engineHtml }}
+      html={engineHtml}
+      // Read once: the screen is short-lived, and swapping engines under an
+      // analysis in flight would lose it. The next visit picks up the setting.
+      native={nativeAtMount}
       onMessage={handleMessage}
       onRenderProcessGone={() =>
         onErrorRef.current("The preview engine stopped. Go back and try again.")
@@ -276,12 +283,6 @@ export const LoopPreviewEngine = forwardRef<
       onContentProcessDidTerminate={() =>
         onErrorRef.current("The preview engine stopped. Go back and try again.")
       }
-      originWhitelist={["*"]}
-      mediaPlaybackRequiresUserAction={false}
-      allowsInlineMediaPlayback
-      containerStyle={{ flex: 0, width: 0, height: 0 }}
-      style={{ flex: 0, width: 0, height: 0, opacity: 0 }}
-      pointerEvents="none"
     />
   );
 });

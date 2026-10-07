@@ -154,7 +154,17 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // Loop click scheduler cadence (same lookahead approach the metronome
         // engine uses): wake every ~25ms, schedule clicks up to 100ms ahead.
         var CLICK_LOOKAHEAD_MS = 25;
-        var CLICK_SCHEDULE_AHEAD = 0.1;
+        // Hosted natively (utils/nativeEngineHost.ts) this page runs on the
+        // React Native JS thread, which a heavy render can hold up for longer
+        // than a WebView timer ever is -- so the horizon is wider there, and
+        // wider still in the background, where iOS can stretch timers out.
+        // Clicks are still placed on the audio clock either way; a wider
+        // horizon only means a tempo change takes that long to be heard.
+        function clickScheduleAhead() {
+          if (!window.__nativeHost) return 0.1;
+          return document.hidden ? 1.0 : 0.15;
+        }
+        var CLICK_SCHEDULE_AHEAD = clickScheduleAhead();
         // How often the playhead is reported while it's wanted. ~16 a second:
         // smooth enough to read as movement, and far cheaper than a message per
         // frame across the bridge.
@@ -1551,6 +1561,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // an offscreen WebView is never considered hidden in the first place,
         // and so never fires one.
         document.addEventListener("visibilitychange", function () {
+          CLICK_SCHEDULE_AHEAD = clickScheduleAhead();
           if (!document.hidden) resumeAudio();
         });
 

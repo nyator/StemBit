@@ -5,8 +5,10 @@ import { Text, TouchableOpacity, View } from "react-native";
 import { findLoopByKey, getAllLoops } from "../../constants/loops";
 import { PAD_PACKS, findPadPackByKey } from "../../constants/pads";
 import { COLORS } from "../../constants/theme";
-import { ChevronDown, Musicnote } from "../icons";
+import { Folder, Musicnote, type IconComponent } from "../icons";
 import CuePicker, { type CuePickerHandle, type PickerOption } from "./cuePicker";
+import { BpmDial, StepperButton } from "./instrument";
+import { useBpmControl } from "../../hooks/useBpmControl";
 
 const MIN_BPM = 20;
 const MAX_BPM = 320;
@@ -63,55 +65,30 @@ export default function CueElements({
 
   return (
     <View className="gap-3">
-      {/* 2-Column Sound Engines */}
-      <View className="flex-row items-stretch gap-3">
+      {/* What the cue plays: one row each, stacked so a long title has the
+          whole width rather than half of it. */}
+      <View className="gap-2">
         <EngineSlotCard
-          badge="BITS"
-          title={loop?.title ?? "No Loop"}
-          subtitle={loop ? loop.timeSignature : "TAP TO LOAD"}
-          isActive={Boolean(loop)}
+          icon={Folder}
+          label="Bits"
+          title={loop?.title}
+          detail={loop ? `${loop.bpm} BPM · ${loop.timeSignature}` : undefined}
+          emptyTitle="Choose a loop"
           onPress={() => loopPickerRef.current?.present()}
         />
         <EngineSlotCard
-          badge="PAD"
-          title={pack?.title ?? "No Pad"}
-          subtitle={pack ? pack.genre : "TAP TO LOAD"}
-          isActive={Boolean(pack)}
+          icon={Musicnote}
+          label="Pad"
+          title={pack?.title}
+          detail={pack?.genre}
+          emptyTitle="Choose a pad"
           onPress={() => padPickerRef.current?.present()}
         />
       </View>
 
-      {/* Tonality Strip (pad active) */}
-      {Boolean(padPack) && (
-        <TouchableOpacity
-          onPress={onEditKey}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel={`Set root key, currently ${padKey ? `${padKey} ${padMode}` : "unassigned"}`}
-          className="flex-row items-center justify-between px-4 py-3 rounded-2xl border bg-surface/60 active:bg-surface/90"
-          style={{ borderColor: COLORS.border }}
-        >
-          <View className="flex-row items-center gap-3">
-            <View className="items-center justify-center w-8 h-8 rounded-xl bg-brand/10 border border-brand/20">
-              <Musicnote size={15} color={COLORS.brand} />
-            </View>
-            <View>
-              <Text className="text-[10px] font-spaceBold text-ink-muted tracking-widest">
-                TONIC KEY
-              </Text>
-              <Text className="text-body font-satoshiBold text-white mt-0.5">
-                {padKey ? `${padKey} ${padMode.toUpperCase()}` : "Select Musical Key"}
-              </Text>
-            </View>
-          </View>
-
-          <View className="px-3 py-1.5 rounded-lg border border-brand/40 bg-brand/10">
-            <Text className="text-micro font-spaceBold text-brand">
-              {padKey ? "CHANGE" : "SET KEY"}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      )}
+      {/* No key control here: the pad pill above the transport sets the key
+          and plays the pad, and a second control for the same thing only
+          raised the question of which one was in charge. */}
 
       {/* Tempo Control (loop active) */}
       {Boolean(loop) && (
@@ -124,14 +101,6 @@ export default function CueElements({
               <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
                 TEMPO CLOCK
               </Text>
-              {isLive && (
-                <View className="flex-row items-center px-2 py-0.5 rounded-full bg-brand/15 border border-brand/30">
-                  <View className="w-1.5 h-1.5 rounded-full bg-brand mr-1.5" />
-                  <Text className="text-[10px] text-brand font-spaceBold tracking-wide">
-                    LIVE
-                  </Text>
-                </View>
-              )}
             </View>
 
             {loop?.bpm && (
@@ -192,66 +161,64 @@ export default function CueElements({
   );
 }
 
+// One sound source in the cue. The same row as the import screen's file row
+// -- icon, what's loaded, an action word -- so choosing what a cue plays looks
+// like choosing a file everywhere else in the app.
 function EngineSlotCard({
-  badge,
+  icon: Icon,
+  label,
   title,
-  subtitle,
-  isActive,
+  detail,
+  emptyTitle,
   onPress,
 }: {
-  badge: string;
-  title: string;
-  subtitle: string;
-  isActive: boolean;
+  icon: IconComponent;
+  label: string;
+  title?: string;
+  detail?: string;
+  emptyTitle: string;
   onPress: () => void;
 }) {
+  const loaded = !!title;
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.8}
       accessibilityRole="button"
-      accessibilityLabel={`${badge} engine: ${title}`}
-      className="flex-1 p-3.5 rounded-2xl border justify-between min-h-[116px]"
-      style={{
-        backgroundColor: isActive ? COLORS.surface : "rgba(255,255,255,0.02)",
-        borderColor: isActive ? COLORS.brand : COLORS.borderSegment,
-      }}
+      accessibilityLabel={
+        loaded ? `${label}: ${title}. Change` : `${label}: ${emptyTitle}`
+      }
+      className="flex-row items-center gap-3 px-4 py-3 border rounded-md bg-surface-field border-hairline"
     >
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-1.5">
-          <View
-            className="w-2 h-2 rounded-full"
-            style={{
-              backgroundColor: isActive ? COLORS.brand : COLORS.textMuted,
-              opacity: isActive ? 1 : 0.4,
-            }}
-          />
+      <View
+        className="items-center justify-center rounded-md bg-white/10"
+        style={{ width: 40, height: 40 }}
+      >
+        <Icon size={20} color={loaded ? COLORS.white : COLORS.textMuted} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text className="text-ink-muted text-micro font-satoshiRegular">
+          {label}
+        </Text>
+        <Text
+          numberOfLines={1}
+          className="text-body font-satoshiBold"
+          style={{ color: loaded ? COLORS.white : COLORS.textMuted }}
+        >
+          {loaded ? title : emptyTitle}
+        </Text>
+        {loaded && detail ? (
           <Text
-            className="text-micro font-spaceBold tracking-widest"
-            style={{ color: isActive ? COLORS.brand : COLORS.textMuted }}
+            numberOfLines={1}
+            className="text-ink-muted text-micro font-satoshiRegular"
           >
-            {badge}
+            {detail}
           </Text>
-        </View>
-        <ChevronDown size={14} color={isActive ? COLORS.brand : COLORS.textMuted} />
+        ) : null}
       </View>
-
-      <View className="mt-2">
-        <Text
-          numberOfLines={1}
-          className="text-body font-satoshiBold leading-tight"
-          style={{ color: isActive ? COLORS.white : COLORS.textMuted }}
-        >
-          {title}
-        </Text>
-        <Text
-          numberOfLines={1}
-          className="mt-1 text-[11px] font-spaceBold text-ink-muted"
-          style={{ fontVariant: ["tabular-nums"] }}
-        >
-          {subtitle}
-        </Text>
-      </View>
+      <Text className="text-micro font-spaceBold" style={{ color: COLORS.brand }}>
+        {loaded ? "CHANGE" : "CHOOSE"}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -265,38 +232,42 @@ export function TempoStepper({
   nativeBpm?: number;
   onChange: (bpm: number) => void;
 }) {
-  const canDec1 = bpm > MIN_BPM;
-  const canDec5 = bpm - 5 >= MIN_BPM;
-  const canInc1 = bpm < MAX_BPM;
-  const canInc5 = bpm + 5 <= MAX_BPM;
+  // The hook wants a state setter, and hold-to-run calls it with an updater
+  // many times between renders. Reading the latest value from a ref rather
+  // than the render's `bpm` keeps a held + climbing instead of repeating the
+  // same step.
+  const bpmRef = useRef(bpm);
+  bpmRef.current = bpm;
+  const setBpm: React.Dispatch<React.SetStateAction<number>> = (value) => {
+    const next = typeof value === "function" ? value(bpmRef.current) : value;
+    bpmRef.current = next;
+    onChange(next);
+  };
+
+  // The same controls as the Metronome and Loop screens -- minus/plus that nudge
+  // on a tap and run on a hold, either side of a dial you can type into -- so a
+  // tempo is set the same way wherever it is set.
+  const controls = useBpmControl({
+    bpm,
+    setBpm,
+    minBpm: MIN_BPM,
+    maxBpm: MAX_BPM,
+  });
 
   return (
     <View>
-      <View className="flex-row items-center justify-between">
-        {/* Nudge Down */}
-        <View className="flex-row items-center gap-2">
-          <StepButton label="−5" disabled={!canDec5} onPress={() => onChange(bpm - 5)} />
-          <StepButton label="−1" disabled={!canDec1} onPress={() => onChange(bpm - 1)} />
-        </View>
-
-        {/* Readout */}
-        <View className="items-center px-4">
-          <Text
-            className="text-white font-spaceBold tracking-tight"
-            style={{ fontVariant: ["tabular-nums"], fontSize: 36, lineHeight: 40 }}
-          >
-            {bpm}
-          </Text>
-          <Text className="text-[10px] text-brand font-spaceBold tracking-widest mt-0.5">
-            BPM
-          </Text>
-        </View>
-
-        {/* Nudge Up */}
-        <View className="flex-row items-center gap-2">
-          <StepButton label="+1" disabled={!canInc1} onPress={() => onChange(bpm + 1)} />
-          <StepButton label="+5" disabled={!canInc5} onPress={() => onChange(bpm + 5)} />
-        </View>
+      <View className="flex-row items-center self-center gap-3">
+        <StepperButton
+          direction="down"
+          controls={controls}
+          label="Decrease tempo"
+        />
+        <BpmDial controls={controls} isPlaying={false} variant="compact" />
+        <StepperButton
+          direction="up"
+          controls={controls}
+          label="Increase tempo"
+        />
       </View>
 
       {/* Quick Reset */}
@@ -318,36 +289,5 @@ export function TempoStepper({
         </View>
       )}
     </View>
-  );
-}
-
-function StepButton({
-  label,
-  disabled,
-  onPress,
-}: {
-  label: string;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.65}
-      accessibilityRole="button"
-      accessibilityLabel={`Adjust tempo by ${label}`}
-      className="items-center justify-center rounded-xl border bg-canvas"
-      style={{
-        width: 46,
-        height: 46,
-        borderColor: disabled ? "rgba(255,255,255,0.05)" : COLORS.border,
-        opacity: disabled ? 0.35 : 1,
-      }}
-    >
-      {/* <View className="bg-white h-8 w-8 items-center justify-center rounded-full"> */}
-      <Text className="text-sm text-white font-spaceBold">{label}</Text>
-      {/* </View> */}
-    </TouchableOpacity>
   );
 }

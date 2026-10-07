@@ -11,9 +11,11 @@ import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import audio from "../constants/audio";
 import { buildMetronomeHtml } from "../constants/metronomeEngine";
+import { NativeMetronomeEngine } from "../constants/nativeMetronomeEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
 
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
@@ -202,7 +204,20 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     null
   );
 
+  // Which engine is live. The WebView is the default; the native one is the
+  // experimental alternative (Settings -> Native metronome). Read through a
+  // ref by everything that posts, so a message always reaches whichever
+  // engine exists right now.
+  const useNative = useNativeAudio();
+  const useNativeRef = useRef(useNative);
+  useNativeRef.current = useNative;
+  const nativeEngineRef = useRef<NativeMetronomeEngine | null>(null);
+
   const postToEngine = (message: Record<string, unknown>) => {
+    if (useNativeRef.current) {
+      nativeEngineRef.current?.post(message as { type: string });
+      return;
+    }
     webViewRef.current?.postMessage(JSON.stringify(message));
   };
 
@@ -311,6 +326,13 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     };
 
     const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" && useNativeRef.current) {
+        // The native engine plays through the app's own audio session, which
+        // the "audio" background mode keeps running -- so it keeps going,
+        // with a wider lookahead in case iOS slows the JS thread's timers.
+        postToEngine({ type: "setBackground", background: true });
+        return;
+      }
       if (state === "background") {
         if (!isPlayingRef.current || backgroundStopTimerRef.current) return;
         backgroundStopTimerRef.current = setTimeout(() => {
@@ -326,6 +348,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       // Back on screen, so whatever took us away was brief.
       cancelPendingStop();
       if (state === "active") {
+        postToEngine({ type: "setBackground", background: false });
         // The OS suspends the WebView audio clock when the app pauses, and
         // nothing inside the page brings it back on its own -- see resumeAudio
         // in the engine. Without this, a pulled-down notification shade left
@@ -362,24 +385,67 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
 
   const handleWebViewMessage = (event: WebViewMessageEvent) => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "ready") {
-        setEngineReady(true);
-        postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
-      } else if (data.type === "pong") {
-        if (pongTimerRef.current) {
-          clearTimeout(pongTimerRef.current);
-          pongTimerRef.current = null;
-        }
-      } else if (data.type === "beat" && isPlayingRef.current) {
-        setCurrentBeat(data.beat);
-      } else if (data.type === "error") {
-        console.error("Metronome engine error:", data.message);
-      }
+      handleEngineReply(JSON.parse(event.nativeEvent.data));
     } catch (error) {
       // Ignore malformed messages
     }
   };
+
+  // Replies from either engine; both speak the same protocol.
+  const handleEngineReply = (data: { type: string; [key: string]: any }) => {
+    if (data.type === "ready") {
+      setEngineReady(true);
+      postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+    } else if (data.type === "pong") {
+      if (pongTimerRef.current) {
+        clearTimeout(pongTimerRef.current);
+        pongTimerRef.current = null;
+      }
+    } else if (data.type === "beat" && isPlayingRef.current) {
+      setCurrentBeat(data.beat);
+    } else if (data.type === "error") {
+      console.error("Metronome engine error:", data.message);
+    }
+  };
+
+  // The native engine: built when it's selected (and rebuilt by restartEngine,
+  // which bumps the generation), torn down when it isn't. Switching engines
+  // mid-click stops the click -- the old engine is about to be thrown away.
+  useEffect(() => {
+    if (!useNative) return;
+    setEngineReady(false);
+    const engine = new NativeMetronomeEngine(
+      {
+        accent: METRONOME_SOUNDS[0].asset,
+        beat: METRONOME_SOUNDS[1].asset,
+      },
+      (reply) => handleEngineReplyRef.current(reply)
+    );
+    nativeEngineRef.current = engine;
+    return () => {
+      engine.dispose();
+      if (nativeEngineRef.current === engine) nativeEngineRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative, engineGeneration]);
+
+  // The engine outlives renders, so it calls the latest handler through a ref.
+  const handleEngineReplyRef = useRef(handleEngineReply);
+  handleEngineReplyRef.current = handleEngineReply;
+
+  // Leaving one engine for the other: whatever was playing was on the engine
+  // being left, so stop it, and wait for the new one's "ready".
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    isPlayingRef.current = false;
+    setIsPlaying(false);
+    setCurrentBeat(0);
+    release("metro");
+    setEngineReady(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
 
   const startMetronome = () => {
     if (isPlaying) return;
@@ -481,7 +547,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      {engineHtml && (
+      {engineHtml && !useNative && (
         <WebView
           // Remounting on a new generation is what actually rebuilds a dead
           // engine — see restartEngine.

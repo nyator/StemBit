@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Keyboard,
   Pressable,
@@ -7,11 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import {
-  BottomSheetModal,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
-
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ScreenHeader from "../../components/ui/screenHeader";
@@ -19,13 +14,9 @@ import Screen from "../../components/ui/screen";
 import SearchField from "../../components/ui/searchField";
 import SelectLoopView from "../../components/selectLoopView";
 import NavButton from "../../components/ui/navButton";
-import { BrandButton } from "../../components/ui/brandButton";
-import {
-  SHEET_BACKGROUND,
-  SHEET_CONTENT,
-  SHEET_HANDLE_INDICATOR,
-  useSheetBackdrop,
-} from "../../components/ui/sheet";
+import FilterDrawer, {
+  type FilterSection,
+} from "../../components/ui/filterDrawer";
 import {
   LOOP_CATEGORIES,
   getAllLoops,
@@ -34,7 +25,7 @@ import {
   type Loop,
 } from "../../constants/loops";
 import { useUserLoops } from "../../context/UserLoopsContext";
-import { Add, Download, MusicFilter, TickCircle } from "../../components/icons";
+import { Add, Close, Download, MusicFilter } from "../../components/icons";
 import { COLORS, SIZES } from "../../constants/theme";
 
 // The three axes a loop can be narrowed by. Within an axis, checking more than
@@ -87,14 +78,16 @@ const LoopBrowserScreen = () => {
   );
   const [query, setQuery] = useState("");
 
-  const sheetRef = useRef<BottomSheetModal>(null);
-  const openFilters = () => sheetRef.current?.present();
-  const renderBackdrop = useSheetBackdrop();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const openFilters = () => {
+    Keyboard.dismiss();
+    setFiltersOpen(true);
+  };
 
   // The shipped catalog plus the user's imports. Re-derived when the imports
   // change so a loop added (or deleted) shows up here immediately; every filter
   // below works off this one list, which is what keeps a row's count and its
-  // contents from disagreeing.
+  // contents from disagreeing. 
   const { userLoops } = useUserLoops();
   const allLoops = useMemo(() => getAllLoops(), [userLoops]);
 
@@ -157,65 +150,21 @@ const LoopBrowserScreen = () => {
 
   const activeCount = active.length + (query.trim().length > 0 ? 1 : 0);
 
-  const renderSection = (axis: Axis) => (
-    <View key={axis} className="w-full gap-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="uppercase text-overline font-spaceBold text-white/70">
-          {AXIS_LABEL[axis]}
-        </Text>
-        {filters[axis].length > 0 && (
-          <TouchableOpacity
-            onPress={() => clearAxis(axis)}
-            accessibilityLabel={`Clear ${AXIS_LABEL[axis]} filter`}
-          >
-            <Text className="text-brand-from text-overline font-satoshiMedium">
-              Clear
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      <View className="gap-2">
-        {axisValues[axis].map((value) => {
-          const selected = filters[axis].includes(value);
-          return (
-            <TouchableOpacity
-              key={value}
-              onPress={() => toggle(axis, value)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: selected }}
-              activeOpacity={0.75}
-              className="flex-row items-center gap-3 p-3 rounded-md"
-              style={{
-                backgroundColor: selected
-                  ? "rgba(0,139,194,0.14)"
-                  : COLORS.surface,
-                borderWidth: 1,
-                borderColor: selected ? COLORS.brand : "transparent",
-              }}
-            >
-              <View
-                className="items-center justify-center rounded-full"
-                style={{
-                  width: 16,
-                  height: 16,
-                  backgroundColor: selected ? COLORS.brand : "transparent",
-                  borderWidth: selected ? 0 : 1,
-                  borderColor: "rgba(255,255,255,0.2)",
-                }}
-              >
-                {selected && <TickCircle size={12} color={COLORS.white} />}
-              </View>
-              <Text className="flex-1 text-white text-body font-satoshiMedium">
-                {value}
-              </Text>
-              <Text className="text-ink-muted text-overline font-satoshiRegular">
-                {countFor(axis, value)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
+  // Category and Artist can run long, so each is a row that opens its list.
+  // Meter is a handful of values at most, so it's chips you tap in place.
+  const sections: FilterSection[] = (["categories", "artists", "meters"] as Axis[]).map(
+    (axis) => ({
+      key: axis,
+      label: AXIS_LABEL[axis],
+      kind: axis === "meters" ? "chips" : "list",
+      options: axisValues[axis].map((value) => ({
+        value,
+        count: countFor(axis, value),
+      })),
+      selected: filters[axis],
+      onToggle: (value: string) => toggle(axis, value),
+      onClear: () => clearAxis(axis),
+    })
   );
 
   return (
@@ -251,22 +200,28 @@ const LoopBrowserScreen = () => {
         />
       </View>
       <View className="flex-row items-center mb-3 px-screen gap-2">
+        {/* The same pill as the search field above it -- height, glass fill,
+            muted icon -- so the two read as one control bar. */}
         <TouchableOpacity
           onPress={openFilters}
           accessibilityLabel={
             activeCount > 0 ? `Filters, ${activeCount} active` : "Filters"
           }
+          activeOpacity={0.8}
           className="flex-row items-center gap-2 px-4 rounded-full bg-white/5"
-          style={{ height: SIZES.minTouch }}
+          style={{ height: SIZES.control }}
         >
-          <MusicFilter size={SIZES.rowIcon} color={COLORS.white} />
+          <MusicFilter
+            size={SIZES.rowIcon}
+            color={activeCount > 0 ? COLORS.brand : COLORS.textMuted}
+          />
           <Text className="text-white text-label font-satoshiMedium">
-            Filters
+            Filter
           </Text>
           {activeCount > 0 && (
             <View
               className="items-center justify-center rounded-full bg-brand"
-              style={{ minWidth: 18, height: 18, paddingHorizontal: 4 }}
+              style={{ minWidth: 20, height: 20, paddingHorizontal: 5 }}
             >
               <Text className="text-white text-micro font-spaceBold">
                 {activeCount}
@@ -279,33 +234,23 @@ const LoopBrowserScreen = () => {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, alignItems: "center" }}
+            contentContainerStyle={{ gap: 8, alignItems: "center" }}
             style={{ flexShrink: 1 }}
           >
             {query.trim().length > 0 && (
-              <TouchableOpacity
-                onPress={() => setQuery("")}
+              <ActivePill
+                label={`"${query.trim()}"`}
+                onRemove={() => setQuery("")}
                 accessibilityLabel={`Remove "${query.trim()}" search`}
-                className="flex-row items-center px-3 py-1 rounded-full gap-2 bg-brand/20 border border-brand/40"
-              >
-                <Text className="text-brand-from text-overline font-satoshiMedium">
-                  &quot;{query.trim()}&quot;
-                </Text>
-                <Text className="text-brand-from text-overline">✕</Text>
-              </TouchableOpacity>
+              />
             )}
             {active.map(({ axis, value }) => (
-              <TouchableOpacity
+              <ActivePill
                 key={`${axis}:${value}`}
-                onPress={() => toggle(axis, value)}
+                label={value}
+                onRemove={() => toggle(axis, value)}
                 accessibilityLabel={`Remove ${value} filter`}
-                className="flex-row items-center px-3 py-2 rounded-full gap-1.5 bg-brand/20 border border-brand/40"
-              >
-                <Text className="text-brand-from text-overline font-satoshiMedium">
-                  {value}
-                </Text>
-                <Text className="text-brand-from text-overline">✕</Text>
-              </TouchableOpacity>
+              />
             ))}
           </ScrollView>
         )}
@@ -323,58 +268,52 @@ const LoopBrowserScreen = () => {
       />
       </Pressable>
 
-      {/* Every axis at once, rather than one at a time behind a picker --
-          Category, Artist and Meter combine, so seeing all three together is
-          what makes combining them ("Worship" + "3/4") an obvious thing to
-          do rather than something you'd only find by trying each tab. */}
-      <BottomSheetModal
-        ref={sheetRef}
-        snapPoints={["75%"]}
-        enableDynamicSizing={false}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={SHEET_BACKGROUND}
-        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
-      >
-        <View className="flex-row items-center justify-between px-screen pt-1 pb-3">
-          <Text className="text-white font-satoshiBold text-title">
-            Filters
-          </Text>
-          {activeCount > 0 && (
-            <TouchableOpacity
-              onPress={() => {
-                setFilters(NO_FILTERS);
-                setQuery("");
-              }}
-              accessibilityLabel="Clear all filters"
-            >
-              <Text className="text-ink-faint text-overline font-satoshiMedium underline">
-                Clear all
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <BottomSheetScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ ...SHEET_CONTENT, paddingTop: 0, gap: 20 }}
-        >
-          {renderSection("categories")}
-          {renderSection("artists")}
-          {renderSection("meters")}
-        </BottomSheetScrollView>
-
-        <View
-          className="pt-3 border-t px-screen border-hairline"
-          style={{ paddingBottom: SHEET_CONTENT.paddingBottom }}
-        >
-          <BrandButton
-            label={`Show ${filteredLoops.length} ${filteredLoops.length === 1 ? "loop" : "loops"}`}
-            onPress={() => sheetRef.current?.dismiss()}
-          />
-        </View>
-      </BottomSheetModal>
+      <FilterDrawer
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onReset={() => setFilters(NO_FILTERS)}
+        resetDisabled={active.length === 0}
+        sections={sections}
+        resultLabel={`Show ${filteredLoops.length} ${filteredLoops.length === 1 ? "result" : "results"}`}
+      />
     </Screen>
   );
 };
+
+// One applied filter (or the search text), removable on its own. Styled like
+// the search field -- glass pill, the same small round clear button -- so
+// everything narrowing the list looks like it belongs to the search.
+function ActivePill({
+  label,
+  onRemove,
+  accessibilityLabel,
+}: {
+  label: string;
+  onRemove: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onRemove}
+      accessibilityLabel={accessibilityLabel}
+      activeOpacity={0.8}
+      className="flex-row items-center gap-2 pl-4 pr-2 rounded-full bg-white/5"
+      style={{ height: SIZES.control }}
+    >
+      <Text
+        className="text-white text-label font-satoshiMedium"
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      <View
+        className="items-center justify-center rounded-full bg-white/15"
+        style={{ width: 22, height: 22 }}
+      >
+        <Close size={12} color={COLORS.white} />
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default LoopBrowserScreen;

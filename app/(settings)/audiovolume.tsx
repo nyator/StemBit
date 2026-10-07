@@ -10,6 +10,7 @@ import {
     SettingSlider
 } from "../../components/ui/settingRow";
 import type { Preferences } from "../../context/PreferencesContext";
+import { isNativeAudioAvailable } from "../../utils/nativeAudio";
 import {
     DEFAULT_LOOP_VOLUME,
     DEFAULT_METRONOME_VOLUME,
@@ -33,6 +34,10 @@ import {
 
 // Three-way stereo placement for the loop click. Typed off the preference so
 // adding a position here without widening Preferences won't compile.
+
+// Fixed for the life of the binary, so read once.
+const nativeAudioAvailable = isNativeAudioAvailable();
+
 const PAN_OPTIONS: readonly { value: Preferences["loopClickPan"]; label: string }[] = [
     { value: "left", label: "Left" },
     { value: "center", label: "Center" },
@@ -123,6 +128,23 @@ const AudioVolume = () => {
                         sublabel="Keep YouTube or music playing under loops and the metronome. The silent switch will mute them."
                         value={prefs.mixWithOthers}
                         onValueChange={(value) => setPref("mixWithOthers", value)}
+                        border={true}
+                    />
+                    {/* Experimental: the same engines on the app's own audio
+                        session instead of WebViews'. Here so the two can be
+                        compared on a real phone before either is chosen. */}
+                    <SettingSwitch
+                        icon={Musicnote}
+                        label="Native audio (beta)"
+                        sublabel={
+                            nativeAudioAvailable
+                                ? "Runs the metronome, loops and sessions on native audio, so they keep playing in the background and ignore the silent switch."
+                                : "Not available in this build of the app. Install a newer build to try it."
+                        }
+                        value={nativeAudioAvailable && prefs.nativeAudio}
+                        onValueChange={(value) => {
+                            if (nativeAudioAvailable) setPref("nativeAudio", value);
+                        }}
                     />
                 </SettingSection>
             </ScrollView>

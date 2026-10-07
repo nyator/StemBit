@@ -7,7 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { AppState } from "react-native";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { type WebViewMessageEvent } from "react-native-webview";
+import EngineView, { type EngineViewHandle } from "../components/engineView";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
@@ -20,6 +21,7 @@ import {
   useMetronome,
 } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
 import type { CueTrack } from "./SessionsContext";
 
 // The session's own playback, in a hidden WebView of its own.
@@ -189,7 +191,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   const { isPlaying: metroPlaying, stopMetronome } = useMetronome();
   const metroPlayingRef = useRef(metroPlaying);
   metroPlayingRef.current = metroPlaying;
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildSessionEngineHtml);
   const [engineGeneration, setEngineGeneration] = useState(0);
 
@@ -567,6 +569,17 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     setEngineGeneration((generation) => generation + 1);
   };
 
+  // Native audio (Settings) swaps the engine underneath: rebuild it the way a
+  // dead one is rebuilt, which also resets everything the old one had loaded.
+  const useNative = useNativeAudio();
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    restartEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
+
   return (
     <SessionPlaybackContext.Provider
       value={{
@@ -583,10 +596,11 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <WebView
+      <EngineView
         key={engineGeneration}
         ref={webViewRef}
-        source={{ html: engineHtml }}
+        html={engineHtml}
+        native={useNative}
         onMessage={handleWebViewMessage}
         onRenderProcessGone={() => {
           console.warn("Session engine renderer was killed — restarting it");
@@ -596,10 +610,6 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
           console.warn("Session engine content process ended — restarting it");
           restartEngine();
         }}
-        originWhitelist={["*"]}
-        mediaPlaybackRequiresUserAction={false}
-        allowsInlineMediaPlayback
-        containerStyle={{ flex: 0, width: 0, height: 0 }}
       />
     </SessionPlaybackContext.Provider>
   );
