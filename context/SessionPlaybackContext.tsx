@@ -348,7 +348,12 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       try {
         const base64 = await loadAudioBase64(resolveStemUri(track.uri));
         if (loadTokenRef.current !== token) return;
-        postToEngine({ type: "loadTrack", id: track.id, base64 });
+        postToEngine({
+          type: "loadTrack",
+          id: track.id,
+          base64,
+          startSeconds: track.startSeconds,
+        });
       } catch (error) {
         console.error("Failed to read stem", track.name, error);
         pendingRef.current.delete(track.id);

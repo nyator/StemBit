@@ -234,3 +234,48 @@ describe("song position", () => {
     expect(at(15)).toBeCloseTo(25);
   });
 });
+
+describe("placing a stem on the song's timeline", () => {
+  const placeBuffer = extract("placeBuffer");
+
+  // Just enough of an AudioBuffer and its context for placeBuffer to work on.
+  function buffer(channels, sampleRate) {
+    return {
+      numberOfChannels: channels.length,
+      sampleRate,
+      length: channels[0].length,
+      getChannelData: (c) => channels[c],
+    };
+  }
+  const ctx = {
+    createBuffer: (count, length, sampleRate) =>
+      buffer(
+        Array.from({ length: count }, () => new Float32Array(length)),
+        sampleRate
+      ),
+  };
+  const samples = (buf, c = 0) => Array.from(buf.getChannelData(c));
+
+  it("leaves an unplaced stem exactly as decoded", () => {
+    const decoded = buffer([new Float32Array([1, 2])], 10);
+    expect(placeBuffer(ctx, decoded, undefined)).toBe(decoded);
+    expect(placeBuffer(ctx, decoded, 0)).toBe(decoded);
+  });
+
+  it("puts silence in front of a stem that comes in late, on every channel", () => {
+    const decoded = buffer([new Float32Array([1, 2]), new Float32Array([3, 4])], 10);
+    const placed = placeBuffer(ctx, decoded, 0.3); // 3 samples at 10Hz
+    expect(samples(placed, 0)).toEqual([0, 0, 0, 1, 2]);
+    expect(samples(placed, 1)).toEqual([0, 0, 0, 3, 4]);
+  });
+
+  it("cuts the head off a stem trimmed before the song starts", () => {
+    const decoded = buffer([new Float32Array([1, 2, 3, 4])], 10);
+    expect(samples(placeBuffer(ctx, decoded, -0.1))).toEqual([2, 3, 4]);
+  });
+
+  it("refuses a shift that would leave nothing to play", () => {
+    const decoded = buffer([new Float32Array([1, 2])], 10);
+    expect(placeBuffer(ctx, decoded, -5)).toBe(decoded);
+  });
+});

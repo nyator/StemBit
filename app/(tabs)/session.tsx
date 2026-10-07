@@ -15,6 +15,9 @@ import { useRouter } from "expo-router";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { useSessions } from "../../context/SessionsContext";
+import { importStems, readStemSections } from "../../utils/importStems";
+import { sectionsFromLocators } from "../../utils/abletonSet";
+import { clampBpm } from "../../components/ui/cueElements";
 import HeaderComponent from "../../components/headerComponent";
 import Screen from "../../components/ui/screen";
 import EmptyState from "../../components/ui/emptyState";
@@ -40,7 +43,7 @@ export default function SessionsScreen() {
     renameSession?: (id: string, title: string) => void;
     updateSession?: (id: string, updates: Partial<{ title: string }>) => void;
   };
-  const { sessions, addSession, removeSession } = sessionsContext;
+  const { sessions, addSession, addItem, removeSession } = sessionsContext;
 
   const sheetRef = useRef<BottomSheetModal>(null);
   const [title, setTitle] = useState("");
@@ -86,12 +89,56 @@ export default function SessionsScreen() {
 
   const renderBackdrop = useSheetBackdrop();
 
-  const importProject = () =>
-    Alert.alert(
-      "Import project",
-      "Bringing in stems and running orders from a project file isn't ready yet. For now, make a session and add cues to it by hand.",
-      [{ text: "OK" }]
-    );
+  const [importingProject, setImportingProject] = useState(false);
+
+  // A whole song from an Ableton set, as a new session with that song in it:
+  // stems placed where the arrangement has them, sections from its locators,
+  // its tempo. The name typed in the sheet is used if there is one; otherwise
+  // the session is named after the set, which is what the producer called it.
+  const importProject = async () => {
+    if (importingProject) return;
+    const typedTitle = title.trim();
+    close();
+    setImportingProject(true);
+    try {
+      const { tracks, set, setName, skipped } = await importStems();
+
+      if (tracks.length === 0) {
+        if (setName) {
+          Alert.alert(
+            set ? "Add the stems too" : "Couldn't read that set",
+            set
+              ? "Select the Ableton set together with its audio files, so there's something to play."
+              : `${setName}.als didn't open as an Ableton Live Set.`
+          );
+        } else if (skipped.length > 0) {
+          Alert.alert(
+            "Nothing to import",
+            "Pick an Ableton set (.als) and its audio files."
+          );
+        }
+        return;
+      }
+
+      const songTitle = setName ?? tracks[0].name;
+      const fromSet = set ? sectionsFromLocators(set.locators) : [];
+      const sections = fromSet.length > 0 ? fromSet : await readStemSections(tracks);
+
+      const session = addSession(typedTitle || songTitle);
+      addItem(session.id, {
+        title: songTitle,
+        tracks,
+        ...(sections.length > 0 ? { sections } : {}),
+        ...(set ? { bpm: clampBpm(set.bpm) } : {}),
+      });
+      router.push({ pathname: "/setlist", params: { id: session.id } });
+    } catch (error) {
+      console.error("Project import failed", error);
+      Alert.alert("Import failed", "Those files couldn't be read.");
+    } finally {
+      setImportingProject(false);
+    }
+  };
 
   const confirmRemove = (id: string, name: string) =>
     Alert.alert(
@@ -178,17 +225,19 @@ export default function SessionsScreen() {
 
               <TouchableOpacity
                 onPress={importProject}
+                disabled={importingProject}
                 accessibilityLabel="Import project"
                 activeOpacity={0.8}
                 className="flex-row items-center p-4 border rounded-lg border-hairline"
+                style={importingProject ? { opacity: 0.5 } : undefined}
               >
                 <Folder size={22} color={COLORS.textMuted} />
                 <View className="flex-1 ml-3">
                   <Text className="text-white font-satoshiMedium">
-                    Import project
+                    {importingProject ? "Importing…" : "Import project"}
                   </Text>
                   <Text className="text-ink-muted text-overline font-satoshiRegular mt-0.5">
-                    Stems and running order from a file — coming soon
+                    An Ableton set (.als) with its stems — sections and tempo come with it
                   </Text>
                 </View>
               </TouchableOpacity>

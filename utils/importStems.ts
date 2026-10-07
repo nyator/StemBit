@@ -6,6 +6,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 
 import type { CueSection, CueTrack } from "../context/SessionsContext";
+import { parseAbletonSet, placementFor, type AbletonSet } from "./abletonSet";
 import { base64ToArrayBuffer, readWavMarkers } from "./wavMarkers";
 
 // Bringing a song's stems into the app.
@@ -61,28 +62,91 @@ async function ensureStemsDirectory() {
   }
 }
 
+// What the picker lets through once it has to accept an Ableton set as well.
+// The set has no MIME type either platform recognises, so the picker is opened
+// to everything and the choice is narrowed here instead -- a PDF picked by
+// mistake is skipped rather than handed to the decoder as a stem.
+const AUDIO_EXTENSIONS = /\.(wav|wave|aif|aiff|aifc|mp3|m4a|aac|caf|flac|ogg|opus)$/i;
+const ABLETON_SET_EXTENSION = /\.als$/i;
+
+export type StemImport = {
+  tracks: CueTrack[];
+  /**
+   * The Ableton set picked alongside the stems, when there was one and it
+   * could be read. Present with an empty `locators` is still worth having --
+   * the tempo and placements are in it.
+   */
+  set?: AbletonSet;
+  /**
+   * The set's name without ".als", whenever one was picked -- including when
+   * it couldn't be read, which is how the caller tells "no set" from "a set
+   * that didn't parse".
+   */
+  setName?: string;
+  /** Files that were neither audio nor a set, by name, for telling the user. */
+  skipped: string[];
+};
+
+async function readAbletonSet(uri: string): Promise<AbletonSet | undefined> {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const set = parseAbletonSet(new Uint8Array(base64ToArrayBuffer(base64)));
+    // A tempo is the one thing every real set has; without one, the file
+    // wasn't a set this reader understands.
+    return set.bpm > 0 ? set : undefined;
+  } catch (error) {
+    console.error("Failed to read Ableton set", error);
+    return undefined;
+  }
+}
+
 /**
- * Prompts for audio files and copies them into app storage.
+ * Prompts for audio files -- and optionally an Ableton set -- and copies the
+ * audio into app storage.
  *
- * Returns an empty array when the user cancels -- a cancel is a decision, not
- * an error, and shouldn't reach the caller as one.
+ * When a set comes with the stems, each stem the set uses is placed where its
+ * clip sits in the arrangement. The set's locators and tempo are handed back
+ * for the caller to decide what to do with, since that depends on what the cue
+ * already has.
+ *
+ * Returns no tracks and no set when the user cancels -- a cancel is a
+ * decision, not an error, and shouldn't reach the caller as one.
  */
-export async function importStems(): Promise<CueTrack[]> {
+export async function importStems(): Promise<StemImport> {
   const result = await DocumentPicker.getDocumentAsync({
-    type: "audio/*",
+    type: "*/*",
     multiple: true,
     // The picker's own copy: without it the returned URI can be a content://
     // handle that isn't readable once the picker closes.
     copyToCacheDirectory: true,
   });
 
-  if (result.canceled || result.assets.length === 0) return [];
+  if (result.canceled || result.assets.length === 0) {
+    return { tracks: [], skipped: [] };
+  }
 
-  await ensureStemsDirectory();
+  // Read before copying any audio, so the stems can be placed as they land.
+  // More than one set picked is a mistake with no right answer; the first wins.
+  const setAsset = result.assets.find((asset) =>
+    ABLETON_SET_EXTENSION.test(asset.name)
+  );
+  const set = setAsset ? await readAbletonSet(setAsset.uri) : undefined;
+
+  const audio = result.assets.filter((asset) => AUDIO_EXTENSIONS.test(asset.name));
+  const skipped = result.assets
+    .filter(
+      (asset) =>
+        !AUDIO_EXTENSIONS.test(asset.name) && asset !== setAsset
+    )
+    .map((asset) => asset.name);
+
+  if (audio.length > 0) await ensureStemsDirectory();
 
   const tracks: CueTrack[] = [];
 
-  for (const asset of result.assets) {
+  for (const asset of audio) {
     // Unique per file rather than per name: two songs can both have "Bass.wav",
     // and a collision would have one song playing the other's stem.
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -90,12 +154,18 @@ export async function importStems(): Promise<CueTrack[]> {
 
     try {
       await FileSystem.copyAsync({ from: asset.uri, to: target });
+      const startSeconds = set ? placementFor(set, asset.name) : undefined;
       tracks.push({
         id,
         name: displayName(asset.name),
         uri: target,
         level: 1,
         muted: false,
+        // Only when it moves the stem: a stem at 0 is what absent means, and
+        // leaving it off keeps cues from sets and cues from loose files alike.
+        ...(startSeconds && Math.abs(startSeconds) > 0.0005
+          ? { startSeconds }
+          : {}),
       });
     } catch (error) {
       // One unreadable file shouldn't lose the rest of the song.
@@ -105,7 +175,33 @@ export async function importStems(): Promise<CueTrack[]> {
 
   // Alphabetical, so the mixer's running order matches the file names the user
   // chose -- which is usually already the order they think of the parts in.
-  return tracks.sort((a, b) => a.name.localeCompare(b.name));
+  tracks.sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    tracks,
+    set,
+    setName: setAsset ? displayName(setAsset.name) : undefined,
+    skipped,
+  };
+}
+
+/**
+ * Stems already in a cue, placed by a set picked on its own afterwards.
+ *
+ * Matched on the stem's name, which is its file name until someone renames
+ * it. Returns the same array when nothing moved, so the caller can tell
+ * whether the engine needs to reload.
+ */
+export function placeTracks(tracks: CueTrack[], set: AbletonSet): CueTrack[] {
+  let moved = false;
+  const placed = tracks.map((track) => {
+    const startSeconds = placementFor(set, track.name);
+    if (startSeconds === undefined) return track;
+    const next = Math.abs(startSeconds) > 0.0005 ? startSeconds : undefined;
+    if (next === track.startSeconds) return track;
+    moved = true;
+    return { ...track, startSeconds: next };
+  });
+  return moved ? placed : tracks;
 }
 
 /**

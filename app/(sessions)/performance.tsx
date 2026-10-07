@@ -23,9 +23,11 @@ import {
 } from "../../context/SessionsContext";
 import {
   importStems,
+  placeTracks,
   readStemSections,
   removeStems,
 } from "../../utils/importStems";
+import { sectionsFromLocators } from "../../utils/abletonSet";
 import { arrangementFrom } from "../../constants/arrangement";
 import {
   useSessionPlayback,
@@ -175,6 +177,13 @@ function ImportStemsButton({
       </Text>
     </TouchableOpacity>
   );
+}
+
+/** What an Ableton set brings, for the import confirmation. */
+function describeSet(sectionCount: number, bpm: number | undefined): string {
+  return sectionCount > 0
+    ? `Brings ${sectionCount} ${sectionCount === 1 ? "section" : "sections"} from the Ableton markers${bpm ? `, at ${bpm} BPM` : ""}.`
+    : `The Ableton set has no markers; its clip placements${bpm ? ` and tempo (${bpm} BPM)` : ""} are still used.`;
 }
 
 const clock = (seconds: number) =>
@@ -632,46 +641,113 @@ export default function PerformanceScreen() {
     if (!sessionId || !itemId || !cue) return;
     setImporting(true);
     try {
-      const picked = await importStems();
-      if (picked.length === 0) return;
+      const { tracks: picked, set, setName, skipped } = await importStems();
 
-      const displacedLoop = cue.loopKey ? findLoopByKey(cue.loopKey) : undefined;
-      const ok = await confirm({
-        title: `Add ${picked.length} ${picked.length === 1 ? "stem" : "stems"}?`,
-        message: [
-          tracks.length > 0
-            ? `Joins the ${tracks.length} already in this cue.`
-            : `This cue becomes a stem song.`,
-          displacedLoop
-            ? `${displacedLoop.title} is removed — a cue plays stems or a loop, not both.`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" "),
-        confirmLabel: "Add",
-      });
-      if (!ok) {
-        removeStems(picked);
+      if (picked.length === 0 && !set) {
+        if (setName) {
+          Alert.alert(
+            "Couldn't read that set",
+            `${setName}.als didn't open as an Ableton Live Set.`
+          );
+        } else if (skipped.length > 0) {
+          Alert.alert(
+            "Nothing to import",
+            "Pick audio files, an Ableton set (.als), or both."
+          );
+        }
         return;
       }
 
-      const nextTracks = [...tracks, ...picked];
-      const changes: Partial<SessionItem> = { tracks: nextTracks };
+      // A set on its own fills in a song that already has its stems. With
+      // nothing to play there is nothing to put the markers on, and the clip
+      // placements would be lost before the stems arrived.
+      if (picked.length === 0 && tracks.length === 0) {
+        Alert.alert(
+          "Add the stems too",
+          "Select the Ableton set together with its audio files, so each stem can be placed where it sits in the arrangement."
+        );
+        return;
+      }
 
-      if (cue.loopKey) changes.loopKey = undefined;
+      const setSections = set ? sectionsFromLocators(set.locators) : [];
+      const setBpm = set ? clampBpm(set.bpm) : undefined;
 
-      if (!cue.title.trim() || cue.title === UNTITLED_CUE) {
+      if (picked.length > 0) {
+        const displacedLoop = cue.loopKey ? findLoopByKey(cue.loopKey) : undefined;
+        const ok = await confirm({
+          title: `Add ${picked.length} ${picked.length === 1 ? "stem" : "stems"}?`,
+          message: [
+            tracks.length > 0
+              ? `Joins the ${tracks.length} already in this cue.`
+              : `This cue becomes a stem song.`,
+            displacedLoop
+              ? `${displacedLoop.title} is removed — a cue plays stems or a loop, not both.`
+              : null,
+            set ? describeSet(setSections.length, setBpm) : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+          confirmLabel: "Add",
+        });
+        if (!ok) {
+          removeStems(picked);
+          return;
+        }
+      } else if (set) {
+        const ok = await confirm({
+          title: "Use this Ableton set?",
+          message: describeSet(setSections.length, setBpm),
+          confirmLabel: "Use",
+        });
+        if (!ok) return;
+      }
+
+      // Stems already in the cue are placed by a set that arrives on its own;
+      // ones arriving with it were placed as they were copied.
+      const existing = set && picked.length === 0 ? placeTracks(tracks, set) : tracks;
+      const nextTracks = [...existing, ...picked];
+      const changes: Partial<SessionItem> = {};
+      if (nextTracks.length !== tracks.length || existing !== tracks) {
+        changes.tracks = nextTracks;
+      }
+
+      if (cue.loopKey && picked.length > 0) changes.loopKey = undefined;
+
+      if (picked.length > 0 && (!cue.title.trim() || cue.title === UNTITLED_CUE)) {
         changes.title = picked[0].name;
       }
 
-      if (sections.length === 0) {
+      if (setSections.length > 0) {
+        // Sections marked by hand are work, so they are only replaced on
+        // request. An empty song takes the set's without asking -- that is
+        // what the set was picked for.
+        const replace =
+          sections.length === 0 ||
+          (await confirm({
+            title: `Replace your ${sections.length} ${sections.length === 1 ? "section" : "sections"}?`,
+            message: `The set has ${setSections.length}: ${setSections
+              .map((section) => section.name)
+              .join(", ")}.`,
+            confirmLabel: "Replace",
+            cancelLabel: "Keep mine",
+            destructive: true,
+          }));
+        if (replace) changes.sections = setSections;
+      } else if (sections.length === 0 && picked.length > 0) {
         const found = await readStemSections(picked);
         if (found.length > 0) changes.sections = found;
       }
 
-      reloadStems(nextTracks);
+      // The set's tempo is the one the song was produced at, so it beats any
+      // guess from listening to a stem.
+      if (setBpm) {
+        changes.bpm = setBpm;
+        if (cueIsLive) setEngineBpm(setBpm);
+      }
+
+      if (changes.tracks) reloadStems(nextTracks);
       updateItem(sessionId, itemId, changes);
-      detectTempoFrom(picked[0], cue.id);
+      if (!setBpm && picked.length > 0) detectTempoFrom(picked[0], cue.id);
     } catch (error) {
       console.error("Stem import failed", error);
       Alert.alert("Import failed", "Those files couldn't be read.");

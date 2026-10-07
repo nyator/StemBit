@@ -1059,12 +1059,38 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           return { peaks: peaks, duration: buffer.duration };
         }
 
-        function loadTrack(id, base64) {
+        // A stem moved onto the song's timeline: silence in front of one that
+        // comes in late, the head cut off one that was trimmed. Done once, here,
+        // so every launch, loop and seek downstream keeps treating buffer time
+        // as song time and none of it has to know a track can be offset.
+        //
+        // A shift that would leave nothing, or one past an hour -- a number no
+        // song produces -- is ignored rather than trusted: a stem in the wrong
+        // place is recoverable, a stem that is gone or a page out of memory is
+        // not.
+        function placeBuffer(ctx, buf, startSeconds) {
+          var shift = Math.round((startSeconds || 0) * buf.sampleRate);
+          if (!shift) return buf;
+          if (shift > buf.sampleRate * 3600) return buf;
+          var length = buf.length + shift;
+          if (length <= 0) return buf;
+
+          var placed = ctx.createBuffer(buf.numberOfChannels, length, buf.sampleRate);
+          for (var c = 0; c < buf.numberOfChannels; c++) {
+            var source = buf.getChannelData(c);
+            var target = placed.getChannelData(c);
+            if (shift > 0) target.set(source, shift);
+            else target.set(source.subarray(-shift));
+          }
+          return placed;
+        }
+
+        function loadTrack(id, base64, startSeconds) {
           var ctx = ensureContext();
           ctx.decodeAudioData(
             base64ToArrayBuffer(base64),
             function (buf) {
-              buffers[id] = buf;
+              buffers[id] = placeBuffer(ctx, buf, startSeconds);
               post({ type: "loaded", id: id });
             },
             function () {
@@ -1121,7 +1147,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 
           switch (data.type) {
             case "loadTrack":
-              loadTrack(data.id, data.base64);
+              loadTrack(data.id, data.base64, data.startSeconds);
               break;
             case "clearTracks":
               clearTracks(data.keep);

@@ -48,6 +48,15 @@ export type CueTrack = {
    * an absent pan means centre -- which is where every one of them was.
    */
   pan?: number;
+  /**
+   * Where the file's first sample falls on the song's timeline, in seconds.
+   *
+   * Set from an Ableton set, for a stem that comes in at bar 9 rather than at
+   * the top -- or one trimmed in the arrangement, which comes out negative.
+   * Absent is 0: every stem lines up at its own start, which is what exported
+   * stems are and what every cue before this assumed.
+   */
+  startSeconds?: number;
 };
 
 /**
