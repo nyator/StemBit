@@ -1,16 +1,40 @@
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { View } from "react-native";
-import FloatingTabBar from "../../components/ui/floatingTabBar";
+import { useAuth } from "@clerk/expo";
+import { usePreferences } from "../../context/PreferencesContext";
+import LiquidGlassTabBar from "../../components/ui/liquidGlassTabBar";
 import { COLORS } from "../../constants/theme";
 
 // The playback engines (PlaybackLock/Metronome/Loop) and FloatingEngineControls
 // are mounted at the app root (app/_layout.tsx), above every navigator, so their
 // audio survives navigating to non-tab screens. This layout is just the tabs.
 export default function TabLayout() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { prefs } = usePreferences();
+
+  // The gate for the whole instrument surface.
+  //
+  // It lives here rather than on each of the four tabs because this is the one
+  // layout every one of them mounts through -- and because the sub-stacks
+  // ((loops), (pads), (sessions), (settings)) are all pushed from inside a tab,
+  // so guarding the entrance guards everything behind it.
+  //
+  // Nothing renders until Clerk has read the stored session. Returning the
+  // signed-out redirect during that window would bounce a returning user to the
+  // sign-in screen on every cold start, a frame before their session loads.
+  if (!isLoaded) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.canvas }} />;
+  }
+
+  // Guests are let through: nothing behind the tabs needs an account.
+  if (!isSignedIn && !prefs.guest) {
+    return <Redirect href="/(auths)/login" />;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.canvas }}>
       <Tabs
-        tabBar={(props) => <FloatingTabBar {...props} />}
+        tabBar={(props) => <LiquidGlassTabBar {...props} />}
         // Keep every tab's scene attached in the view hierarchy. Left to the
         // defaults, inactive tabs are detached (Android) and mounted lazily, so
         // switching to one re-attaches/re-mounts its scene -- a blank frame and
@@ -32,6 +56,7 @@ export default function TabLayout() {
           },
         }}
       >
+        <Tabs.Screen name="session" options={{ title: "Session", headerShown: false }} />
         <Tabs.Screen name="loop" options={{ title: "Loop", headerShown: false }} />
         <Tabs.Screen name="pad" options={{ title: "pad", headerShown: false }} />
         <Tabs.Screen name="metro" options={{ title: "Metro", headerShown: false }} />

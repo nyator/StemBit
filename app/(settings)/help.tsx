@@ -1,6 +1,6 @@
-import { View, Text, StatusBar, ScrollView, TouchableOpacity, Linking } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, ScrollView, TouchableOpacity, Linking, Alert } from "react-native";
 
+import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
 import { COLORS, SUPPORT_EMAIL } from "../../constants/theme";
 import {
@@ -40,11 +40,10 @@ const GUIDES: {
 
 const Help = () => {
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-      <ScreenHeader title="Help & Support" />
+    <Screen glows={["topLeft"]}>
+      <ScreenHeader title="Help & support" />
 
-      <ScrollView className="flex-1 px-5">
+      <ScrollView className="flex-1 px-screen">
         {GUIDES.map((guide) => (
           <View
             key={guide.title}
@@ -54,11 +53,11 @@ const Help = () => {
               <View className="items-center justify-center w-8 h-8 mr-3 rounded-lg bg-brand/20">
                 <guide.icon size={17} color={COLORS.brand} />
               </View>
-              <Text className="text-base text-white font-satoshiBold">
+              <Text className="text-body text-white font-satoshiBold">
                 {guide.title}
               </Text>
             </View>
-            <Text className="text-sm leading-5 text-white/60 font-satoshiRegular">
+            <Text className="text-label leading-5 text-white/60 font-satoshiRegular">
               {guide.body}
             </Text>
           </View>
@@ -68,16 +67,21 @@ const Help = () => {
           className="flex-row items-center justify-center py-4 mt-2 mb-10 rounded-2xl bg-brand"
           onPress={() =>
             Linking.openURL(
-              `mailto:${SUPPORT_EMAIL}?subject=StemBit Support`
-            ).catch(() => { })
+              `mailto:${SUPPORT_EMAIL}?subject=StemBits Support`
+            ).catch(() =>
+              // No mail account on the device (common on review iPads): a
+              // button that silently does nothing reads as broken, so say
+              // where to write instead.
+              Alert.alert("Email support", `Write to us at ${SUPPORT_EMAIL}`)
+            )
           }
         >
-          <Text className="ml-2 text-base text-black font-satoshiBold">
-            Email Support
+          <Text className="ml-2 text-body text-black font-satoshiBold">
+            Email support
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 };
 

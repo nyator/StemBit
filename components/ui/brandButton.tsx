@@ -1,7 +1,19 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Pressable, Text, View, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { COLORS, GRADIENTS, RADII, SIZES } from "../../constants/theme";
+
+// Real Liquid Glass on iOS 26+; every other platform (older iOS, Android,
+// web) falls back to the flat gradient fill this button already had. A
+// device's glass support can't change mid-session, so this is read once.
+const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
 
 // The design's three button treatments.
 //
@@ -21,41 +33,83 @@ type ButtonProps = {
   accessibilityLabel?: string;
 };
 
-/** Filled gradient button. The primary action on any screen. */
+/**
+ * Filled gradient button. The primary action on any screen.
+ *
+ * `loading` swaps the label for a spinner and blocks presses, which is what
+ * every submit in the auth flow needs -- the button is the only thing on screen
+ * that can say a request is in flight.
+ */
 export function BrandButton({
   label,
   onPress,
   disabled,
+  loading,
   style,
   accessibilityLabel,
-}: ButtonProps) {
+}: ButtonProps & { loading?: boolean }) {
+  const inert = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={inert}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!inert, busy: !!loading }}
       style={({ pressed }) => [
-        { width: "100%", opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
+        {
+          width: "100%",
+          // A loading button stays at full strength: it is working, not
+          // unavailable, and dimming it reads as the latter.
+          opacity: disabled ? 0.5 : pressed && !loading ? 0.85 : 1,
+        },
         style,
       ]}
     >
-      <LinearGradient
-        colors={GRADIENTS.brand.colors}
-        start={GRADIENTS.brand.start}
-        end={GRADIENTS.brand.end}
-        style={{
-          height: SIZES.buttonHeight,
-          borderRadius: RADII.md,
-          borderWidth: 1,
-          borderColor: COLORS.borderBrand,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text className="font-spaceBold text-body text-ink-onBrand">{label}</Text>
-      </LinearGradient>
+      {HAS_LIQUID_GLASS ? (
+        <GlassView
+          glassEffectStyle="regular"
+          isInteractive
+          tintColor={COLORS.brand}
+          style={{
+            height: SIZES.buttonHeight,
+            borderRadius: RADII.md,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.textOnBrand} />
+          ) : (
+            <Text className="font-spaceBold text-body text-ink-onBrand">
+              {label}
+            </Text>
+          )}
+        </GlassView>
+      ) : (
+        <LinearGradient
+          colors={GRADIENTS.brand.colors}
+          start={GRADIENTS.brand.start}
+          end={GRADIENTS.brand.end}
+          style={{
+            height: SIZES.buttonHeight,
+            borderRadius: RADII.md,
+            borderWidth: 1,
+            borderColor: COLORS.borderBrand,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.textOnBrand} />
+          ) : (
+            <Text className="font-spaceBold text-body text-ink-onBrand">
+              {label}
+            </Text>
+          )}
+        </LinearGradient>
+      )}
     </Pressable>
   );
 }
@@ -109,9 +163,27 @@ export function InverseButton({
       accessibilityState={{ disabled: !!disabled }}
       style={({ pressed }) => [{ opacity: disabled ? 0.5 : pressed ? 0.8 : 1 }, style]}
     >
-      <View className="items-center justify-center px-5 py-2 bg-white h-9 rounded-md">
-        <Text className="font-spaceBold text-body text-ink-inverse">{label}</Text>
-      </View>
+      {HAS_LIQUID_GLASS ? (
+        <GlassView
+          glassEffectStyle="regular"
+          isInteractive
+          tintColor={COLORS.white}
+          style={{
+            height: 36,
+            paddingHorizontal: 20,
+            borderRadius: RADII.md,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          <Text className="font-spaceBold text-body text-ink-inverse">{label}</Text>
+        </GlassView>
+      ) : (
+        <View className="items-center justify-center px-5 py-2 bg-white h-9 rounded-md">
+          <Text className="font-spaceBold text-body text-ink-inverse">{label}</Text>
+        </View>
+      )}
     </Pressable>
   );
 }

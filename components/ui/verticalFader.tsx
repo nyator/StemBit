@@ -1,7 +1,12 @@
 import { useMemo, useRef } from "react";
-import { View, PanResponder } from "react-native";
+import {
+  View,
+  PanResponder,
+  type AccessibilityActionInfo,
+} from "react-native";
 
 import { COLORS, CONTROL } from "../../constants/theme";
+import { useDoubleTap } from "../../hooks/useDoubleTap";
 
 // A console fader: vertical throw, travelling cap, scale markings beside the
 // track.
@@ -23,6 +28,17 @@ const TICKS = [0, 0.25, 0.5, 0.75, 1];
 
 const TRAVEL = FADER_HEIGHT - CAP_HEIGHT;
 
+// A screen reader can't drag, so the fader publishes the two actions that let
+// one be set without a drag. Without these the control is readable but not
+// operable -- "adjustable" describes it, it doesn't do anything.
+export const ADJUST_ACTIONS: AccessibilityActionInfo[] = [
+  { name: "increment" },
+  { name: "decrement" },
+];
+// How far one nudge moves it. 5% of the throw, which is the smallest step that
+// changes the number the fader announces by a whole point.
+const NUDGE = 0.05;
+
 type VerticalFaderProps = {
   /** Position, 0 (bottom) to 1 (top). */
   value: number;
@@ -30,12 +46,14 @@ type VerticalFaderProps = {
   /** Fires once when the grip is released — persist here, not on every move. */
   onComplete?: (value: number) => void;
   accessibilityLabel?: string;
+  defaultValue?: number;
 };
 
 export default function VerticalFader({
   value,
   onChange,
   onComplete,
+  defaultValue,
   accessibilityLabel,
 }: VerticalFaderProps) {
   // The responder is built once, so it reads the live callbacks and the latest
@@ -46,6 +64,13 @@ export default function VerticalFader({
   onCompleteRef.current = onComplete;
   const latestRef = useRef(value);
   latestRef.current = value;
+  const defaultRef = useRef(defaultValue);
+  defaultRef.current = defaultValue;
+  // Latched for the rest of the gesture once a double tap has reset the fader,
+  // so a finger that lingers and slides doesn't drag it straight back off the
+  // value it was just asked to return to.
+  const resetRef = useRef(false);
+  const registerTap = useDoubleTap();
 
   const panResponder = useMemo(
     () =>
@@ -54,9 +79,19 @@ export default function VerticalFader({
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (event) => {
-          handleTouch(event.nativeEvent.locationY);
+          const { locationX, locationY } = event.nativeEvent;
+          const home = defaultRef.current;
+          if (registerTap({ x: locationX, y: locationY }) && home != null) {
+            resetRef.current = true;
+            latestRef.current = home;
+            onChangeRef.current(home);
+            return;
+          }
+          resetRef.current = false;
+          handleTouch(locationY);
         },
         onPanResponderMove: (event) => {
+          if (resetRef.current) return;
           handleTouch(event.nativeEvent.locationY);
         },
         onPanResponderRelease: () => {
@@ -68,6 +103,15 @@ export default function VerticalFader({
       }),
     []
   );
+
+  // An accessibility nudge has no release to wait for, so unlike a drag it
+  // commits as it goes.
+  const nudge = (delta: number) => {
+    const next = Math.max(0, Math.min(1, latestRef.current + delta));
+    latestRef.current = next;
+    onChangeRef.current(next);
+    onCompleteRef.current?.(next);
+  };
 
   // Touch y is measured to the middle of the cap, so the grip lands under the
   // finger instead of jumping by half its height on the first touch.
@@ -87,9 +131,14 @@ export default function VerticalFader({
       accessibilityRole="adjustable"
       accessibilityLabel={accessibilityLabel}
       accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
+      accessibilityActions={ADJUST_ACTIONS}
+      onAccessibilityAction={({ nativeEvent }) => {
+        if (nativeEvent.actionName === "increment") nudge(NUDGE);
+        if (nativeEvent.actionName === "decrement") nudge(-NUDGE);
+      }}
       style={{
         height: FADER_HEIGHT,
-        width: CAP_WIDTH + 22,
+        width: CAP_WIDTH + 10,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -103,6 +152,20 @@ export default function VerticalFader({
             position: "absolute",
             top: CAP_HEIGHT / 2 + (1 - tick) * TRAVEL,
             left: 0,
+            width: tick === 1 || tick === 0 ? 10 : 6,
+            height: 1,
+            backgroundColor: "rgba(255,255,255,0.25)",
+          }}
+        />
+      ))}
+      {TICKS.map((tick) => (
+        <View
+          key={tick}
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: CAP_HEIGHT / 2 + (1 - tick) * TRAVEL,
+            right: 0,
             width: tick === 1 || tick === 0 ? 10 : 6,
             height: 1,
             backgroundColor: "rgba(255,255,255,0.25)",
@@ -142,13 +205,15 @@ export default function VerticalFader({
           width: CAP_WIDTH,
           height: CAP_HEIGHT,
           borderRadius: 4,
-          backgroundColor: "#D8DBE0",
+          // The same near-white every other control's thumb uses -- a fader cap
+          // and a switch knob are the same object in two orientations.
+          backgroundColor: CONTROL.knob,
           borderWidth: 1,
           borderColor: "rgba(0,0,0,0.35)",
           alignItems: "center",
           justifyContent: "center",
           // Lifts the cap off the track the way a real one sits proud.
-          shadowColor: "#000000",
+          shadowColor: COLORS.black,
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: 0.45,
           shadowRadius: 3,
@@ -163,6 +228,7 @@ export default function VerticalFader({
             backgroundColor: "rgba(0,0,0,0.55)",
           }}
         />
+
       </View>
     </View>
   );

@@ -1,36 +1,41 @@
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { Setting2, Setting4, VolumeHigh } from "./icons";
+import NavButton from "./ui/navButton";
+import { Setting2, VolumeHigh } from "./icons";
 
+// The header on the four tab screens: wordmark left, volume and settings right.
+//
+// Padded to the same x as ScreenHeader, so the wordmark on a tab screen and the
+// title on a pushed screen start from the same edge. It used to sit at 32
+// against everything else's 20, which read as the header sliding sideways every
+// time you opened a sub-screen.
+//
+// The buttons are NavButton for the same reason: they land in the same corner
+// as ScreenHeader's back button on the routes either side of a push, so they
+// have to be the same button -- footprint, material and all.
 const HeaderComponent = () => {
-    const router = useRouter();
+  const router = useRouter();
 
-    return (
-        <View className="flex flex-row justify-between items-center px-8 my-5 w-full">
-            <View className="flex flex-row justify-between items-center w-2/5">
-                <View className="flex flex-row justify-center items-center">
-                    <Text className="text-3xl text-white font-wordmark">Stembits</Text>
-                </View>
-            </View>
+  return (
+    <View className="flex-row items-center justify-between w-full px-screen mt-4 mb-5">
+      <Text className="text-white font-wordmark text-wordmarkSm tracking-wordmark">
+        stembits
+      </Text>
 
-            <View className="flex-row">
-                <TouchableOpacity
-                    className="p-2 rounded-full"
-                    onPress={() => router.push("/(settings)/audiovolume")}
-                    accessibilityLabel="Go to settings"
-                >
-                    <VolumeHigh size={24} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                    className="p-2 rounded-full"
-                    onPress={() => router.push("/(settings)")}
-                    accessibilityLabel="Go to settings"
-                >
-                    <Setting2 size={24} color="white" />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
+      <View className="flex-row gap-2">
+        <NavButton
+          icon={VolumeHigh}
+          onPress={() => router.push("/(settings)/audiovolume")}
+          accessibilityLabel="Audio output and volume"
+        />
+        <NavButton
+          icon={Setting2}
+          onPress={() => router.push("/(settings)")}
+          accessibilityLabel="Go to settings"
+        />
+      </View>
+    </View>
+  );
 };
 
 export default HeaderComponent;

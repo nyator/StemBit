@@ -1,36 +1,38 @@
-import {
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  Alert,
-  Linking,
-  Platform,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScrollView, Text, Alert, Linking, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
 
 import ScreenHeader from "../../components/ui/screenHeader";
+import Screen from "../../components/ui/screen";
+import { InverseButton } from "../../components/ui/brandButton";
 import {
   SettingLink,
   SettingSwitch,
   SettingSection,
 } from "../../components/ui/settingRow";
-import { usePreferences } from "../../context/PreferencesContext";
-import { logoutUser } from "../../lib/appwrite";
+import { usePreferences, type Preferences } from "../../context/PreferencesContext";
+import { useSessionCue } from "../../context/SessionCueContext";
+import { useMetronome } from "../../context/MetronomeContext";
+import { useAuth } from "@clerk/expo";
 import {
   ProfileCircle,
   VolumeHigh,
   DocumentText,
   ShieldSecurity,
-  NotificationBing,
+  Musicnote,
   Flash,
   MessageQuestion,
 } from "../../components/icons";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+
+// Just the label for the current choice, shown as the link row's value text --
+// the full options (with their icons) live on the sub-screen itself
+// (launchscreen.tsx), which is the only place that needs to render all four.
+const LAUNCH_SCREEN_LABELS: Record<Preferences["launchScreen"], string> = {
+  loop: "Loops",
+  pad: "Pad",
+  metro: "Metronome",
+  session: "Sessions",
+};
 
 // Read from app.json via expo-constants rather than a hardcoded constant, so
 // these can't drift from what actually ships.
@@ -48,33 +50,58 @@ const BUILD =
 const SettingsScreen = () => {
   const router = useRouter();
   const { prefs, setPref } = usePreferences();
+  const { endSession } = useSessionCue();
+  const { stopMetronome } = useMetronome();
+  const { signOut, isSignedIn } = useAuth();
+
+  // A guest has nothing to log out of. replace, for the same reason log out
+  // uses it below.
+  const handleSignIn = () => router.replace("/login");
 
   const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
+    Alert.alert("Log out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Log Out",
+        text: "Log out",
         style: "destructive",
         onPress: async () => {
+          // The engines behind a session (loop, pad, stems) and the standalone
+          // metronome all live above the navigator specifically so they
+          // survive normal screen changes -- signing out is the one screen
+          // change that has to be the exception, or the next person to pick
+          // up the phone hears whatever the last one left running.
+          endSession();
+          stopMetronome();
+          // An explicit sign-out should land on the sign-in screen next launch
+          // too, not straight back into the app as a guest.
+          setPref("guest", false);
           try {
-            await logoutUser();
+            await signOut();
           } catch {
-            // No active session (e.g. dev bypass) — proceed anyway.
+            // Clearing the local session is what actually signs them out; a
+            // failed round-trip to Clerk shouldn't strand them signed in, and
+            // the navigation below runs either way.
           }
-          router.replace("/(auths)/login");
+
+          // Navigated explicitly, because the guard in (tabs)/_layout cannot
+          // reach this screen: (settings) is a SIBLING of (tabs) in the root
+          // Stack rather than a route inside it, so it never re-renders through
+          // that layout and nothing redirects on its own.
+          //
+          // replace, not push -- behind this sits Settings on top of a tab the
+          // user is no longer allowed to see, and a back swipe should return to
+          // neither.
+          router.replace("/login");
         },
       },
     ]);
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeft} />
-      {/* <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} /> */}
-      <StatusBar barStyle="light-content" />
+    <Screen glows={["topLeft"]}>
       <ScreenHeader title="Settings" />
 
-      <ScrollView className="flex-1 px-5 ">
+      <ScrollView className="flex-1 px-screen">
         <SettingSection title="Account">
           <SettingLink
             icon={ProfileCircle}
@@ -83,68 +110,76 @@ const SettingsScreen = () => {
           />
         </SettingSection>
 
-        <SettingSection title=" Audio / Playback">
+        <SettingSection title="Audio / Playback">
           <SettingLink
             icon={VolumeHigh}
-            label="Audio Output / Volume"
+            label="Audio output / volume"
             onPress={() => router.push("/audiovolume")}
           />
         </SettingSection>
 
-        <SettingSection title=" App">
+        <SettingSection title="App">
           <SettingSwitch
-            icon={NotificationBing}
-            label="Notification"
+            icon={Musicnote}
+            label="Meter accents"
+            sublabel="Accent the strong beats in compound and odd meters"
             value={prefs.meterAccents}
             border={true}
             onValueChange={(value) => setPref("meterAccents", value)}
           />
           <SettingSwitch
             icon={Flash}
-            label="Haptic Feedback"
+            label="Haptic feedback"
             sublabel="Vibrate on pad presses and tap tempo"
             value={prefs.haptics}
+            border={true}
             onValueChange={(value) => setPref("haptics", value)}
+          />
+          <SettingLink
+            label="Launch screen"
+            value={LAUNCH_SCREEN_LABELS[prefs.launchScreen]}
+            onPress={() => router.push("/launchscreen")}
           />
         </SettingSection>
 
         <SettingSection title="About">
           <SettingLink
             icon={MessageQuestion}
-            label="Help & Support"
+            label="Help & support"
             border={true}
             onPress={() => router.push("/help")}
           />
           <SettingLink
             icon={DocumentText}
-            label="Terms of Service"
+            label="Terms of service"
             border={true}
             onPress={() => router.push("/termsofservice")}
           />
           <SettingLink
             icon={ShieldSecurity}
-            label="Privacy Policy"
+            label="Privacy policy"
             onPress={() => router.push("/privacypolicy")}
           />
         </SettingSection>
 
-        <TouchableOpacity
-          className="self-center items-center py-2 border rounded-2xl bg-white w-28"
-          onPress={handleLogout}
-        >
-          <Text className="text-base font-spaceBold">Log Out</Text>
-        </TouchableOpacity>
+        {/* The same white button the profile screen signs out with, rather
+            than a second one shaped like it. */}
+        <InverseButton
+          label={isSignedIn ? "Log out" : "Sign in"}
+          onPress={isSignedIn ? handleLogout : handleSignIn}
+          style={{ alignSelf: "center" }}
+        />
 
         <View className="items-center mt-3 mb-10">
-          <Text className="text-sm text-ink-muted font-spaceRegular">
-            version {VERSION}
+          <Text className="text-label text-ink-muted font-satoshiRegular">
+            Version {VERSION}
           </Text>
-          <Text className="text-overline text-sm text-ink-muted font-spaceRegular">
-            build {BUILD}
+          <Text className="text-overline text-ink-muted font-satoshiRegular">
+            Build {BUILD}
           </Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 };
 

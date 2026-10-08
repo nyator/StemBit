@@ -1,13 +1,15 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useState,
   useRef,
   useEffect,
   type ReactNode,
 } from "react";
-import { Alert, AppState } from "react-native";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { Alert, Animated, AppState, Easing } from "react-native";
+import { type WebViewMessageEvent } from "react-native-webview";
+import EngineView, { type EngineViewHandle } from "../components/engineView";
 import { setAudioModeAsync } from "expo-audio";
 
 import {
@@ -20,8 +22,12 @@ import { buildLoopEngineHtml } from "../constants/loopEngine";
 import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 import { useUserLoops } from "./UserLoopsContext";
 import {
+  ACCENT_SOUND_ID,
+  BEAT_SOUND_ID,
   METRONOME_SOUNDS,
   PLAYBACK_FEELS,
   DEFAULT_FEEL_INDEX,
@@ -33,11 +39,32 @@ export const LOOP_MAX_BPM = 240;
 // How long the engine gets to answer a liveness ping before it's declared
 // dead. Generous: the WebView may still be waking up after a spell in the
 // background, and a needless restart costs a re-decode.
+// Matches POSITION_INTERVAL_MS in constants/loopEngine.ts: how often the engine
+// reports the playhead, and therefore how long each tween between reports runs.
+const POSITION_REPORT_MS = 60;
+
 const ENGINE_PONG_TIMEOUT_MS = 2000;
 
 // How long playback survives after the app reports it went to the background
 // before it's actually stopped. See the AppState handler for why this exists.
-const BACKGROUND_STOP_GRACE_MS = 5000;
+//
+// A minute, not the five seconds this started at. Android reports a pulled-down
+// notification shade as "background" -- identical to actually leaving the app --
+// and behind that shade the activity is only paused, so the loop is still
+// audible and still correct. Five seconds meant that glancing at a notification
+// for longer than a glance killed a running loop, which is worse than anything
+// this timer is protecting against: the engine it eventually stops is a
+// suspended WebView that has already gone silent on its own, so waiting longer
+// costs nothing but a stale isPlaying flag that coming back clears anyway.
+const BACKGROUND_STOP_GRACE_MS = 60000;
+
+// How many loops are read and handed to the engine at once at startup.
+//
+// Two, not the whole catalog. Each preload is a file read plus a base64 string
+// posted across the bridge, and doing twenty-seven of those in parallel is what
+// makes the first seconds of the app unresponsive. Raising this fills the
+// catalog marginally sooner and costs responsiveness while it does.
+const PRELOAD_CONCURRENCY = 2;
 
 // Loop-click pan preference -> StereoPanner value (-1 left .. 0 .. 1 right).
 const CLICK_PAN_VALUE: Record<string, number> = {
@@ -47,10 +74,36 @@ const CLICK_PAN_VALUE: Record<string, number> = {
 };
 
 // Asset id -> bundled asset module, from the shared metronome sound registry.
-// The loop click "follows the metronome's sound", so it plays whichever
-// accent/beat samples the Metronome is set to.
+// The loop click is the metronome's click: the same two samples every other
+// engine plays.
 const soundAsset = (id: string) =>
   METRONOME_SOUNDS.find((s) => s.id === id)?.asset;
+
+/**
+ * A hold on the loop's phase, and the value that hold keeps fed.
+ *
+ * `phase` is how far through the current loop pass playback is, 0–1, resetting
+ * on every pass -- so it drives anything that has to move in time with the loop.
+ * An Animated.Value rather than a number: it changes 16 times a second, and the
+ * provider wraps the whole app, so as state it would re-render every screen for
+ * a value one row draws. Interpolate it; don't read it in render.
+ *
+ * Only the engine can know it. A bundled loop's region is found inside the
+ * WebView (silence trim, then a snap to whole beats), so its length exists
+ * nowhere in JS, and anything timed here instead would drift against the audio.
+ *
+ * It costs something to know, which is why it is leased rather than simply
+ * available. Reporting it is 16 messages a second, each parsed on the RN JS
+ * thread and each starting a JS-driven animation on arrival -- continuous work
+ * on the one thread that also has to deliver the beat. Left running for screens
+ * that draw no phase, it saturated that thread and the beat visualiser slid
+ * progressively behind a click that never moved. So the engine is asked for it
+ * only while a lease is out, and released the moment the last one goes.
+ */
+export type LoopPhaseLease = {
+  phase: Animated.Value;
+  release: () => void;
+};
 
 type LoopPlaybackContextValue = {
   bpm: number;
@@ -73,12 +126,64 @@ type LoopPlaybackContextValue = {
   feelIndex: number;
   setFeelIndex: (index: number) => void;
   /**
-   * The feel's multiplier, exposed so the screen's beat dots can pulse at the
-   * rate the loop is actually running rather than at the raw BPM.
+   * The subdivision's multiplier: 0.5, 1 or 2. What the click is doing, not
+   * what the loop is — the dots and the audio both stay on the musical beat.
    */
   speedMultiplier: number;
   resetBpm: () => void;
+  /**
+   * Take out a lease on the loop's phase: the value, and the reporting that
+   * keeps it moving. Release it when you stop drawing.
+   *
+   * The value is reachable ONLY through a lease, which is the point. The engine
+   * reports its position only while something has said it is drawing that --
+   * see the note on the lease type -- so a phase handed out on its own would
+   * sit at zero forever and read as a bug in whoever drew it. Making the two
+   * inseparable means that cannot be written.
+   *
+   * Prefer the useLoopPhase hook below, which pairs the lease to a component's
+   * lifetime so releasing isn't something a caller can forget.
+   */
+  retainPhase: () => LoopPhaseLease;
+  /**
+   * Watch the loop's beats: which beat of the bar has just landed, 0-based and
+   * null when nothing is sounding, and whether it's an accent. Returns an
+   * unsubscribe.
+   *
+   * One call per beat, from the engine's own grid -- the cursor that schedules
+   * the click -- announced at the moment that beat sounds. That is the only
+   * number that cannot drift from what is being heard, and two earlier attempts
+   * at this both did: a setInterval at the current tempo, and then sampling the
+   * playhead every 60ms. Neither is wrong about the tempo; they are wrong about
+   * *when*, by a little more each bar.
+   *
+   * A subscription rather than a value on this context, for the same reason
+   * loopPhase is an Animated.Value: this provider wraps the whole app, and as
+   * state every beat would re-render every tab and both navigators for a row of
+   * dots that one screen draws.
+   */
+  subscribeBeat: (
+    listener: (beat: number | null, accent: boolean) => void
+  ) => () => void;
   setSelectedLoopKey: (key: string | undefined) => void;
+  /**
+   * Hand a loop to the engine to take over on the next bar line, sample
+   * accurately -- the whole swap happens in there, against the audio clock.
+   *
+   * Returns false when there is nothing to swap from or the loop isn't decoded
+   * yet, in which case the caller should simply select and start it.
+   */
+  queueLoopSwap: (loop: Loop, nextBpm: number) => boolean;
+  /** Drop a swap queued for a boundary that is no longer wanted. */
+  cancelLoopSwap: () => void;
+  /**
+   * Watch queued swaps land. The key that took over, or null when the engine
+   * couldn't do it and nothing changed. Returns an unsubscribe.
+   *
+   * A subscription because only the engine knows when the boundary actually
+   * arrived -- it is the one holding the clock the swap was scheduled against.
+   */
+  subscribeSwap: (listener: (key: string | null) => void) => () => void;
   startLoop: () => void;
   stopLoop: () => void;
 };
@@ -115,16 +220,12 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(false);
 
-  // Playback feel (subdivision): half / normal / double time, same three
-  // options the Metronome offers. It lives here rather than on the screen
-  // because it's part of the playback rate the engine runs at — on the screen
-  // it was a control that changed nothing.
+  // Subdivision: half / normal / double time, the same three options the
+  // Metronome offers. It moves the CLICK only — the loop's tempo is the BPM
+  // dial's job, and this used to duplicate it (see getPlaybackRate). Lives
+  // here rather than on the screen because the engine is what acts on it.
   const [feelIndex, setFeelIndex] = useState(DEFAULT_FEEL_INDEX);
   const speedMultiplier = PLAYBACK_FEELS[feelIndex].multiplier;
-  // Read by getPlaybackRate, which is called from callbacks that would
-  // otherwise close over a stale value.
-  const speedMultiplierRef = useRef(speedMultiplier);
-  speedMultiplierRef.current = speedMultiplier;
 
   // The tempo the loaded loop was recorded at; BPM changes are warped onto
   // it via playback rate (bpm / nativeBpm = 1x at the loop's own tempo).
@@ -146,8 +247,30 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // the engine reports it loaded.
   const pendingPlayRef = useRef(false);
 
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
+  // Position reporting is off in the engine by default because it posts a
+  // message every 60ms. It's switched on with playback and off again on stop,
+  // so the traffic only exists while something can actually be drawn from it.
+  //
+  // Deliberately an Animated.Value and NOT React state. This provider wraps the
+  // whole app, so 16 setState calls a second would re-render every tab and both
+  // navigators for a value only one row draws -- enough jank to make the thing
+  // it drives stutter. Writing to an Animated.Value re-renders nothing.
+  const loopPhase = useRef(new Animated.Value(0)).current;
+  // Last reported phase, to tell a wrap (which snaps) from normal progress
+  // (which tweens).
+  const lastPhaseRef = useRef(0);
+  // Whoever is drawing the beat, and the last beat they were told about. A set
+  // rather than a single callback so a screen mounting before the last one
+  // unmounts can't silently displace it.
+  const beatListenersRef = useRef<
+    Set<(beat: number | null, accent: boolean) => void>
+  >(new Set());
+  const lastBeatRef = useRef<number | null>(null);
+  // How many mounted things are drawing loopPhase. Zero means the engine can
+  // stop reporting its position -- see retainPhase.
+  const phaseDemandRef = useRef(0);
   // Bumping this remounts the WebView, which is how a dead engine is
   // recovered (see restartEngine).
   const [engineGeneration, setEngineGeneration] = useState(0);
@@ -164,6 +287,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   const messageQueueRef = useRef<Record<string, unknown>[]>([]);
   // Loop keys whose preload has been handed to the engine (or is in flight).
   const preloadStartedRef = useRef<Set<string>>(new Set());
+  // Keys waiting their turn, and how many are being read right now. See
+  // pumpPreloads for why the catalog is not simply loaded all at once.
+  const preloadQueueRef = useRef<string[]>([]);
+  const preloadActiveRef = useRef(0);
   // Click sound ids already handed to the engine to decode.
   const clickLoadedRef = useRef<Set<string>>(new Set());
 
@@ -178,14 +305,11 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // Read a loop's audio and hand it to the engine to decode ahead of time.
   // Works for either kind of loop: a bundled asset, or a file the user
   // imported (see context/UserLoopsContext.tsx).
-  const preloadLoop = (key: string) => {
-    if (preloadStartedRef.current.has(key)) return;
-    preloadStartedRef.current.add(key);
-
+  const sendPreload = (key: string) => {
     const loop = findLoopByKey(key);
-    if (!loop) return;
+    if (!loop) return Promise.resolve();
 
-    loadAudioBase64(loop.source)
+    return loadAudioBase64(loop.source)
       .then((base64) => {
         postToEngine({
           type: "preload",
@@ -199,6 +323,40 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         preloadStartedRef.current.delete(key);
         console.error("Failed to preload loop", key, error);
       });
+  };
+
+  // Drain the queue a few at a time.
+  //
+  // The catalog is 27 loops and ~17MB of audio, which becomes ~23MB of base64
+  // crossing the bridge as JSON strings. Reading and posting all of it in one
+  // pass -- which is what a plain forEach over the catalog did -- saturates the
+  // JS thread for the first seconds of the app: tab switches stutter and early
+  // taps get dropped. A couple at a time keeps the bridge fed without owning
+  // it, and the whole catalog still lands within a few seconds.
+  //
+  // Nothing waits on this. Selecting a loop reads its bytes directly (see
+  // reselectCurrentLoop), so a loop is playable the moment it is picked whether
+  // its preload has come round yet or not -- the preload only decides whether
+  // pressing play is instant or takes a beat.
+  const pumpPreloads = () => {
+    while (
+      preloadActiveRef.current < PRELOAD_CONCURRENCY &&
+      preloadQueueRef.current.length > 0
+    ) {
+      const key = preloadQueueRef.current.shift()!;
+      preloadActiveRef.current += 1;
+      sendPreload(key).finally(() => {
+        preloadActiveRef.current -= 1;
+        pumpPreloads();
+      });
+    }
+  };
+
+  const preloadLoop = (key: string) => {
+    if (preloadStartedRef.current.has(key)) return;
+    preloadStartedRef.current.add(key);
+    preloadQueueRef.current.push(key);
+    pumpPreloads();
   };
 
   // What the engine needs to make a loop active. An imported loop carries the
@@ -231,17 +389,17 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Push the current loop-click config (from preferences) to the engine. The
-  // click follows the metronome's selected sounds + per-voice volumes, and its
-  // overall level tracks the metronome master (Settings -> Metronome Volume) —
-  // NOT the Loop Volume, which governs the backing track. Plus its own enable +
-  // pan preferences.
+  // click follows the metronome's per-voice volumes, and its overall level
+  // tracks the metronome master (Settings -> Metronome Volume) — NOT the Loop
+  // Volume, which governs the backing track. Plus its own enable + pan
+  // preferences.
   const postClickConfig = () => {
     postToEngine({
       type: "setClick",
       enabled: prefs.loopClick,
       pan: CLICK_PAN_VALUE[prefs.loopClickPan] ?? 0,
-      accentId: prefs.accentSound,
-      beatId: prefs.beatSound,
+      accentId: ACCENT_SOUND_ID,
+      beatId: BEAT_SOUND_ID,
       accentVolume: prefs.accentVolume * prefs.metronomeVolume,
       beatVolume: prefs.beatVolume * prefs.metronomeVolume,
     });
@@ -287,6 +445,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     engineReadyRef.current = false;
     messageQueueRef.current = [];
     preloadStartedRef.current.clear();
+    preloadQueueRef.current = [];
+    preloadActiveRef.current = 0;
     clickLoadedRef.current.clear();
     loopReadyRef.current = false;
     setLoopReady(false);
@@ -296,6 +456,19 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     release("loop");
     setEngineGeneration((generation) => generation + 1);
   };
+
+  // Native audio (Settings) swaps the engine underneath: rebuild it the way a
+  // dead one is rebuilt, which also resets everything the old one had loaded.
+  const useNative = useNativeAudio();
+  const useNativeRef = useRef(useNative);
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    useNativeRef.current = useNative;
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    restartEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
 
   // Ask the engine to answer for itself. onRenderProcessGone /
   // onContentProcessDidTerminate cover most deaths, but they don't fire on
@@ -333,11 +506,75 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /**
+   * Say that something is drawing the loop's phase. Returns a release.
+   *
+   * The engine only reports its position while someone is looking, because the
+   * reporting is not free and it is not free on a thread that can afford it:
+   * sixteen messages a second, each one parsed on the RN JS thread and each one
+   * starting a 60ms JS-driven animation on arrival. Continuous work, forever,
+   * on the same thread that has to deliver the beat -- and the beat is what
+   * ends up queued behind it. That is a visualiser running progressively later
+   * than a click which is scheduled on the audio clock and doesn't care how
+   * busy JS is.
+   *
+   * The Loop tab draws no phase at all, so before this it was paying that bill
+   * for nothing, the whole time it was playing.
+   */
+  const retainPhase = useCallback((): LoopPhaseLease => {
+    phaseDemandRef.current += 1;
+    if (phaseDemandRef.current === 1 && isPlayingRef.current) {
+      postToEngine({ type: "positionUpdates", enabled: true });
+    }
+
+    // Each lease releases once. Without this a double release -- React's strict
+    // mode runs an effect's cleanup twice on mount, and callers are human --
+    // would decrement for a hold that was only taken once, and the count would
+    // reach zero while something was still drawing.
+    let released = false;
+    return {
+      phase: loopPhase,
+      release: () => {
+        if (released) return;
+        released = true;
+        phaseDemandRef.current = Math.max(0, phaseDemandRef.current - 1);
+        if (phaseDemandRef.current === 0) {
+          postToEngine({ type: "positionUpdates", enabled: false });
+          loopPhase.setValue(0);
+          lastPhaseRef.current = 0;
+        }
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Stable across renders, so a subscriber's effect doesn't tear down and
+  // resubscribe every time this provider re-renders -- which it does on every
+  // tempo nudge.
+  const subscribeBeat = useCallback(
+    (listener: (beat: number | null, accent: boolean) => void) => {
+      beatListenersRef.current.add(listener);
+      return () => {
+        beatListenersRef.current.delete(listener);
+      };
+    },
+    []
+  );
+
   const stopLoop = () => {
     pendingPlayRef.current = false;
     isPlayingRef.current = false;
     setIsPlaying(false);
     postToEngine({ type: "stop" });
+    postToEngine({ type: "positionUpdates", enabled: false });
+    loopPhase.setValue(0);
+    lastPhaseRef.current = 0;
+    // Said here as well as by the engine's parting message, so a dot is never
+    // left lit by a message that went missing on the way out.
+    if (lastBeatRef.current !== null) {
+      lastBeatRef.current = null;
+      beatListenersRef.current.forEach((listener) => listener(null, false));
+    }
     release("loop");
   };
 
@@ -367,6 +604,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
 
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "background") {
+        // On native audio the loop keeps playing in the background -- the
+        // app's own session runs there. Only the WebView engine, which WebKit
+        // silences, still gets stopped after the grace period.
+        if (useNativeRef.current) return;
         if (!isPlayingRef.current || backgroundStopTimerRef.current) return;
         backgroundStopTimerRef.current = setTimeout(() => {
           backgroundStopTimerRef.current = null;
@@ -380,7 +621,14 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
       }
       // Back on screen, so whatever took us away was brief.
       cancelPendingStop();
-      if (state === "active") checkEngineAlive();
+      if (state === "active") {
+        // The OS suspends the WebView audio clock when the app pauses, and
+        // nothing inside the page brings it back on its own -- see resumeAudio
+        // in the engine. Without this, a pulled-down notification shade left
+        // the audio stopped for good.
+        postToEngine({ type: "resume" });
+        checkEngineAlive();
+      }
     });
 
     return () => {
@@ -395,21 +643,28 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Rate the engine warps the loop to: the tempo the user asked for against
-  // the tempo it was recorded at, times the feel.
+  // the tempo it was recorded at. Nothing else.
   //
-  // Folding the feel in here rather than giving it its own control is what
-  // makes half/double time work everywhere at once — the WSOLA stretcher
-  // time-stretches to whatever rate it's handed (so the pitch holds), and the
-  // loop click derives its beat interval from the same currentRate, so the
-  // click subdivides along with the music instead of drifting off it.
-  const getPlaybackRate = (nextBpm = bpm) => {
-    const base = nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
-    return base * speedMultiplierRef.current;
-  };
+  // The subdivision is deliberately NOT folded in here. It used to be, and that
+  // made it a second tempo control: (bpm / nativeBpm) × 0.5 is the same rate as
+  // (bpm/2 / nativeBpm) × 1, so half time at 107 played exactly what the dial
+  // set to 53 would — same audio, same click, only a different number on
+  // screen. A control that duplicates the dial is one that mostly prompts
+  // "why is this slow?".
+  //
+  // It now moves the click alone (setClickFeel in constants/loopEngine.ts),
+  // which is both what the word "subdivision" means and the one thing the dial
+  // cannot do: play the loop at tempo while the click marks eighths.
+  const getPlaybackRate = (nextBpm = bpm) =>
+    nativeBpmRef.current ? nextBpm / nativeBpmRef.current : 1;
 
   const beginPlayback = () => {
     isPlayingRef.current = true;
     setIsPlaying(true);
+    // Only if something is actually drawing the phase -- see retainPhase.
+    if (phaseDemandRef.current > 0) {
+      postToEngine({ type: "positionUpdates", enabled: true });
+    }
     postToEngine({ type: "play", rate: getPlaybackRate() });
   };
 
@@ -426,6 +681,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           webViewRef.current?.postMessage(JSON.stringify(message))
         );
         preloadStartedRef.current.clear();
+        preloadQueueRef.current = [];
+        preloadActiveRef.current = 0;
         getAllLoops().forEach((loop) => preloadLoop(loop.key));
         // A fresh engine holds nothing, so the loop is not playable again
         // until the re-select below reports back. Saying so keeps the
@@ -436,10 +693,59 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         // The WebView's decoded click buffers + master gain are wiped on
         // reload too: re-send the click samples, config, and loop volume.
         clickLoadedRef.current.clear();
-        loadClickSound(prefs.accentSound);
-        loadClickSound(prefs.beatSound);
+        loadClickSound(ACCENT_SOUND_ID);
+        loadClickSound(BEAT_SOUND_ID);
         postClickConfig();
         postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
+        postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+      } else if (data.type === "swapped") {
+        // The boundary arrived and the new loop is sounding. Only the engine
+        // could say when, so this is the moment the rest of the app learns it.
+        swapListenersRef.current.forEach((listener) => listener(data.key));
+      } else if (data.type === "swapFailed") {
+        swapListenersRef.current.forEach((listener) => listener(null));
+      } else if (data.type === "beat") {
+        // A beat is landing right now. One message per beat, sent by the grid
+        // that schedules the click, at the moment the click sounds -- so what
+        // is drawn and what is heard are the same event rather than two clocks
+        // that agree at the start.
+        const beat = typeof data.beat === "number" ? data.beat : null;
+        const accent = data.accent === true;
+        lastBeatRef.current = beat;
+        beatListenersRef.current.forEach((listener) => listener(beat, accent));
+      } else if (data.type === "position") {
+        // phase is 0–1 through the current pass, or null when the engine stops
+        // and takes the playhead away.
+        const phase = typeof data.phase === "number" ? data.phase : null;
+        if (phase === null) {
+          loopPhase.setValue(0);
+          lastPhaseRef.current = 0;
+        } else if (phase < lastPhaseRef.current) {
+          // The pass wrapped. Snap: tweening down to a smaller value would run
+          // anything driven by this backwards, which reads as a rewind rather
+          // than a repeat.
+          loopPhase.setValue(phase);
+          lastPhaseRef.current = phase;
+        } else {
+          // Reports land every 60ms; stepping straight to each one visibly
+          // stair-steps, so each is tweened over exactly that interval.
+          //
+          // Tweened one step AHEAD of the reported value, not to it. The wrap
+          // happens between reports, so the last phase before a pass ends is
+          // short of 1 by however far the loop travels in 60ms -- anything
+          // driven by this then stopped visibly short of full and jumped back,
+          // never looking like it completed. Leading by the last observed
+          // increment means it arrives at 1 exactly as the wrap lands.
+          const step = phase - lastPhaseRef.current;
+          lastPhaseRef.current = phase;
+          Animated.timing(loopPhase, {
+            toValue: Math.min(1, phase + step),
+            duration: POSITION_REPORT_MS,
+            easing: Easing.linear,
+            // Interpolated into a width, which isn't a transform.
+            useNativeDriver: false,
+          }).start();
+        }
       } else if (data.type === "loaded") {
         if (data.key !== currentKeyRef.current) return; // stale select
         loopReadyRef.current = true;
@@ -514,11 +820,16 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
 
     currentKeyRef.current = selectedLoop.key;
     setSelectedKey(selectedLoop.key);
+    // Two numbers, and they are only the same one by default. The native tempo
+    // is what the audio was recorded at and every warp is measured from it; the
+    // opening tempo is what the user asked to hear. Setting the session to a
+    // playbackBpm therefore stretches the loop to it, rather than relabelling
+    // it -- which is what would happen if both were moved together.
     nativeBpmRef.current = selectedLoop.bpm;
     beatsPerBarRef.current = getBeatsPerBar(selectedLoop);
     setBeatsPerBar(beatsPerBarRef.current);
     setNativeBpm(selectedLoop.bpm);
-    setBpm(selectedLoop.bpm);
+    setBpm(selectedLoop.playbackBpm ?? selectedLoop.bpm);
     setSelectedTitle(selectedLoop.title);
 
     // Normally instant: the engine already holds the decoded buffer from
@@ -529,30 +840,38 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   };
 
   // Warp the loop's playback rate to match the current BPM relative to the
-  // tempo it was recorded at (e.g. sample_bpm80 at bpm=160 plays at 2x), and
-  // to the chosen feel. A feel change is a rate change like any other, so the
-  // engine debounces it and crossfades at the matching musical position rather
-  // than jumping.
+  // tempo it was recorded at (e.g. a 107 loop at bpm=214 plays at 2x). The
+  // engine debounces the change and crossfades at the matching musical
+  // position rather than jumping.
+  //
+  // No longer fires on a feel change: the feel does not touch the rate, so
+  // re-rendering the stretched buffer for it would be work for nothing.
   useEffect(() => {
     if (loopReady) {
       postToEngine({ type: "setRate", rate: getPlaybackRate() });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm, loopReady, feelIndex]);
+  }, [bpm, loopReady]);
+
+  // The subdivision, straight to the click. Cheap enough to send whenever it
+  // changes -- the engine applies it to the next beat it schedules, with no
+  // buffer to re-render and nothing to crossfade.
+  useEffect(() => {
+    postToEngine({ type: "setClickFeel", multiplier: speedMultiplier });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speedMultiplier, loopReady, engineGeneration]);
 
   // Keep the engine's click samples + config in sync with preferences. Runs on
   // mount (queued until the engine is ready) and whenever any click-relevant
   // preference changes; the engine reacts live if a loop is already playing.
   useEffect(() => {
-    loadClickSound(prefs.accentSound);
-    loadClickSound(prefs.beatSound);
+    loadClickSound(ACCENT_SOUND_ID);
+    loadClickSound(BEAT_SOUND_ID);
     postClickConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     prefs.loopClick,
     prefs.loopClickPan,
-    prefs.accentSound,
-    prefs.beatSound,
     prefs.accentVolume,
     prefs.beatVolume,
     prefs.metronomeVolume,
@@ -565,6 +884,37 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.loopVolume]);
 
+  // The same two levels live, while their Settings slider is still moving
+  // (see utils/volumePreview.ts). Only the levels: the rest of the click's
+  // config is unchanged by a drag, and the engine takes a partial setClick.
+  const clickVoicesRef = useRef({ accent: prefs.accentVolume, beat: prefs.beatVolume });
+  clickVoicesRef.current = { accent: prefs.accentVolume, beat: prefs.beatVolume };
+  useEffect(() => {
+    const stopLoopPreview = onVolumePreview("loop", (volume) =>
+      postToEngine({ type: "setLoopVolume", volume })
+    );
+    const stopClickPreview = onVolumePreview("metronome", (master) =>
+      postToEngine({
+        type: "setClick",
+        accentVolume: clickVoicesRef.current.accent * master,
+        beatVolume: clickVoicesRef.current.beat * master,
+      })
+    );
+    return () => {
+      stopLoopPreview();
+      stopClickPreview();
+    };
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Share the audio with other apps, or take it (Settings -> Audio). Re-sent
+  // on "ready" above too, since a rebuilt engine starts with the default.
+  useEffect(() => {
+    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs.mixWithOthers]);
+
   // Return the tempo control to the selected loop's recorded BPM (1x rate).
   // No-op when nothing is selected.
   const resetBpm = () => {
@@ -572,8 +922,66 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     setBpm(nativeBpmRef.current);
   };
 
+  /**
+   * Hand a loop to the engine to take over on the next bar line.
+   *
+   * Everything the swap needs goes across in one message -- which loop, at what
+   * tempo, in what meter -- because the engine has to be able to do the whole
+   * thing itself. It decodes and renders the warp while the outgoing loop plays
+   * out its bar, then schedules both sources against the audio clock so the new
+   * one starts on the same sample the old one ends. Nothing about the timing
+   * comes back through here; a message arriving on a downbeat would already be
+   * late by however long the bridge took.
+   *
+   * Returns false when it can't be done -- nothing playing, or the loop isn't
+   * decoded yet -- and the caller falls back to starting it outright.
+   */
+  const queueLoopSwap = (loop: Loop, nextBpm: number) => {
+    if (!isPlayingRef.current || !loopReadyRef.current) return false;
+
+    preloadLoop(loop.key);
+    currentKeyRef.current = loop.key;
+    setSelectedKey(loop.key);
+    nativeBpmRef.current = loop.bpm;
+    beatsPerBarRef.current = getBeatsPerBar(loop);
+    setBeatsPerBar(beatsPerBarRef.current);
+    setNativeBpm(loop.bpm);
+    setSelectedTitle(loop.title);
+    setBpm(nextBpm);
+
+    postToEngine({
+      type: "queueSwap",
+      key: loop.key,
+      nativeBpm: loop.bpm,
+      beatsPerBar: getBeatsPerBar(loop),
+      trimStart: loop.trimStart,
+      trimEnd: loop.trimEnd,
+      // The warp the incoming loop will play at, worked out here because the
+      // engine is handed a rate rather than a tempo. No feel in it — the
+      // subdivision moves the click, not the music.
+      rate: loop.bpm ? nextBpm / loop.bpm : 1,
+    });
+    return true;
+  };
+
+  const cancelLoopSwap = () => postToEngine({ type: "cancelSwap" });
+
+  const swapListenersRef = useRef<Set<(key: string | null) => void>>(new Set());
+  const subscribeSwap = useCallback((listener: (key: string | null) => void) => {
+    swapListenersRef.current.add(listener);
+    return () => {
+      swapListenersRef.current.delete(listener);
+    };
+  }, []);
+
   const startLoop = () => {
-    if (isPlaying) return;
+    // The ref, not the state. Firing one cue while another plays calls
+    // setSelectedLoopKey first, which stops the loop -- and the state saying so
+    // does not reach this closure, which was made in the render before any of
+    // that happened. Guarded on `isPlaying` this saw a loop that had already
+    // been stopped and declined to start the new one, so a cue pressed while
+    // another was playing simply went quiet.
+    if (isPlayingRef.current) return;
 
     if (nativeBpmRef.current === null) {
       Alert.alert("No loop selected", "Select a loop before pressing play.");
@@ -619,18 +1027,24 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         setFeelIndex,
         speedMultiplier,
         resetBpm,
+        retainPhase,
+        subscribeBeat,
         setSelectedLoopKey,
+        queueLoopSwap,
+        cancelLoopSwap,
+        subscribeSwap,
         startLoop,
         stopLoop,
       }}
     >
       {children}
-      <WebView
+      <EngineView
         // Remounting on a new generation is what actually rebuilds a dead
         // engine — see restartEngine.
         key={engineGeneration}
         ref={webViewRef}
-        source={{ html: engineHtml }}
+        html={engineHtml}
+        native={useNative}
         onMessage={handleWebViewMessage}
         // The OS reclaimed this WebView's process, almost always while the
         // app was backgrounded. Both callbacks mean the same thing: the page
@@ -643,12 +1057,6 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           console.warn("Loop engine content process ended — restarting it");
           restartEngine();
         }}
-        originWhitelist={["*"]}
-        mediaPlaybackRequiresUserAction={false}
-        allowsInlineMediaPlayback
-        containerStyle={{ flex: 0, width: 0, height: 0 }}
-        style={{ flex: 0, width: 0, height: 0, opacity: 0 }}
-        pointerEvents="none"
       />
     </LoopPlaybackContext.Provider>
   );
@@ -662,4 +1070,22 @@ export function useLoopPlayback() {
     );
   }
   return context;
+}
+
+/**
+ * The loop's phase, for anything that draws it.
+ *
+ * Holds the engine's position reporting open for exactly as long as the
+ * component is mounted, and lets it stop the moment nothing is drawing. This is
+ * the only way to get the value -- see LoopPhaseLease for why the two travel
+ * together -- so there is no version of this a caller can hold wrong.
+ */
+export function useLoopPhase() {
+  const { retainPhase } = useLoopPlayback();
+  // Taken once per mount, in an initialiser rather than an effect: the value has
+  // to exist on the first render, and a phase that arrived one render late would
+  // remount whatever interpolates it.
+  const [lease] = useState(retainPhase);
+  useEffect(() => lease.release, [lease]);
+  return lease.phase;
 }

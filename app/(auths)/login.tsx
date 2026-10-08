@@ -3,37 +3,58 @@ import { View, Text } from "react-native";
 import { router } from "expo-router";
 
 import Screen from "../../components/ui/screen";
-import { BrandButton } from "../../components/ui/brandButton";
+import { BrandButton, GhostButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
-
-// This screen captures only the email address ("Continue with email"); the
-// password / verification step it hands off to is still to be wired up. The
-// Figma node this is built from is named `continue-with-email` (124:842).
+import { useEmailCodeAuth } from "../../hooks/useEmailCodeAuth";
+import { usePreferences } from "../../context/PreferencesContext";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-// DEV BYPASS: skips authentication and jumps straight into the app. Set to
-// false once the email hand-off / password step is in place.
-const DEV_SKIP_AUTH = true;
-
 const LoginScreen = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { sendCode, isLoaded } = useEmailCodeAuth();
+  const { prefs, setPref } = usePreferences();
 
-  const submit = () => {
-    if (DEV_SKIP_AUTH) {
-      router.replace("/(tabs)/loop");
-      return;
-    }
+  // Every instrument works offline and on-device; the account only carries a
+  // profile. So the way in without one is on this screen, not buried -- App
+  // Store guideline 5.1.1(v) rejects a sign-in wall in front of features that
+  // don't need it.
+  const continueAsGuest = () => {
+    setPref("guest", true);
+    router.replace(`/(tabs)/${prefs.launchScreen}`);
+  };
 
+  // One field and one button, because there is no password to collect. An
+  // address with no account gets one made for it -- see useEmailCodeAuth --
+  // so this screen is the way in for everybody, new or returning.
+  const submit = async () => {
     if (!isValidEmail(email)) {
       setError("Please enter a valid email address.");
       return;
     }
+
     setError("");
-    // TODO: hand `email` off to the password / verification step.
-    router.push("/(tabs)/loop");
+    setIsSubmitting(true);
+    try {
+      const mode = await sendCode(email, "sign_in");
+      // The code screen has to know which flow it is completing: the two verify
+      // through different Clerk calls and nothing on that screen could tell.
+      router.push({
+        pathname: "/(auths)/verification-code",
+        params: { email: email.trim().toLowerCase(), mode },
+      });
+    } catch (sendError) {
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Couldn't send a code. Try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -47,7 +68,7 @@ const LoginScreen = () => {
         </View>
 
         {/* Form area */}
-        <View className="justify-center flex-1 w-full gap-5">
+        <View className="justify-center flex-1 w-full gap-1">
           <BrandInput
             label="Email Address"
             placeholder="Enter your email"
@@ -61,13 +82,26 @@ const LoginScreen = () => {
               if (error) setError("");
             }}
             onSubmitEditing={submit}
-            returnKeyType="next"
+            returnKeyType="go"
             error={error}
           />
 
-          <BrandButton label="Continue" onPress={submit} />
+          {/* Disabled until Clerk's client has loaded -- calling into it before
+              that throws, and a button that fails on the first tap of a cold
+              start reads as a broken app. */}
+          <BrandButton
+            label="Continue"
+            onPress={submit}
+            loading={isSubmitting}
+            disabled={!isLoaded}
+          />
 
-          <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5">
+          <GhostButton
+            label="Continue without an account"
+            onPress={continueAsGuest}
+          />
+
+          <Text className="text-center text-ink-faint font-satoshiMedium text-label leading-5 mt-3">
             By continuing, I agree to the{" "}
             <Text
               className="text-white underline"

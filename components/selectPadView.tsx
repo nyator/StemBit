@@ -1,11 +1,12 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { PAD_PACKS, type PadPack } from "../constants/pads";
 import { usePadLayers } from "../hooks/usePadLayers";
 import { COLORS } from "../constants/theme";
-import { Musicnote, PlayCircle, PauseCircle, TickCircle } from "./icons";
+import { Musicnote, TickCircle } from "./icons";
+import PreviewButton from "./ui/previewButton";
 
 type SelectPadViewProps = {
   // Which packs to show -- defaults to the full catalog. The picker screen
@@ -13,11 +14,20 @@ type SelectPadViewProps = {
   packs?: PadPack[];
   // Adds a small artist header above the first row of each artist group.
   groupByArtist?: boolean;
+  /**
+   * What to say when there is nothing to show.
+   *
+   * The default reads as "the catalog is still small", which is right for an
+   * empty library and wrong for a search that matched nothing -- there the
+   * fix is to change what was typed, not to wait for more packs to ship.
+   */
+  emptyMessage?: string;
 };
 
 const SelectPadView = ({
   packs = PAD_PACKS,
   groupByArtist = false,
+  emptyMessage,
 }: SelectPadViewProps) => {
   const { layerFor, addLayer, removeLayer, isFull } = usePadLayers();
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
@@ -62,7 +72,7 @@ const SelectPadView = ({
     );
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       if (soundRef.current) {
         playbackSubscriptionRef.current?.remove();
@@ -73,7 +83,7 @@ const SelectPadView = ({
 
   // Row indices shift when the filter changes, so stop any running preview
   // rather than letting it point at the wrong row.
-  React.useEffect(() => {
+  useEffect(() => {
     unloadCurrentSound();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packs]);
@@ -117,7 +127,8 @@ const SelectPadView = ({
       <View className="items-center justify-center flex-1 px-10">
         <Musicnote size={40} color="rgba(255,255,255,0.3)" />
         <Text className="mt-4 text-center text-white/50 font-satoshiMedium">
-          No pads here yet — they'll show up as the catalog grows.
+          {emptyMessage ??
+            "No pads here yet — they'll show up as the catalog grows."}
         </Text>
       </View>
     );
@@ -125,7 +136,15 @@ const SelectPadView = ({
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+      {/* handled, not the default: the search field above the packs can leave
+          the keyboard up, and without this the first tap on a row only
+          dismisses it instead of loading the pack. */}
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {packs.map((item, i) => {
           const isNewArtistGroup =
             groupByArtist && (i === 0 || packs[i - 1].artist !== item.artist);
@@ -135,12 +154,12 @@ const SelectPadView = ({
           return (
             <View key={item.key}>
               {isNewArtistGroup && (
-                <Text className="mt-4 mb-2 text-xs uppercase text-ink-muted font-spaceBold">
+                <Text className="mt-4 mb-2 text-overline uppercase text-ink-muted font-spaceBold">
                   {item.artist}
                 </Text>
               )}
               <TouchableOpacity
-                className="flex-row items-center gap-[12px] p-[12px] mb-[6px] rounded-[12px]"
+                className="flex-row items-center gap-3 p-3 mb-1.5 rounded-md"
                 activeOpacity={0.75}
                 // Loaded packs are lit from the left by a brand bar and a
                 // tinted fill, unloaded ones sit flat. A row still has to read
@@ -184,7 +203,7 @@ const SelectPadView = ({
                     {item.title}
                   </Text>
                   <Text
-                    className="text-ink-muted text-[11px] font-satoshiRegular"
+                    className="text-ink-muted text-micro font-satoshiRegular"
                     numberOfLines={1}
                   >
                     {item.artist} · {item.genre}
@@ -193,7 +212,7 @@ const SelectPadView = ({
 
                 {layer?.muted && (
                   <Text
-                    className="text-[10px] font-spaceBold px-[6px] py-[2px] rounded"
+                    className="text-nav font-spaceBold px-1.5 py-0.5 rounded"
                     style={{
                       color: COLORS.danger,
                       backgroundColor: "rgba(239,68,68,0.15)",
@@ -203,22 +222,11 @@ const SelectPadView = ({
                   </Text>
                 )}
 
-                <TouchableOpacity
+                <PreviewButton
+                  isPlaying={playingIndex === i}
                   onPress={() => handlePlayPause(i)}
-                  accessibilityLabel={`Preview ${item.title}`}
-                  className="items-center justify-center rounded-full"
-                  style={{
-                    width: 34,
-                    height: 34,
-                    backgroundColor: "rgba(0,89,128,0.3)",
-                  }}
-                >
-                  {playingIndex === i ? (
-                    <PauseCircle size={24} color={COLORS.white} />
-                  ) : (
-                    <PlayCircle size={24} color={COLORS.white} />
-                  )}
-                </TouchableOpacity>
+                  title={item.title}
+                />
               </TouchableOpacity>
             </View>
           );

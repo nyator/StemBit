@@ -5,11 +5,17 @@ import {
   useRef,
   useState,
 } from "react";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { type WebViewMessageEvent } from "react-native-webview";
+import EngineView, { type EngineViewHandle } from "./engineView";
 
 import { buildLoopEngineHtml } from "../constants/loopEngine";
-import { METRONOME_SOUNDS } from "../context/MetronomeContext";
+import {
+  ACCENT_SOUND_ID,
+  BEAT_SOUND_ID,
+  METRONOME_SOUNDS,
+} from "../context/MetronomeContext";
 import { usePreferences } from "../context/PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 
 // A second, throwaway instance of the loop engine, for the import screen.
@@ -131,7 +137,9 @@ export const LoopPreviewEngine = forwardRef<
   ref
 ) {
   const { prefs } = usePreferences();
-  const webViewRef = useRef<WebView>(null);
+  const nativeAudio = useNativeAudio();
+  const [nativeAtMount] = useState(nativeAudio);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
 
   // Same handshake as LoopPlaybackContext: anything posted before the page has
@@ -174,26 +182,24 @@ export const LoopPreviewEngine = forwardRef<
       });
   };
 
-  // The click follows the user's metronome sounds and levels, exactly as the
-  // Loop tab's does — it's here to check the trim and tempo against, so it has
-  // to be the same click they'll hear later.
+  // The click uses the same samples and levels as the Loop tab's — it's here to
+  // check the trim and tempo against, so it has to be the same click they'll
+  // hear later.
   useEffect(() => {
-    loadClickSound(prefs.accentSound);
-    loadClickSound(prefs.beatSound);
+    loadClickSound(ACCENT_SOUND_ID);
+    loadClickSound(BEAT_SOUND_ID);
     post({
       type: "setClick",
       enabled: clickEnabled,
       pan: 0,
-      accentId: prefs.accentSound,
-      beatId: prefs.beatSound,
+      accentId: ACCENT_SOUND_ID,
+      beatId: BEAT_SOUND_ID,
       accentVolume: prefs.accentVolume * prefs.metronomeVolume,
       beatVolume: prefs.beatVolume * prefs.metronomeVolume,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     clickEnabled,
-    prefs.accentSound,
-    prefs.beatSound,
     prefs.accentVolume,
     prefs.beatVolume,
     prefs.metronomeVolume,
@@ -264,9 +270,12 @@ export const LoopPreviewEngine = forwardRef<
   };
 
   return (
-    <WebView
+    <EngineView
       ref={webViewRef}
-      source={{ html: engineHtml }}
+      html={engineHtml}
+      // Read once: the screen is short-lived, and swapping engines under an
+      // analysis in flight would lose it. The next visit picks up the setting.
+      native={nativeAtMount}
       onMessage={handleMessage}
       onRenderProcessGone={() =>
         onErrorRef.current("The preview engine stopped. Go back and try again.")
@@ -274,12 +283,6 @@ export const LoopPreviewEngine = forwardRef<
       onContentProcessDidTerminate={() =>
         onErrorRef.current("The preview engine stopped. Go back and try again.")
       }
-      originWhitelist={["*"]}
-      mediaPlaybackRequiresUserAction={false}
-      allowsInlineMediaPlayback
-      containerStyle={{ flex: 0, width: 0, height: 0 }}
-      style={{ flex: 0, width: 0, height: 0, opacity: 0 }}
-      pointerEvents="none"
     />
   );
 });

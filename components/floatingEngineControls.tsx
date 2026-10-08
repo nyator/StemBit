@@ -1,12 +1,23 @@
 import type { ReactNode } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter, usePathname } from "expo-router";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { useMetronome } from "../context/MetronomeContext";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import { usePadPlayback } from "../context/PadPlaybackContext";
 import { PlayCircle, Metromone, PadFill, Stop, MetronomeFill } from "./icons";
-import { COLORS } from "../constants/theme";
+import { COLORS, RADII } from "../constants/theme";
+
+// Real Liquid Glass on iOS 26+; every other platform (older iOS, Android,
+// web) falls back to the flat surface-glass pill this control already had. A
+// device's glass support can't change mid-session, so this is read once.
+const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
+
+// The Stop button's footprint: an 18pt icon inside 4pt of padding, on the
+// same "icon + fixed padding, radius is half the result" formula as every
+// other circular icon button in the app.
+const STOP_BUTTON_FOOTPRINT = 18 + 8;
 
 type PillProps = {
   onPress: () => void;
@@ -17,13 +28,8 @@ type PillProps = {
 };
 
 function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      className="flex-row items-center px-4 py-3 shadow-lg rounded-nav bg-surface-glass border border-hairline-glass"
-      style={{ elevation: 8 }}
-    >
+  const content = (
+    <>
       <View
         style={{
           width: 8,
@@ -35,14 +41,59 @@ function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
       />
       <View className="mr-2">{icon}</View>
       <Text className="mr-3 text-white font-satoshiBold">{label}</Text>
-      <TouchableOpacity
-        accessibilityLabel="Stop"
-        onPress={onStop}
-        hitSlop={8}
-        className="p-1 rounded-full bg-white/10"
-      >
-        <Stop size={18} />
+      <TouchableOpacity accessibilityLabel="Stop" onPress={onStop} hitSlop={8}>
+        {HAS_LIQUID_GLASS ? (
+          <GlassView
+            glassEffectStyle="regular"
+            isInteractive
+            style={{
+              width: STOP_BUTTON_FOOTPRINT,
+              height: STOP_BUTTON_FOOTPRINT,
+              borderRadius: STOP_BUTTON_FOOTPRINT / 2,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Stop size={18} />
+          </GlassView>
+        ) : (
+          <View className="p-1 rounded-full bg-white/10">
+            <Stop size={18} />
+          </View>
+        )}
       </TouchableOpacity>
+    </>
+  );
+
+  if (HAS_LIQUID_GLASS) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <GlassView
+          glassEffectStyle="regular"
+          isInteractive
+          tintColor={COLORS.surfaceGlass}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderRadius: RADII.nav,
+          }}
+        >
+          {content}
+        </GlassView>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      className="flex-row items-center px-4 py-3 shadow-lg rounded-nav bg-surface-glass border border-hairline-glass"
+      style={{ elevation: 8 }}
+    >
+      {content}
     </TouchableOpacity>
   );
 }
@@ -50,11 +101,15 @@ function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
 // Small persistent indicators shown on the *other* tabs while a playback
 // engine keeps running in the background, so an engine is never silently
 // playing with no way to see or stop it. Mounted at the app root
-// (app/_layout.tsx), but only rendered while on one of the three tab screens
+// (app/_layout.tsx), but only rendered while on one of the four tab screens
 // -- hidden on Settings, the loop/pad pickers, and auth screens. Laid out in
 // a single positioned row so the Metronome, Loop and Pad pills sit side by
 // side (wrapping if they don't fit) when more than one happens to be playing.
-const TAB_PATHS = ["/loop", "/pad", "/metro"];
+//
+// Every tab in (tabs)/_layout belongs here. Session was added after this list
+// was written and left off it, so a loop playing while you were on Session
+// had no pill at all.
+const TAB_PATHS = ["/session", "/loop", "/pad", "/metro"];
 
 export default function FloatingEngineControls() {
   const router = useRouter();

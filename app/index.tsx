@@ -1,39 +1,127 @@
-import { Text, View, StatusBar } from "react-native";
+import { useEffect, useState } from "react";
+import { Text } from "react-native";
 import { Redirect } from "expo-router";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+
+import { useAuth } from "@clerk/expo";
 
 import { usePreferences } from "../context/PreferencesContext";
-import AmbientGlow, { GLOW_WIDTH } from "../components/ui/ambientGlow";
+import Screen, { GLOW_PLACEMENTS } from "../components/ui/screen";
+import PulsingGlow from "../components/ui/pulsingGlow";
 
 import "../global.css";
 
-// Launch gate: brand splash while preferences load, then route — first-time
+// Launch gate: brand splash while preferences load, then route -- first-time
 // users see onboarding, returning users go straight to login.
 //
-// Figma places the glow's painted box at (139, -127) on a 390-wide frame, so
-// its centre sits 21pt inside the right edge and 100pt below the top. Pinning
-// to the right with these offsets keeps that relationship on any screen width,
-// which a percentage would not.
-const GLOW_TOP = -127;
-const GLOW_RIGHT = -(GLOW_WIDTH - 251);
+// No safe-area insets: this is the one screen that is nothing but the wordmark
+// centred on the canvas, and a notch inset would push it off centre.
+
+/**
+ * How long the entrance holds the redirect off.
+ *
+ * Preferences usually finish loading well inside this, which used to mean the
+ * wordmark's own entrance never got to play -- Redirect fired mid-animation
+ * and the gate just vanished. A short floor guarantees the entrance is always
+ * seen to completion, without turning a fast load into a slow one: it's a
+ * beat, not a delay.
+ */
+const MIN_DISPLAY_MS = 700;
+
+/**
+ * How long the gate waits before saying what it's waiting for.
+ *
+ * Both things it waits on -- preferences read from disk, and Clerk loading the
+ * session -- normally land in well under a second. Past this, one of them is
+ * stuck, and a bare wordmark gives no hint which; a release build can't be
+ * inspected, so the screen itself has to name it.
+ */
+const STALL_NOTICE_MS = 6000;
 
 export default function Page() {
   const { prefs, isLoaded } = usePreferences();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const [minDisplayElapsed, setMinDisplayElapsed] = useState(false);
+  const [stalled, setStalled] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMinDisplayElapsed(true), MIN_DISPLAY_MS);
+    const stall = setTimeout(() => setStalled(true), STALL_NOTICE_MS);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(stall);
+    };
+  }, []);
+
+  const waitingFor = [
+    !isLoaded && "settings",
+    !authLoaded && "sign-in service (Clerk)",
+  ].filter(Boolean) as string[];
+
+  useEffect(() => {
+    if (stalled && waitingFor.length > 0) {
+      console.warn(`[StemBits] Startup stuck waiting for: ${waitingFor.join(", ")}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stalled, isLoaded, authLoaded]);
+
+  // Entrance: the wordmark settles in once, on mount -- not looping, so it
+  // never competes with the glow behind it for attention.
+  const entrance = useSharedValue(0);
+  useEffect(() => {
+    entrance.value = withTiming(1, {
+      duration: 520,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [entrance]);
+
+  const wordmarkStyle = useAnimatedStyle(() => ({
+    opacity: entrance.value,
+    transform: [{ scale: 0.85 + entrance.value * 0.15 }],
+  }));
 
   return (
-    <View className="flex-1 overflow-hidden bg-canvas">
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <Screen edges={[]} className="items-center justify-center">
+      <PulsingGlow style={GLOW_PLACEMENTS.topRight} />
 
-      <AmbientGlow style={{ top: GLOW_TOP, right: GLOW_RIGHT }} />
-
-      <View className="items-center justify-center flex-1">
-        <Text className="font-wordmark text-display tracking-wordmark text-ink">
+      <Animated.View style={wordmarkStyle}>
+        {/* wordmarkLg, matching sign-in and register. The splash had been drawing
+            this at the 48pt display size, which is the tier the BPM readout owns
+            -- a number, in Space Grotesk. The logotype has its own two sizes and
+            this is the large one. */}
+        <Text className="font-wordmark text-wordmarkLg tracking-wordmark text-ink">
           stembits
         </Text>
-      </View>
+      </Animated.View>
 
-      {isLoaded && (
-        <Redirect href={prefs.seenOnboarding ? "/(auths)/login" : "/(auths)"} />
+      {stalled && waitingFor.length > 0 && (
+        <Text
+          className="absolute text-center text-overline text-ink-muted font-satoshiRegular"
+          style={{ bottom: 80, left: 24, right: 24 }}
+        >
+          Still starting… waiting for {waitingFor.join(" and ")}
+        </Text>
       )}
-    </View>
+
+      {isLoaded && authLoaded && minDisplayElapsed && (
+        <Redirect
+          href={
+            // Signed in already: straight to the instrument they chose, with
+            // no sign-in screen flashing past on the way. The stored session is
+            // read by Clerk before this fires -- that's what authLoaded gates.
+            isSignedIn || prefs.guest
+              ? (`/(tabs)/${prefs.launchScreen}` as const)
+              : prefs.seenOnboarding
+                ? "/(auths)/login"
+                : "/(auths)"
+          }
+        />
+      )}
+    </Screen>
   );
 }

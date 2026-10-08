@@ -1,13 +1,14 @@
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import {
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 
 import { Information } from "../icons";
+import {
+  SHEET_BACKGROUND,
+  SHEET_CONTENT,
+  SHEET_HANDLE_INDICATOR,
+  useSheetBackdrop,
+} from "./sheet";
 import { COLORS } from "../../constants/theme";
 import { INFO_TOPICS, type InfoTopicKey } from "../../constants/infoCopy";
 
@@ -36,19 +37,7 @@ export default function InfoButton({
 }: InfoButtonProps) {
   const sheetRef = useRef<BottomSheetModal>(null);
   const { title, body, points } = INFO_TOPICS[topic];
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
+  const renderBackdrop = useSheetBackdrop();
 
   return (
     <>
@@ -72,29 +61,18 @@ export default function InfoButton({
         ref={sheetRef}
         enableDynamicSizing
         backdropComponent={renderBackdrop}
-        backgroundStyle={{
-          backgroundColor: "#090B10",
-          borderTopLeftRadius: 30,
-          borderTopRightRadius: 30,
-        }}
-        handleIndicatorStyle={{
-          backgroundColor: "rgba(255,255,255,0.4)",
-          width: 48,
-        }}
+        backgroundStyle={SHEET_BACKGROUND}
+        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
       >
         <BottomSheetScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: 24,
-            paddingTop: 8,
-            paddingBottom: 44,
-          }}
+          contentContainerStyle={SHEET_CONTENT}
         >
-          <Text className="mb-3 text-white text-2xl font-spaceBold">
+          <Text className="mb-3 text-white font-satoshiBold text-title">
             {title}
           </Text>
 
-          <Text className="text-base leading-6 text-white/70 font-satoshiRegular">
+          <Text className="text-body leading-6 text-white/70 font-satoshiRegular">
             {body}
           </Text>
 
@@ -106,11 +84,11 @@ export default function InfoButton({
                       sheet instead of starting at a different x per row. */}
                   <Text
                     style={{ width: 62 }}
-                    className="text-sm text-white font-spaceBold"
+                    className="text-label text-white font-spaceBold"
                   >
                     {point.term}
                   </Text>
-                  <Text className="flex-1 text-sm leading-5 text-white/60 font-satoshiRegular">
+                  <Text className="flex-1 text-label leading-5 text-white/60 font-satoshiRegular">
                     {point.detail}
                   </Text>
                 </View>

@@ -21,6 +21,15 @@ const TAP_OUTLIER_TOLERANCE = 0.25;
 // - draft-based direct text entry (clamped on commit, not per keystroke)
 // - +/- steppers with hold-to-repeat
 // - tap tempo with median-based outlier rejection
+/**
+ * What the BPM controls hand back.
+ *
+ * Named so the shared instrument components can take the whole bundle rather
+ * than eight callbacks threaded through by hand -- the metronome, the loop and
+ * the import screen all build theirs from this same hook.
+ */
+export type BpmControls = ReturnType<typeof useBpmControl>;
+
 export function useBpmControl({
   bpm,
   setBpm,
@@ -45,16 +54,18 @@ export function useBpmControl({
     setBpmDraft(text.replace(/[^0-9]/g, ""));
   };
 
+  // Reads the draft from render rather than from a setBpmDraft updater:
+  // updaters run during render, and setBpm can belong to another component
+  // (the loop's lives in LoopPlaybackContext), which React refuses to update
+  // mid-render.
   const commitBpmText = () => {
-    setBpmDraft((draft) => {
-      if (draft !== null) {
-        const parsed = parseInt(draft, 10);
-        if (!Number.isNaN(parsed)) {
-          setBpm(clampBpm(parsed));
-        }
+    if (bpmDraft !== null) {
+      const parsed = parseInt(bpmDraft, 10);
+      if (!Number.isNaN(parsed)) {
+        setBpm(clampBpm(parsed));
       }
-      return null; // fall back to showing the (clamped) bpm value
-    });
+    }
+    setBpmDraft(null); // fall back to showing the (clamped) bpm value
   };
 
   // --- Steppers with hold-to-repeat --------------------------------------

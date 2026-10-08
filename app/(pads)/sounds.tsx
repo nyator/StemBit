@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, StatusBar } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Keyboard, Pressable, View } from "react-native";
 
 import ScreenHeader from "../../components/ui/screenHeader";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import Chip from "../../components/ui/chip";
+import SearchField from "../../components/ui/searchField";
 import SelectPadView from "../../components/selectPadView";
 import PadMixer from "../../components/padMixer";
 import { PAD_PACKS } from "../../constants/pads";
@@ -13,58 +13,78 @@ type BrowseMode = "all" | "byArtist";
 
 export default function PadSoundsScreen() {
   const [browseMode, setBrowseMode] = useState<BrowseMode>("all");
+  const [query, setQuery] = useState("");
 
   const packs = useMemo(() => {
-    if (browseMode === "all") return PAD_PACKS;
-    return [...PAD_PACKS].sort((a, b) => a.artist.localeCompare(b.artist));
-  }, [browseMode]);
+    const sorted =
+      browseMode === "all"
+        ? PAD_PACKS
+        : [...PAD_PACKS].sort((a, b) => a.artist.localeCompare(b.artist));
+
+    const needle = query.trim().toLowerCase();
+    if (!needle) return sorted;
+
+    // Finds a pack by name, artist or genre -- combined with the All/By Artist
+    // sort above rather than replacing it, so a search still groups by artist
+    // when that's the view you're in.
+    return sorted.filter(
+      (pack) =>
+        pack.title.toLowerCase().includes(needle) ||
+        pack.artist.toLowerCase().includes(needle) ||
+        pack.genre.toLowerCase().includes(needle)
+    );
+  }, [browseMode, query]);
 
   return (
-    <SafeAreaView className="items-center justify-start flex-1 overflow-hidden bg-canvas">
-      <StatusBar barStyle="light-content" />
-
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
-
+    <Screen glows={["topLeftFar", "bottomLeft"]} className="items-center justify-start">
       <ScreenHeader title="Select Pad" />
 
-      <View className="flex-1 w-full px-5">
-        {/* Filters: All / By Artist */}
-        <View className="flex-row gap-2 mb-4">
-          <TouchableOpacity
-            onPress={() => setBrowseMode("all")}
-            className="items-center justify-center px-[16px] py-[8px] rounded-[20px]"
-            style={{
-              backgroundColor: browseMode === "all" ? "#FFFFFF" : "rgba(26,31,41,0.5)",
-            }}
-          >
-            <Text
-              className="text-md font-satoshiBold"
-              style={{ color: browseMode === "all" ? "#000000" : "#808A9E" }}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setBrowseMode("byArtist")}
-            className="items-center justify-center px-[16px] py-[8px] rounded-[20px]"
-            style={{
-              backgroundColor: browseMode === "byArtist" ? "#FFFFFF" : "rgba(26,31,41,0.5)",
-            }}
-          >
-            <Text
-              className="text-md font-satoshiBold"
-              style={{ color: browseMode === "byArtist" ? "#000000" : "#808A9E" }}
-            >
-              By Artist
-            </Text>
-          </TouchableOpacity>
+      {/* A tap on any empty space closes the search keyboard, as on the Loop
+          and Metronome screens. The controls inside still get their own taps
+          first. */}
+      <Pressable
+        onPress={Keyboard.dismiss}
+        accessible={false}
+        className="flex-1 w-full px-screen"
+      >
+        {/* Find one by name, artist or genre -- combined with All/By Artist
+            below rather than replacing it. The same field the loop browser
+            searches with, so the two catalogues are searched the same way. */}
+        <View className="mb-4">
+          <SearchField
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search pads"
+            accessibilityLabel="Search pads by name, artist or genre"
+          />
         </View>
 
-        <SelectPadView packs={packs} groupByArtist={browseMode === "byArtist"} />
+        {/* Filters: All / By Artist. The same chip the loop browser filters
+            with, so the two catalogues are browsed the same way. */}
+        <View className="flex-row gap-2 mb-4">
+          <Chip
+            label="All"
+            selected={browseMode === "all"}
+            onPress={() => setBrowseMode("all")}
+          />
+          <Chip
+            label="By Artist"
+            selected={browseMode === "byArtist"}
+            onPress={() => setBrowseMode("byArtist")}
+          />
+        </View>
+
+        <SelectPadView
+          packs={packs}
+          groupByArtist={browseMode === "byArtist"}
+          emptyMessage={
+            query.trim().length > 0
+              ? `No pads match "${query.trim()}".`
+              : undefined
+          }
+        />
         <PadMixer />
-      </View>
-    </SafeAreaView>
+      </Pressable>
+    </Screen>
   );
 }

@@ -1,39 +1,31 @@
 {
   "expo": {
-    "name": "StemBit",
+    "name": "StemBits",
     "slug": "StemBit",
     "scheme": "stembit",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#101116"
-    },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "stembit",
-      "runtimeVersion": "1.0.0"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.builtelo.stembits",
+      "appleTeamId": "2TB72JR5D3",
+      "runtimeVersion": "1.0.0",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#101116"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": {
-        "policy": "appVersion"
-      },
-      "package": "com.stembit"
+      "runtimeVersion": "1.0.0",
+      "package": "com.builtelo.stembits"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -42,7 +34,35 @@
     "plugins": [
       "expo-router",
       "expo-audio",
-      "expo-font"
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": true,
+          "androidForegroundService": false
+        }
+      ],
+      "expo-font",
+      "expo-asset",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 129,
+          "resizeMode": "contain",
+          "backgroundColor": "#101116"
+        }
+      ],
+      "@clerk/expo",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "StemBits uses your photo library so you can pick a profile picture.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "extra": {
       "router": {},

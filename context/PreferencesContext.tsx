@@ -6,7 +6,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import * as FileSystem from "expo-file-system";
+// The legacy entrypoint, not the package root. SDK 54 ships
+// expo-file-system 19, where the root export is the new File/Directory API
+// and the path-and-string API this file uses moved behind /legacy. Importing
+// from the root leaves EncodingType undefined and makes every read throw.
+import * as FileSystem from "expo-file-system/legacy";
 
 // App-wide user preferences, persisted on device. Every preference here is
 // real — it changes actual behavior somewhere in the app:
@@ -14,9 +18,7 @@ import * as FileSystem from "expo-file-system";
 //   meterAccents  -> metronome accent grouping in compound/odd meters
 //   accentVolume  -> gain of the metronome's accent clicks, 0–1
 //   beatVolume    -> gain of the metronome's regular clicks, 0–1
-//   accentSound   -> id of the click sound the accent voice plays
-//   beatSound     -> id of the click sound the regular-beat voice plays
-//   metronomeVolume -> master gain for the metronome, scales accent+beat, 0–1
+//   metronomeVolume -> master gain for the metronome, scales accent+beat, 0–2
 //   padVolume     -> master gain for the pad instrument, 0–1
 //   loopVolume    -> master gain for the loop's backing track, 0–1
 //   loopClick     -> play a metronome click alongside a loop (off by default)
@@ -25,22 +27,73 @@ import * as FileSystem from "expo-file-system";
 //                    own mix level. One key press sounds all of them.
 //   natureNoise   -> the ambience bed layered over every pad. A mixer channel
 //                    of its own, muted until the user brings it in.
+//   launchScreen  -> which tab opens after signing in
+//   mixWithOthers -> loop, metronome and session engines share the audio with
+//                    other apps instead of taking it (see silentModeKeepAlive)
+//   nativeAudio   -> run the audio engines on native audio instead of WebViews
+//                    (experimental; see utils/nativeEngineHost.ts)
+/**
+ * How far the metronome's master gain can be pushed, where 1 is the click as
+ * its sample was recorded.
+ *
+ * Past full scale on purpose. Every other level in the app is a balance -- how
+ * loud this sits against that -- and tops out where the signal does. A click
+ * isn't in the mix; it is competing with a drummer, and the sample at unity is
+ * not always louder than one. The engines clamp to this same ceiling, so a
+ * hand-edited preferences file can't ask for a gain that would tear.
+ */
+export const METRONOME_MAX_VOLUME = 2;
+
 export type Preferences = {
   haptics: boolean;
   meterAccents: boolean;
   accentVolume: number;
   beatVolume: number;
-  accentSound: string;
-  beatSound: string;
   metronomeVolume: number;
   padVolume: number;
   loopVolume: number;
   loopClick: boolean;
+  /**
+   * A click over a stem song, toggled from the performance screen.
+   *
+   * Separate from loopClick because they are different decisions: a loop is a
+   * bare backing track that often wants a count, while a multitrack song
+   * usually has a drummer in it already. Everything else about the two clicks
+   * -- pan, which samples, how loud -- is shared, so setting it once sets it
+   * for both.
+   */
+  stemClick: boolean;
   loopClickPan: "left" | "center" | "right";
   padLayers: PadLayer[];
   natureNoise: MixSettings;
   seenOnboarding: boolean;
   seenFeatureTour: boolean;
+  /**
+   * Chose "Continue without an account" on the sign-in screen.
+   *
+   * The instruments are all local, so an account is only needed for the
+   * profile -- and App Store guideline 5.1.1(v) rejects apps that demand a
+   * sign-in for features that don't use it. Cleared on log out, so an explicit
+   * sign-out lands on the sign-in screen rather than straight back in.
+   */
+  guest: boolean;
+  /** Which tab opens after signing in (Settings -> Launch Screen). */
+  launchScreen: "loop" | "pad" | "metro" | "session";
+  /**
+   * Play the WebView engines (loop, metronome, session) alongside other apps'
+   * audio -- practising over a YouTube video -- rather than taking the audio
+   * from them. Costs the silent-switch override for those three engines, which
+   * is why it's opt-in. Pads mix either way, and so does nativeAudio: both are
+   * on the app's own session, and don't have to choose.
+   */
+  mixWithOthers: boolean;
+  /**
+   * Run the metronome, loop, session and loop-preview engines on native audio
+   * (react-native-audio-api) rather than in WebViews. Experimental and off by
+   * default while it's proven on devices; it is what lets them keep playing
+   * with the app in the background and ignore the silent switch.
+   */
+  nativeAudio: boolean;
 };
 
 /** A mixer channel's own settings. Muting keeps the level for when it returns. */
@@ -55,38 +108,69 @@ export type PadLayer = MixSettings & {
   pack: string;
 };
 
+// Where a control returns to when it's double-tapped, and what it starts at.
+// Named rather than written twice because the mixer has to know the same
+// numbers DEFAULTS does, and a reset that put a fader somewhere it never
+// started would be a worse lie than no reset at all.
+export const DEFAULT_PAD_LEVEL = 1;
+export const DEFAULT_NATURE_LEVEL = 0.4;
+export const DEFAULT_METRONOME_VOLUME = 1.5;
+export const DEFAULT_PAD_VOLUME = 0.8;
+export const DEFAULT_LOOP_VOLUME = 1;
+export const DEFAULT_ACCENT_VOLUME = 1;
+export const DEFAULT_BEAT_VOLUME = 0.8;
+
 const DEFAULTS: Preferences = {
   haptics: true,
   meterAccents: true,
-  accentVolume: 1,
-  beatVolume: 0.8,
-  // Ids from METRONOME_SOUNDS (context/MetronomeContext.tsx). Default to the
-  // Ableton kit's accent/beat voices.
-  accentSound: "ableton_accent",
-  beatSound: "ableton_beat",
-  // Per-engine master levels (Settings -> Audio Output / Volume). Defaults are
-  // the slider positions the Figma draws (98/140, 119/140, 70/140).
-  metronomeVolume: 0.99,
-  padVolume: 0.7,
-  loopVolume: 0.8,
+  accentVolume: DEFAULT_ACCENT_VOLUME,
+  beatVolume: DEFAULT_BEAT_VOLUME,
+  // Which samples those two voices play isn't a preference: every engine
+  // clicks with the Ableton kit's accent/beat pair (see METRONOME_SOUNDS in
+  // context/MetronomeContext.tsx). Files written before the sound picker was
+  // removed still carry accentSound/beatSound keys; they are spread in below
+  // and simply go unread.
+  //
+  // Per-engine master levels (Settings -> Audio Output / Volume).
+  //
+  // The metronome's runs to 2 where the others stop at 1, and 1 is its default:
+  // the click has to cut through a band rather than sit in a mix, and on a loud
+  // stage the accent sample at full scale still isn't always enough. 100% is
+  // the click as recorded; above that is deliberate overdrive, which is why it
+  // is the number the slider starts at rather than the top of the throw.
+  //
+  // The pad and loop defaults are the slider positions the Figma draws
+  // (119/140, 70/140).
+  metronomeVolume: DEFAULT_METRONOME_VOLUME,
+  padVolume: DEFAULT_PAD_VOLUME,
+  loopVolume: DEFAULT_LOOP_VOLUME,
   // The loop click is opt-in: loops play with no click until the user turns it
   // on (Settings -> Audio Output / Volume). Center = no stereo panning.
   loopClick: false,
+  // Off for the same reason the loop's is: a song is not a rehearsal aid until
+  // someone says so, and a click nobody asked for is heard by the room.
+  stemClick: false,
   loopClickPan: "center",
   // First entry of PAD_PACKS, at full level. Not imported from
   // constants/pads.ts on purpose: preferences are plain persisted values, and
   // pulling the catalog in here would make this module depend on the audio
   // assets it indexes.
-  padLayers: [{ pack: "drone-pad", level: 1, muted: false }],
+  padLayers: [{ pack: "drone-pad", level: DEFAULT_PAD_LEVEL, muted: false }],
   // Present in the mixer from the start but muted: ambience under every key
   // press is a deliberate choice, not something to discover already running.
-  natureNoise: { level: 0.6, muted: true },
+  natureNoise: { level: DEFAULT_NATURE_LEVEL, muted: true },
   seenOnboarding: false,
   // Distinct from seenOnboarding, which gates the pre-login carousel. This one
   // covers the tour over the tab bar, which can only run once the user is
   // actually in the app -- so the two are reached at different moments and a
   // user who skipped one should still get the other.
   seenFeatureTour: false,
+  guest: false,
+  launchScreen: "loop",
+  // Off: out of the box the engines take the audio, which keeps them audible
+  // with the silent switch on -- the right default for a phone on a stand.
+  mixWithOthers: false,
+  nativeAudio: false,
 };
 
 type PreferencesContextValue = {

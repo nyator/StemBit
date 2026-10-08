@@ -1,135 +1,119 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { StatusBar } from "react-native";
-import { Link, router, Redirect } from "expo-router";
+import { View, Text } from "react-native";
+import { Link, router } from "expo-router";
 
-import FormField from "../../components/formField";
-import CustomButton from "../../components/customButton";
-import CustomToast from "../../components/customToast";
+import Screen from "../../components/ui/screen";
+import { BrandButton } from "../../components/ui/brandButton";
+import { BrandInput } from "../../components/ui/brandInput";
+import { useEmailCodeAuth } from "../../hooks/useEmailCodeAuth";
 
-import { createUser } from "../../lib/appwrite";
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+// Email and nothing else.
+//
+// The password and confirm-password fields are gone because there is no
+// password any more -- proof of identity is a code sent to the address, so a
+// second field to type it twice would be collecting something nothing checks.
+// That also removes the whole class of "passwords do not match" errors this
+// screen used to spend most of its code on.
 const RegisterScreen = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [showToast, setShowToast] = useState(false);
-
-  const passwordsMatch = () => {
-    return form.password === form.confirmPassword;
-  };
-
-  const showError = (message: string) => {
-    setError(message);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 2500);
-  };
+  const { sendCode, isLoaded } = useEmailCodeAuth();
 
   const submit = async () => {
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setError("");
-    if (!form.email || !form.password) {
-      showError("All fields (email and password) are required.");
-      return;
-    }
-    if (!passwordsMatch()) {
-      showError("Passwords do not match");
-      return;
-    }
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-      await createUser({ email: form.email, password: form.password });
-      router.replace("/verification-code");
-    } catch (error: any) {
-      const errMsg = (error?.message || "").toLowerCase();
-      let message = "Signup failed. Please try again.";
-      if (errMsg.includes("already exists")) {
-        message = "An account with this email already exists.";
-      } else if (errMsg.includes("password")) {
-        message = "Password must be at least 8 characters.";
-      } else if (errMsg.includes("email")) {
-        message = "Please enter a valid email address.";
-      }
-      showError(message);
+      // Prefers sign-up, but falls back to sign-in when the address already has
+      // an account -- so somebody who forgot they had one gets signed in rather
+      // than told off.
+      const mode = await sendCode(email, "sign_up");
+      router.push({
+        pathname: "/(auths)/verification-code",
+        params: { email: email.trim().toLowerCase(), mode },
+      });
+    } catch (signUpError) {
+      setError(
+        signUpError instanceof Error
+          ? signUpError.message
+          : "Couldn't create an account. Try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView className="flex-1">
-      <StatusBar barStyle="light-content" />
-      {/* {error ? <CustomToast type="error" title={error} /> : null} */}
-      <View className="flex-1 px-5">
-        <View className="flex flex-row justify-center items-center mt-10 mb-5">
-          <Text className="mb-4 text-5xl text-white font-satoshiBold">Stem</Text>
-          <Text className="mb-4 text-5xl text-brand font-satoshiBold">Bits</Text>
+    <Screen glows={["topRight", "bottomLeft"]} className="px-instrument">
+      <View className="flex-1">
+        {/* Same wordmark as sign-in, rather than this screen's own two-tone
+            "StemBits" lockup -- one brand mark, set one way. */}
+        <View className="items-center pt-20 pb-2">
+          <Text className="text-white font-wordmark text-wordmarkLg tracking-wordmark">
+            stembits
+          </Text>
         </View>
-        <View className="flex items-start">
-          <Text className="text-3xl text-white font-satoshiBold">Signup</Text>
-          <View className="flex flex-col gap-6 items-center w-full">
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e) => setForm({ ...form, email: e })}
-              otherStyles="mt-10"
-              placeholder="Enter Email"
-              keyboardType="email-address"
-            />
 
-            <FormField
-              title="Password"
-              value={form.password}
-              handleChangeText={(e) => setForm({ ...form, password: e })}
-              placeholder="Enter your password"
-            />
+        <View className="justify-center flex-1 w-full">
+          <Text className="mb-6 text-white font-satoshiBold text-heading">
+            Create account
+          </Text>
 
-            <FormField
-              title="Confirm Password"
-              value={form.confirmPassword}
-              handleChangeText={(e) => setForm({ ...form, confirmPassword: e })}
-              placeholder="Re-enter password"
-            />
+          <Text className="mb-4 text-ink-soft font-satoshiRegular text-label leading-5">
+            We&apos;ll email you a 6-digit code. No password to remember.
+          </Text>
 
-            <CustomButton
-              title="Signup"
-              containerStyles="w-full"
-              handlePress={submit}
-              isLoading={isSubmitting}
-            />
+          <BrandInput
+            label="Email Address"
+            placeholder="Enter your email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError("");
+            }}
+            onSubmitEditing={submit}
+            returnKeyType="go"
+            error={error}
+          />
 
-            {showToast && error && (
-              <Text className="text-red-500 font-satoshiMedium py-3 text-center w-full absolute bottom-5">
-                {error}
-              </Text>
-            )}
+          <BrandButton
+            label="Send code"
+            onPress={submit}
+            loading={isSubmitting}
+            disabled={!isLoaded}
+          />
 
-            <View className="flex flex-row mt-2">
-              <Text className="text-xl text-white font-satoshiMedium">
-                Already have an account?
-              </Text>
-              <TouchableOpacity>
-                <Link
-                  href="/login"
-                  className="text-xl underline text-brand font-satoshiMedium"
-                >
-                  {" "}
-                  Login
-                </Link>
-              </TouchableOpacity>
-            </View>
+          <View className="flex-row justify-center mt-4">
+            <Text className="text-ink-soft font-satoshiMedium text-body">
+              Already have an account?{" "}
+            </Text>
+            <Link
+              href="/login"
+              className="underline text-brand font-satoshiMedium text-body"
+            >
+              Log in
+            </Link>
           </View>
         </View>
-        <View className="flex absolute bottom-0 right-2/4 flex-row">
-          <Text className="text-white/50 font-satoshiMedium">by</Text>
-          <Text className="text-brand font-satoshiMedium"> nehtek</Text>
+
+        <View className="flex-row justify-center pb-2">
+          <Text className="text-ink-faint font-satoshiMedium text-label">by </Text>
+          <Text className="text-brand font-satoshiMedium text-label">builtelo</Text>
         </View>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 };
 

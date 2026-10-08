@@ -13,12 +13,12 @@ import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 
 export type MetronomeAssets = {
   /**
-   * Map of sound id -> base64-encoded audio, e.g. `{ bright: "...", low: "..." }`.
-   * Every registered click sound (see METRONOME_SOUNDS in MetronomeContext) is
-   * decoded up front; the accent and beat voices then each play whichever id
-   * their picker selected.
+   * The two click samples, base64-encoded and keyed by voice:
+   * `{ accent: "...", beat: "..." }` (see METRONOME_SOUNDS in
+   * MetronomeContext). Both are decoded when the page loads; each voice always
+   * plays its own sample, so there is nothing to select at runtime.
    */
-  sounds: Record<string, string>;
+  sounds: Record<"accent" | "beat", string>;
 };
 
 export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE html>
@@ -29,7 +29,7 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
       (function () {
         var AudioContextClass = window.AudioContext || window.webkitAudioContext;
         var audioContext = null;
-        // Decoded AudioBuffers keyed by sound id.
+        // Decoded AudioBuffers keyed by voice ("accent" / "beat").
         var buffers = {};
 
         var isPlaying = false;
@@ -58,10 +58,6 @@ export const buildMetronomeHtml = ({ sounds }: MetronomeAssets) => `<!DOCTYPE ht
         // Multiplied with each voice's gain, so the accent/beat sliders keep
         // setting the relative mix and this sets the overall level.
         var masterVolume = 1.0;
-        // Which loaded sound each voice plays (set from the per-voice pickers);
-        // default to the first/second loaded sound until told otherwise.
-        var accentSoundId = null;
-        var beatSoundId = null;
         var currentBeatNumber = 0;
         var nextNoteTime = 0.0;
         // Minimum lead when scheduling on the audio clock. Web Audio rejects
@@ -94,8 +90,13 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (!audioContext) {
             audioContext = new AudioContextClass();
           }
-          if (audioContext.state === "suspended") {
-            audioContext.resume();
+          // Anything but running wakes it -- "interrupted" as well as
+          // "suspended". iOS marks the context interrupted when another app
+          // takes the audio (a YouTube video in picture-in-picture, say), and
+          // it stays that way until someone asks for it back.
+          if (audioContext.state !== "running" && audioContext.state !== "closed") {
+            var waking = audioContext.resume();
+            if (waking && waking.catch) waking.catch(function () {});
           }
           return audioContext;
         }
@@ -103,8 +104,6 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         function decodeBuffers() {
           var ctx = ensureContext();
           var ids = Object.keys(sounds);
-          if (accentSoundId === null) accentSoundId = ids[0];
-          if (beatSoundId === null) beatSoundId = ids.length > 1 ? ids[1] : ids[0];
           var pending = ids.length;
           if (pending === 0) {
             post({ type: "ready" });
@@ -129,10 +128,11 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           });
         }
 
-        // The buffer a voice should play, falling back to any loaded sound if
-        // the selected id somehow failed to decode.
+        // The buffer a voice should play, falling back to the other voice's
+        // sample if this one somehow failed to decode -- a click in the wrong
+        // colour beats a bar with a hole in it.
         function bufferForVoice(isAccent) {
-          var id = isAccent ? accentSoundId : beatSoundId;
+          var id = isAccent ? "accent" : "beat";
           return buffers[id] || buffers[Object.keys(buffers)[0]] || null;
         }
 
@@ -142,8 +142,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var isSecondaryAccent =
             !isPrimaryAccent && accents.indexOf(beatNumber) !== -1;
           var isAccentVoice = isPrimaryAccent || isSecondaryAccent;
-          // The accent voice plays accentSoundId; every other beat plays
-          // beatSoundId.
+          // The accent voice plays the accent sample; every other beat plays
+          // the beat sample.
           var buffer = bufferForVoice(isAccentVoice);
           // Group accents keep their 0.6 "lift" relative to the downbeat, then
           // the whole accent voice is scaled by accentVolume; other clicks by
@@ -216,20 +216,16 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             beatVolume = Math.max(0, Math.min(1, nextBeatVolume));
           }
           if (typeof nextMasterVolume === "number") {
-            masterVolume = Math.max(0, Math.min(1, nextMasterVolume));
+            // Up to 2, not 1: the metronome's master is allowed past full scale
+            // so the click can be heard over a band. Keep this in step with
+            // METRONOME_MAX_VOLUME in context/PreferencesContext.tsx -- clamped
+            // here as well so a hand-edited preferences file can't ask for a
+            // gain that would tear.
+            masterVolume = Math.max(0, Math.min(2, nextMasterVolume));
           }
         }
 
-        function setSounds(nextAccentSound, nextBeatSound) {
-          if (typeof nextAccentSound === "string" && buffers[nextAccentSound]) {
-            accentSoundId = nextAccentSound;
-          }
-          if (typeof nextBeatSound === "string" && buffers[nextBeatSound]) {
-            beatSoundId = nextBeatSound;
-          }
-        }
-
-        function start(nextTempo, nextMultiplier, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextMasterVolume, nextAccentSound, nextBeatSound) {
+        function start(nextTempo, nextMultiplier, nextBeats, nextAccents, nextAccentVolume, nextBeatVolume, nextMasterVolume) {
           if (isPlaying) return;
           if (nextTempo) tempo = nextTempo;
           if (typeof nextMultiplier === "number") speedMultiplier = nextMultiplier;
@@ -237,7 +233,6 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (nextBeats) beatsPerMeasure = nextBeats;
           if (nextAccents) setAccents(nextAccents);
           setVolumes(nextAccentVolume, nextBeatVolume, nextMasterVolume);
-          setSounds(nextAccentSound, nextBeatSound);
           var ctx = ensureContext();
           startKeepAlive(); // see silentModeKeepAlive.ts
           currentBeatNumber = 0;
@@ -256,14 +251,19 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           var resuming = ctx.resume();
           if (resuming && typeof resuming.then === "function") {
-            resuming.then(
-              function () {
-                beginPlayback(ctx);
-              },
-              function () {
-                beginPlayback(ctx);
-              }
-            );
+            // Whichever comes first: the resume settling, or a short wait. A
+            // context another app has interrupted can leave resume() pending
+            // rather than settled, and waiting on it alone would leave the
+            // transport "playing" with nothing scheduled. beginPlayback runs
+            // once -- the second call finds it already started.
+            var begun = false;
+            var beginOnce = function () {
+              if (begun) return;
+              begun = true;
+              beginPlayback(ctx);
+            };
+            resuming.then(beginOnce, beginOnce);
+            setTimeout(beginOnce, 300);
           } else {
             beginPlayback(ctx);
           }
@@ -323,6 +323,44 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           currentBeatNumber = 0;
         }
 
+        // Bring the audio back when the app does.
+        //
+        // Android suspends a WebView AudioContext when the activity pauses,
+        // and pulling the notification shade down is a pause. Suspending stops
+        // the context clock, so everything scheduled against it stops with it
+        // -- the audio simply cuts out.
+        //
+        // Nothing used to bring it back. Every resume in this file lives inside
+        // ensureContext, which runs when a COMMAND arrives -- a load, a launch,
+        // a tempo change. Coming back to the app is not a command, so the audio
+        // stayed dead until the next thing the user pressed. A glance at a
+        // notification killed the song.
+        //
+        // Suspension pauses rather than tears down: the sources are still
+        // there and the clock picks up where it stopped, so this continues the
+        // song rather than restarting it.
+        function resumeAudio() {
+          if (!audioContext) return;
+          // Suspended or interrupted -- see ensureContext.
+          if (audioContext.state === "running" || audioContext.state === "closed") return;
+          var resumed = audioContext.resume();
+          if (resumed && resumed.catch) {
+            resumed.catch(function () {
+              // Refused: the page is back but the OS has not handed the audio
+              // session over yet. ensureContext tries again on the next
+              // command, and the app re-sends this on the next foreground.
+            });
+          }
+        }
+
+        // Both, because neither is reliable alone. The page event is the fast
+        // path and needs no bridge; the explicit command covers the case where
+        // an offscreen WebView is never considered hidden in the first place,
+        // and so never fires one.
+        document.addEventListener("visibilitychange", function () {
+          if (!document.hidden) resumeAudio();
+        });
+
         function handleMessage(event) {
           var data;
           try {
@@ -332,7 +370,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           switch (data.type) {
             case "start":
-              start(data.bpm, data.multiplier, data.beats, data.accents, data.accentVolume, data.beatVolume, data.masterVolume, data.accentSound, data.beatSound);
+              start(data.bpm, data.multiplier, data.beats, data.accents, data.accentVolume, data.beatVolume, data.masterVolume);
               break;
             case "stop":
               stop();
@@ -343,9 +381,6 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             case "setVolumes":
               setVolumes(data.accentVolume, data.beatVolume, data.masterVolume);
               break;
-            case "setSounds":
-              setSounds(data.accentSound, data.beatSound);
-              break;
             case "setTempo":
               setTempo(data.bpm);
               break;
@@ -355,6 +390,12 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             // Liveness check. The app pings after returning to the foreground:
             // if this page's process was reclaimed while backgrounded there is
             // nobody left to answer, and the app rebuilds the engine.
+            case "resume":
+              resumeAudio();
+              break;
+            case "setMixWithOthers":
+              setMixWithOthers(data.enabled);
+              break;
             case "ping":
               post({ type: "pong" });
               break;

@@ -155,18 +155,31 @@ const engineScript = engineSource.match(
   /<script id="engine">([\s\S]*?)<\/script>/
 )[1];
 
+// The detector itself lives in constants/tempoDetect.ts, embedded into both the
+// loop engine and the session engine -- one copy, so a stem song and an imported
+// loop are read by the same code. Everything below is extracted from there
+// rather than from either engine.
+const DETECT_PATH = path.join(
+  __dirname,
+  "..",
+  "..",
+  "constants",
+  "tempoDetect.ts"
+);
+const detectSource = fs.readFileSync(DETECT_PATH, "utf8");
+
 /** describeTempo maps the library's candidates to what the screen consumes. */
 const describeTempo = (() => {
-  const fn = engineScript.match(
+  const fn = detectSource.match(
     /function describeTempo[\s\S]*?\r?\n        \}/
   )[0];
   // eslint-disable-next-line no-eval
   return eval(`(function () { ${fn}\nreturn describeTempo; })()`);
 })();
 
-// The engine's analysis constants, read from its source so these can't drift.
+// The detector's analysis constants, read from its source so these can't drift.
 const engineNumber = (name) =>
-  Number(engineSource.match(new RegExp(`var ${name} = ([\\d.]+);`))[1]);
+  Number(detectSource.match(new RegExp(`var ${name} = ([\\d.]+);`))[1]);
 const ANALYSIS_MIN_SECONDS = engineNumber("ANALYSIS_MIN_SECONDS");
 const ANALYSIS_MAX_SECONDS = engineNumber("ANALYSIS_MAX_SECONDS");
 const ANALYSIS_TILE_UNDER_SECONDS = engineNumber("ANALYSIS_TILE_UNDER_SECONDS");

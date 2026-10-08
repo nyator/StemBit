@@ -22,11 +22,36 @@
 // but it's harmless there, and one code path is easier to reason about than a
 // platform test inside a WebView that doesn't know which platform it's on.
 //
+// The price of that playback session is that it can't be shared: iOS won't mix
+// it with another app's audio, so starting an engine stops YouTube, and a
+// YouTube video started afterwards cuts the engine off. "Play alongside other
+// apps" (Settings -> Audio) trades the other way: setMixWithOthers(true) drops
+// the element and asks WebKit for its ambient session, which mixes -- and which
+// the silent switch mutes. That's the whole trade, and there's no WebKit session
+// that gets both; the native pad engine is the only one that can.
+//
 // Injected into the engine pages as source (see loopEngine.ts /
-// metronomeEngine.ts), so it must stay free of backticks and ${} to survive
-// the template literals it's interpolated into.
+// metronomeEngine.ts / sessionEngine.ts), so it must stay free of backticks and
+// ${} to survive the template literals it's interpolated into.
 export const SILENT_MODE_KEEP_ALIVE_SOURCE = `
         var keepAliveEl = null;
+        var mixWithOthers = false;
+
+        // Share the audio with other apps, or take it -- see the header.
+        // navigator.audioSession is WebKit's own switch (iOS 17+); on an older
+        // WebView the ambient session is simply what a bare AudioContext gets
+        // once the element stops, so skipping the element does the same job.
+        function setMixWithOthers(enabled) {
+          mixWithOthers = !!enabled;
+          try {
+            if (navigator.audioSession) {
+              navigator.audioSession.type = mixWithOthers ? "ambient" : "auto";
+            }
+          } catch (e) {
+            // Not settable here; the element alone decides, as it always has.
+          }
+          if (mixWithOthers) stopKeepAlive();
+        }
 
         // A second of 8kHz mono silence as a data URI. Small (~21KB of
         // base64) and generated rather than shipped, so there's no asset to
@@ -64,6 +89,8 @@ export const SILENT_MODE_KEEP_ALIVE_SOURCE = `
         }
 
         function startKeepAlive() {
+          // Mixing: the element is exactly what would claim the audio.
+          if (mixWithOthers) return;
           if (!keepAliveEl) {
             keepAliveEl = document.createElement("audio");
             keepAliveEl.src = buildSilentWav();

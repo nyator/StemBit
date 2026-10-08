@@ -40,7 +40,7 @@ const STEPS: readonly { target: string; title: string; body: string }[] = [
   {
     target: "metro",
     title: "CLICK",
-    body: "The metronome. Set tempo by tap or dial, then shape the time signature, accents and click sounds.",
+    body: "The metronome. Set tempo by tap or dial, then shape the time signature, accents and click levels.",
   },
 ];
 

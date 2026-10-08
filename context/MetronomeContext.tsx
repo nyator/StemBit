@@ -11,9 +11,12 @@ import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import audio from "../constants/audio";
 import { buildMetronomeHtml } from "../constants/metronomeEngine";
+import { NativeMetronomeEngine } from "../constants/nativeMetronomeEngine";
 import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
@@ -27,7 +30,16 @@ const ENGINE_PONG_TIMEOUT_MS = 2000;
 
 // How long the beat survives after the app reports it went to the background
 // before it's actually stopped. See the AppState handler for why this exists.
-const BACKGROUND_STOP_GRACE_MS = 5000;
+//
+// A minute, not the five seconds this started at. Android reports a pulled-down
+// notification shade as "background" -- identical to actually leaving the app --
+// and behind that shade the activity is only paused, so the beat is still
+// audible and still correct. Five seconds meant that glancing at a notification
+// for longer than a glance killed a running click, which is worse than anything
+// this timer is protecting against: the engine it eventually stops is a
+// suspended WebView that has already gone silent on its own, so waiting longer
+// costs nothing but a stale isPlaying flag that coming back clears anyway.
+const BACKGROUND_STOP_GRACE_MS = 60000;
 
 // The time-signature picker groups meters into three families (Figma node
 // 93:534). `category` drives that grouping in the modal.
@@ -46,6 +58,12 @@ export const TIME_SIGNATURE_CATEGORIES: {
 // the full bright click; the other listed beats get a softer bright click so
 // compound and odd meters are felt in their natural groupings instead of as
 // a flat pulse (e.g. 6/8 = 3+3, 7/8 = 2+2+3, 12/8 = 3+3+3+3).
+//
+// Every entry must SOUND different from every other. The engine plays `beats`
+// clicks per bar with `accents` on top, one click per BPM tick -- `note` is a
+// label, not a tempo unit. So two meters with the same beats and accents are
+// the same metronome under two names. That's why 2/2 (= 2/4), 3/8 (= 3/4) and
+// 6/4 (= 6/8) aren't here, and why 5/8 groups 2+3 where 5/4 groups 3+2.
 export const TIME_SIGNATURES: {
   label: string;
   beats: number;
@@ -54,19 +72,16 @@ export const TIME_SIGNATURES: {
   category: TimeSignatureCategory;
 }[] = [
   // Standard (simple meters)
-  { label: "2 / 2", beats: 2, note: 2, accents: [0], category: "standard" },
   { label: "2 / 4", beats: 2, note: 4, accents: [0], category: "standard" },
   { label: "3 / 4", beats: 3, note: 4, accents: [0], category: "standard" },
   { label: "4 / 4", beats: 4, note: 4, accents: [0], category: "standard" },
   { label: "5 / 4", beats: 5, note: 4, accents: [0, 3], category: "standard" }, // 3+2
-  { label: "6 / 4", beats: 6, note: 4, accents: [0, 3], category: "standard" }, // 3+3
   // Compound (dotted-beat meters)
-  { label: "3 / 8", beats: 3, note: 8, accents: [0], category: "compound" },
   { label: "6 / 8", beats: 6, note: 8, accents: [0, 3], category: "compound" }, // 3+3
   { label: "9 / 8", beats: 9, note: 8, accents: [0, 3, 6], category: "compound" }, // 3+3+3
   { label: "12 / 8", beats: 12, note: 8, accents: [0, 3, 6, 9], category: "compound" }, // 3+3+3+3
   // Odd meters (asymmetric groupings)
-  { label: "5 / 8", beats: 5, note: 8, accents: [0, 3], category: "odd" }, // 3+2
+  { label: "5 / 8", beats: 5, note: 8, accents: [0, 2], category: "odd" }, // 2+3
   { label: "7 / 8", beats: 7, note: 8, accents: [0, 2, 4], category: "odd" }, // 2+2+3
   { label: "11 / 8", beats: 11, note: 8, accents: [0, 3, 6, 9], category: "odd" }, // 3+3+3+2
   { label: "13 / 8", beats: 13, note: 8, accents: [0, 3, 6, 9, 11], category: "odd" }, // 3+3+3+2+2
@@ -85,64 +100,30 @@ export const PLAYBACK_FEELS = [
 
 export const DEFAULT_FEEL_INDEX = 1; // Normal
 
-// Metronome click sounds, one entry per selectable sample.
+// The metronome's two click voices: `accent` sounds the downbeat and any group
+// accents, `beat` sounds everything else. Both come from the Ableton kit, which
+// is the only kit — there is no sound picker, and nothing anywhere chooses
+// between samples at runtime.
 //
-// Sounds are categorized by `group`: each DAW kit (Ableton, Logic, ...) supplies
-// a `beat` voice (its normal click) and an `accent` voice (its accented/downbeat
-// click). `role` marks which one so each voice's picker can lean toward the
-// matching variant, though any voice may play any sound. `label` is what the
-// picker renders.
-//
-// Extend by dropping WAVs into assets/audio/clicks, registering them in
-// constants/audio.js, and adding entries here: the engine decodes every id up
-// front (see MetronomeAssets in constants/metronomeEngine.ts) and each voice's
-// picker lists these labels.
+// The ids are what the loop, stem and loop-preview engines key their decoded
+// click buffers by (they load clicks lazily and by id, unlike the metronome's
+// own engine, which bakes both samples into its page). They are shared here so
+// every engine in the app is provably clicking with the same two samples.
 export type MetronomeSoundRole = "accent" | "beat";
 export type MetronomeSound = {
   id: string;
-  group: string;
   role: MetronomeSoundRole;
-  label: string;
   asset: number;
 };
 
-// Kits render in this order; each expands into an accent + beat entry below.
-const METRONOME_KITS: { id: string; group: string }[] = [
-  { id: "ableton", group: "Ableton" },
-  { id: "cubase", group: "Cubase" },
-  { id: "fl", group: "FL Studio" },
-  { id: "logic", group: "Logic" },
-  { id: "maschine", group: "Maschine" },
-  { id: "mpc", group: "MPC" },
-  { id: "protools", group: "Pro Tools" },
-  { id: "marimba", group: "Pro Tools Marimba" },
-  { id: "reason", group: "Reason" },
-  { id: "sonar", group: "Sonar" },
-];
+export const ACCENT_SOUND_ID = "ableton_accent";
+export const BEAT_SOUND_ID = "ableton_beat";
 
 const clicks = audio.clicks as Record<string, number>;
 
 export const METRONOME_SOUNDS: MetronomeSound[] = [
-  ...METRONOME_KITS.flatMap(({ id, group }): MetronomeSound[] => [
-    {
-      id: `${id}_accent`,
-      group,
-      role: "accent",
-      label: `${group} · Accent`,
-      asset: clicks[`${id}_accent`],
-    },
-    {
-      id: `${id}_beat`,
-      group,
-      role: "beat",
-      label: `${group} · Beat`,
-      asset: clicks[`${id}_beat`],
-    },
-  ]),
-  // Original synthetic clicks, kept so saved preferences referencing them stay
-  // valid.
-  { id: "bright", group: "Basic", role: "accent", label: "Basic · Bright", asset: audio.metronome_bright },
-  { id: "low", group: "Basic", role: "beat", label: "Basic · Low", asset: audio.metronome_low },
+  { id: ACCENT_SOUND_ID, role: "accent", asset: clicks[ACCENT_SOUND_ID] },
+  { id: BEAT_SOUND_ID, role: "beat", asset: clicks[BEAT_SOUND_ID] },
 ];
 
 type MetronomeContextValue = {
@@ -161,12 +142,6 @@ type MetronomeContextValue = {
   /** Metronome regular-click gain, 0–1 (persisted). */
   beatVolume: number;
   setBeatVolume: (value: number) => void;
-  /** Sound id the accent voice plays (persisted). See METRONOME_SOUNDS. */
-  accentSound: string;
-  setAccentSound: (id: string) => void;
-  /** Sound id the regular-beat voice plays (persisted). See METRONOME_SOUNDS. */
-  beatSound: string;
-  setBeatSound: (id: string) => void;
   engineReady: boolean;
   isBlockedByOtherEngine: boolean;
   startMetronome: () => void;
@@ -209,11 +184,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   // Master metronome level (Settings -> Metronome Volume); the engine scales
   // both voices by it.
   const masterVolume = prefs.metronomeVolume;
-  // Per-voice sound choices also persist; the effect below pushes live changes.
-  const accentSound = prefs.accentSound;
-  const beatSound = prefs.beatSound;
-  const setAccentSound = (id: string) => setPref("accentSound", id);
-  const setBeatSound = (id: string) => setPref("beatSound", id);
   // Preference: group accents in compound/odd meters (settings -> Playback).
   // Off = only the downbeat is accented, in any meter.
   const effectiveAccents = prefs.meterAccents ? timeSignature.accents : [0];
@@ -235,7 +205,20 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     null
   );
 
+  // Which engine is live. The WebView is the default; the native one is the
+  // experimental alternative (Settings -> Native metronome). Read through a
+  // ref by everything that posts, so a message always reaches whichever
+  // engine exists right now.
+  const useNative = useNativeAudio();
+  const useNativeRef = useRef(useNative);
+  useNativeRef.current = useNative;
+  const nativeEngineRef = useRef<NativeMetronomeEngine | null>(null);
+
   const postToEngine = (message: Record<string, unknown>) => {
+    if (useNativeRef.current) {
+      nativeEngineRef.current?.post(message as { type: string });
+      return;
+    }
     webViewRef.current?.postMessage(JSON.stringify(message));
   };
 
@@ -245,15 +228,15 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
 
     const loadEngine = async () => {
       try {
-        const encoded = await Promise.all(
+        // METRONOME_SOUNDS is [accent, beat], in that order.
+        const [accent, beat] = await Promise.all(
           METRONOME_SOUNDS.map((s) => loadAssetBase64(s.asset))
         );
 
         if (!isMounted) return;
-        const sounds = Object.fromEntries(
-          METRONOME_SOUNDS.map((s, i) => [s.id, encoded[i]])
-        );
-        setEngineHtml(buildMetronomeHtml({ sounds }));
+        // Keyed by voice, not by sound id: the engine plays one fixed sample
+        // per voice, so the page never has to look a selection up.
+        setEngineHtml(buildMetronomeHtml({ sounds: { accent, beat } }));
       } catch (error) {
         console.error("Failed to load metronome engine", error);
       }
@@ -344,6 +327,13 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     };
 
     const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" && useNativeRef.current) {
+        // The native engine plays through the app's own audio session, which
+        // the "audio" background mode keeps running -- so it keeps going,
+        // with a wider lookahead in case iOS slows the JS thread's timers.
+        postToEngine({ type: "setBackground", background: true });
+        return;
+      }
       if (state === "background") {
         if (!isPlayingRef.current || backgroundStopTimerRef.current) return;
         backgroundStopTimerRef.current = setTimeout(() => {
@@ -358,7 +348,15 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       }
       // Back on screen, so whatever took us away was brief.
       cancelPendingStop();
-      if (state === "active") checkEngineAlive();
+      if (state === "active") {
+        postToEngine({ type: "setBackground", background: false });
+        // The OS suspends the WebView audio clock when the app pauses, and
+        // nothing inside the page brings it back on its own -- see resumeAudio
+        // in the engine. Without this, a pulled-down notification shade left
+        // the audio stopped for good.
+        postToEngine({ type: "resume" });
+        checkEngineAlive();
+      }
     });
     return () => {
       subscription.remove();
@@ -377,25 +375,78 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engineReady]);
 
+  // Share the audio with other apps, or take it (Settings -> Audio). This
+  // engine's messages aren't queued, so it waits for "ready" -- and re-sends on
+  // every one, since a rebuilt engine starts with the default.
+  useEffect(() => {
+    if (!engineReady) return;
+    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineReady, prefs.mixWithOthers]);
+
   const handleWebViewMessage = (event: WebViewMessageEvent) => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "ready") {
-        setEngineReady(true);
-      } else if (data.type === "pong") {
-        if (pongTimerRef.current) {
-          clearTimeout(pongTimerRef.current);
-          pongTimerRef.current = null;
-        }
-      } else if (data.type === "beat" && isPlayingRef.current) {
-        setCurrentBeat(data.beat);
-      } else if (data.type === "error") {
-        console.error("Metronome engine error:", data.message);
-      }
+      handleEngineReply(JSON.parse(event.nativeEvent.data));
     } catch (error) {
       // Ignore malformed messages
     }
   };
+
+  // Replies from either engine; both speak the same protocol.
+  const handleEngineReply = (data: { type: string; [key: string]: any }) => {
+    if (data.type === "ready") {
+      setEngineReady(true);
+      postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+    } else if (data.type === "pong") {
+      if (pongTimerRef.current) {
+        clearTimeout(pongTimerRef.current);
+        pongTimerRef.current = null;
+      }
+    } else if (data.type === "beat" && isPlayingRef.current) {
+      setCurrentBeat(data.beat);
+    } else if (data.type === "error") {
+      console.error("Metronome engine error:", data.message);
+    }
+  };
+
+  // The native engine: built when it's selected (and rebuilt by restartEngine,
+  // which bumps the generation), torn down when it isn't. Switching engines
+  // mid-click stops the click -- the old engine is about to be thrown away.
+  useEffect(() => {
+    if (!useNative) return;
+    setEngineReady(false);
+    const engine = new NativeMetronomeEngine(
+      {
+        accent: METRONOME_SOUNDS[0].asset,
+        beat: METRONOME_SOUNDS[1].asset,
+      },
+      (reply) => handleEngineReplyRef.current(reply)
+    );
+    nativeEngineRef.current = engine;
+    return () => {
+      engine.dispose();
+      if (nativeEngineRef.current === engine) nativeEngineRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative, engineGeneration]);
+
+  // The engine outlives renders, so it calls the latest handler through a ref.
+  const handleEngineReplyRef = useRef(handleEngineReply);
+  handleEngineReplyRef.current = handleEngineReply;
+
+  // Leaving one engine for the other: whatever was playing was on the engine
+  // being left, so stop it, and wait for the new one's "ready".
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    isPlayingRef.current = false;
+    setIsPlaying(false);
+    setCurrentBeat(0);
+    release("metro");
+    setEngineReady(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
 
   const startMetronome = () => {
     if (isPlaying) return;
@@ -422,8 +473,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       accentVolume,
       beatVolume,
       masterVolume,
-      accentSound,
-      beatSound,
     });
 
     isPlayingRef.current = true;
@@ -469,13 +518,20 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accentVolume, beatVolume, masterVolume]);
 
-  // Live sound changes likewise switch the voices mid-playback.
-  useEffect(() => {
-    if (isPlaying) {
-      postToEngine({ type: "setSounds", accentSound, beatSound });
-    }
+  // The master level live, while its Settings slider is still moving (see
+  // utils/volumePreview.ts). A stopped metronome picks up the saved level at
+  // its next start, so only a playing one needs telling.
+  useEffect(
+    () =>
+      onVolumePreview("metronome", (master) => {
+        if (isPlayingRef.current) {
+          postToEngine({ type: "setVolumes", masterVolume: master });
+        }
+      }),
+    // postToEngine reads only refs, so the first render's copy stays good.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accentSound, beatSound]);
+    []
+  );
 
   useEffect(() => {
     return () => {
@@ -500,10 +556,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
         setAccentVolume,
         beatVolume,
         setBeatVolume,
-        accentSound,
-        setAccentSound,
-        beatSound,
-        setBeatSound,
         engineReady,
         isBlockedByOtherEngine,
         startMetronome,
@@ -511,7 +563,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      {engineHtml && (
+      {engineHtml && !useNative && (
         <WebView
           // Remounting on a new generation is what actually rebuilds a dead
           // engine — see restartEngine.

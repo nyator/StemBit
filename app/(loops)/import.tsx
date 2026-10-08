@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
+  Pressable,
   ScrollView,
-  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+// The legacy entrypoint, not the package root. SDK 54 ships
+// expo-file-system 19, where the root export is the new File/Directory API
+// and the path-and-string API this file uses moved behind /legacy. Importing
+// from the root leaves EncodingType undefined and makes every read throw.
+import * as FileSystem from "expo-file-system/legacy";
 
 import {
   LOOP_CATEGORIES,
@@ -36,8 +38,8 @@ import { useBpmControl } from "../../hooks/useBpmControl";
 import { hapticImpact } from "../../utils/haptics";
 
 import ScreenHeader from "../../components/ui/screenHeader";
-import AmbientGlow from "../../components/ui/ambientGlow";
-import { GLOW_PLACEMENTS } from "../../components/ui/screen";
+import Screen from "../../components/ui/screen";
+import { BpmDial, StepperButton } from "../../components/ui/instrument";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
 import WaveformTrimmer, {
@@ -50,7 +52,7 @@ import {
   type LoopAnalysis,
   type LoopPreviewHandle,
 } from "../../components/loopPreviewEngine";
-import { COLORS } from "../../constants/theme";
+import { COLORS, SIZES } from "../../constants/theme";
 import {
   AddCircle,
   Folder,
@@ -86,22 +88,31 @@ import {
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 
-// How wide a window a held handle zooms into: about a second across the same few
-// hundred pixels the whole file had, so roughly 2ms per pixel — finer than the
-// nudge buttons.
-const ZOOM_WINDOW_SECONDS = 1;
-// How much audio is measured behind it. Wider than the window because a dragged
-// edge scrolls the view, and re-measuring on every frame of that would be a round
-// trip to the engine per frame; with a buffer either side, scrolling is just
+// How much audio is measured behind the zoomed view. Wider than the window,
+// because the view scrolls -- dragged by the finger, or shoved along by an edge
+// nearing the side -- and re-measuring on every frame of that would be a round
+// trip to the engine per frame. With a buffer either side, scrolling is just
 // re-slicing numbers already in hand.
-const ZOOM_BUFFER_SECONDS = 4;
-// Buckets across the buffer, kept in proportion so the resolution is the same
-// whatever the window is: ~2ms per bucket.
+//
+// A multiple of the window rather than a fixed number of seconds: the zoom is
+// continuous now, so the window is anything from the whole file down to a tenth
+// of a second, and a fixed four seconds would be a wasteful buffer at one end
+// and no buffer at all at the other.
+const ZOOM_BUFFER_FACTOR = 3;
+/** ...but never so narrow that a small scroll runs off the end of it. */
+const ZOOM_BUFFER_MIN_SECONDS = 2;
+// Buckets across the buffer. Fixed, so the resolution improves as you zoom in:
+// the same 1920 measurements spread over a narrower buffer.
 const ZOOM_BUCKETS = 1920;
-// The view coming within this much of the buffer's end is the cue to measure a
-// new one, centred where the view is now. Half a window of slack, so the old
-// buffer still covers the screen while the new one is on its way.
-const ZOOM_REFILL_SECONDS = ZOOM_WINDOW_SECONDS / 2;
+/**
+ * Past this window width the overview's own peaks are as good as anything the
+ * engine would send back, so nothing is measured at all.
+ *
+ * The overview is a few hundred buckets across the whole file. Zoomed a little,
+ * a slice of it still has more detail per pixel than the screen can draw; it is
+ * only further in that it turns into a handful of bars stretched wide.
+ */
+const ZOOM_MEASURE_BELOW_SECONDS = 30;
 
 // Detected tempo at or above this confidence is applied on the spot; below it,
 // the tempo is estimated from the region's length instead and the screen says so.
@@ -147,12 +158,6 @@ export default function ImportLoopScreen() {
   });
 
   const engineRef = useRef<LoopPreviewHandle>(null);
-  // For scrolling a focused field clear of the keyboard. The offset is measured
-  // rather than assumed: what's above the name field changes with the file, the
-  // notices and whether a tempo was detected.
-  const scrollRef = useRef<ScrollView>(null);
-  const nameOffsetRef = useRef(0);
-  const tempoOffsetRef = useRef(0);
 
   const [picked, setPicked] = useState<DocumentPicker.DocumentPickerAsset | null>(
     null
@@ -208,9 +213,6 @@ export default function ImportLoopScreen() {
   // Where playback has reached, as a fraction through the loop region, straight
   // off the engine's audio clock. Null when nothing is playing.
   const [playPhase, setPlayPhase] = useState<number | null>(null);
-  // Room for the keyboard, only while a field is focused -- otherwise the screen
-  // carries a keyboard's worth of empty space under Save the whole time.
-  const [fieldFocused, setFieldFocused] = useState(false);
 
   const beatsPerBar = beatsPerBarOf(timeSignature);
   const duration = analysis?.duration ?? 0;
@@ -518,16 +520,6 @@ export default function ImportLoopScreen() {
     );
   };
 
-  // Bring a field to the top of the scroll when it's focused, so the keyboard
-  // coming up can't leave it underneath. Delayed a frame: on Android the window
-  // resizes as the keyboard opens, and scrolling before that lands in the wrong
-  // place.
-  const scrollFieldIntoView = (offset: number) => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: Math.max(0, offset - 24), animated: true });
-    }, 120);
-  };
-
   const commitTrim = (start: number, end: number) => {
     setTrim({ start, end });
     setTrimCommits((count) => count + 1);
@@ -546,19 +538,24 @@ export default function ImportLoopScreen() {
   // than a round trip per frame, and the engine is only asked again when the view
   // approaches the end of what's measured.
 
-  // The stretch of audio to measure around a position, clamped to the file.
-  const zoomBufferAround = (at: number) => {
-    const span = Math.min(ZOOM_BUFFER_SECONDS, Math.max(0.05, duration));
+  // The stretch of audio to measure behind a window, clamped to the file.
+  const zoomBufferFor = (view: { start: number; end: number }) => {
+    const window = Math.max(0.05, view.end - view.start);
+    const span = Math.min(
+      Math.max(0.05, duration),
+      Math.max(ZOOM_BUFFER_MIN_SECONDS, window * ZOOM_BUFFER_FACTOR)
+    );
+    const centre = (view.start + view.end) / 2;
     const from = Math.min(
-      Math.max(0, at - span / 2),
+      Math.max(0, centre - span / 2),
       Math.max(0, duration - span)
     );
     return { start: from, end: from + span };
   };
 
-  const fetchZoomBuffer = (at: number) => {
+  const fetchZoomBuffer = (view: { start: number; end: number }) => {
     if (!analysis) return null;
-    const buffer = zoomBufferAround(at);
+    const buffer = zoomBufferFor(view);
     engineRef.current?.regionPeaks(
       analysis.key,
       buffer.start,
@@ -568,41 +565,53 @@ export default function ImportLoopScreen() {
     return buffer;
   };
 
-  const requestZoom = (edge: "start" | "end", at: number) => {
+  /**
+   * The trimmer is looking somewhere new -- zoomed, scrolled, or back out to
+   * the whole file.
+   *
+   * Measures a buffer for it, but only when the window is narrow enough that
+   * measuring beats slicing the overview, and only when what is already
+   * measured doesn't still cover the view. The whole point of a buffer wider
+   * than the window is that most scrolling needs nothing.
+   */
+  const handleViewChange = (view: { start: number; end: number } | null) => {
     if (!analysis || duration <= 0) return;
-    const buffer = fetchZoomBuffer(at);
-    if (!buffer) return;
-    // Peaks land in a moment; until they do the trimmer stretches the overview's
-    // own, so the view is never blank under the finger.
-    setZoom({
-      edge,
-      bufferStart: buffer.start,
-      bufferEnd: buffer.end,
-      peaks: [],
-      origin: at,
-      windowSeconds: ZOOM_WINDOW_SECONDS,
-    });
-  };
 
-  // The view has scrolled. Measure a new buffer if it's running out of the
-  // current one -- and only then, since the whole point of the buffer is that
-  // most scrolling needs nothing.
-  const handleNeedPeaks = (viewStart: number, viewEnd: number) => {
+    if (!view || view.end - view.start > ZOOM_MEASURE_BELOW_SECONDS) {
+      setZoom(null);
+      return;
+    }
+
     setZoom((current) => {
-      if (!current) return current;
-      const roomBefore =
-        viewStart - current.bufferStart >= ZOOM_REFILL_SECONDS ||
-        current.bufferStart <= 0;
-      const roomAfter =
-        current.bufferEnd - viewEnd >= ZOOM_REFILL_SECONDS ||
-        current.bufferEnd >= duration - 0.0001;
-      if (roomBefore && roomAfter) return current;
+      // Room left in the buffer on both sides, or the file's own edge, means
+      // the view is still covered and there is nothing to do.
+      if (current) {
+        const margin = (view.end - view.start) / 2;
+        const roomBefore =
+          view.start - current.bufferStart >= margin || current.bufferStart <= 0;
+        const roomAfter =
+          current.bufferEnd - view.end >= margin ||
+          current.bufferEnd >= duration - 0.0001;
+        if (roomBefore && roomAfter) return current;
+      }
 
-      const buffer = fetchZoomBuffer((viewStart + viewEnd) / 2);
-      if (!buffer || buffer.start === current.bufferStart) return current;
-      // The old peaks stay on screen until the new ones arrive: they still cover
-      // the view, which is what the slack in the refill margin is for.
-      return { ...current, bufferStart: buffer.start, bufferEnd: buffer.end };
+      const buffer = fetchZoomBuffer(view);
+      if (!buffer) return current;
+      if (
+        current &&
+        current.bufferStart === buffer.start &&
+        current.bufferEnd === buffer.end
+      ) {
+        return current;
+      }
+      // Peaks land in a moment. Until they do the old ones stay on screen if
+      // there are any, and the trimmer stretches the overview's if there
+      // aren't -- either way the view is never blank under the finger.
+      return {
+        bufferStart: buffer.start,
+        bufferEnd: buffer.end,
+        peaks: current?.peaks ?? [],
+      };
     });
   };
 
@@ -666,17 +675,9 @@ export default function ImportLoopScreen() {
     setBpm(value);
   };
 
-  const {
-    bpmText,
-    handleBpmTextChange,
-    commitBpmText,
-    increase,
-    decrease,
-    startHoldIncrease,
-    startHoldDecrease,
-    endHold,
-    handleTapTempo,
-  } = useBpmControl({
+  // Passed whole to the dial and the steppers, the way the two instrument
+  // screens do it.
+  const controls = useBpmControl({
     bpm,
     setBpm: setBpmByHand,
     minBpm: LOOP_MIN_BPM,
@@ -761,31 +762,31 @@ export default function ImportLoopScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" />
-      <AmbientGlow style={GLOW_PLACEMENTS.topLeftFar} />
-      <AmbientGlow style={GLOW_PLACEMENTS.bottomLeft} />
-
+    <Screen glows={["topLeftFar", "bottomLeft"]}>
       <ScreenHeader title={editing ? "Edit Loop" : "Add Loop"} />
 
       {/* The name field and the BPM field both sit low enough to be behind the
-          keyboard on a short screen. Three things keep them visible, because on
-          their own none of them covers both platforms: the view shrinks to the
-          space left over (iOS; Android does it through the window's own resize),
-          the padding at the bottom leaves room to scroll the last field clear,
-          and focusing a field scrolls it into view. */}
-      {/* <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      > */}
+          keyboard on a short screen. The keyboard's room comes off the scroll
+          view's insets rather than its layout -- natively on iOS, through the
+          window's own resize on Android -- and either way the focused field is
+          scrolled clear. Nothing on the screen re-lays out, so nothing jumps as
+          the keyboard comes and goes.
+
+          The bottom padding is permanent: without it Save and the More section
+          end flush against the bottom edge. */}
       <ScrollView
-        ref={scrollRef}
-        className="flex-1 px-5"
-        contentContainerStyle={{ paddingBottom: fieldFocused ? 220 : 0 }}
+        className="flex-1 px-screen"
+        contentContainerStyle={{ paddingBottom: 40 }}
+        automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
+        {/* A tap on any empty space closes the keyboard, the way it does on the
+            Loop tab. The BPM field's number pad has no Done key, so without
+            this the only way out was to drag the screen. The controls inside
+            still get their own taps first. */}
+        <Pressable onPress={Keyboard.dismiss} accessible={false}>
         {/* The screen is laid out as the job actually goes: the file, the region,
             the tempo, hear it, name it, save. Detection sets the tempo and the
             region on its own, so on a good file there is nothing to do but listen
@@ -810,7 +811,7 @@ export default function ImportLoopScreen() {
             >
               {editing ? editing.title : picked ? picked.name : "Choose a file"}
             </Text>
-            <Text className="text-ink-muted text-[11px] font-satoshiRegular">
+            <Text className="text-ink-muted text-micro font-satoshiRegular">
               {busy
                 ? "Reading and decoding…"
                 : editing
@@ -822,7 +823,7 @@ export default function ImportLoopScreen() {
           </View>
           {!editing && (
             <Text
-              className="text-[11px] font-spaceBold"
+              className="text-micro font-spaceBold"
               style={{ color: COLORS.brand }}
             >
               {picked ? "CHANGE" : "CHOOSE"}
@@ -831,15 +832,16 @@ export default function ImportLoopScreen() {
         </TouchableOpacity>
 
         {notice && (
-          <Text className="mt-2 text-xs text-danger font-satoshiMedium">
+          <Text className="mt-2 text-overline text-danger font-satoshiMedium">
             {notice}
           </Text>
         )}
 
         {analysis && (
           <>
-            {/* What plays. Drag the ends; hold one to zoom in, which is finer
-                than any nudge button could be, so there are none. */}
+            {/* What plays. Drag the ends; pinch or use the buttons to zoom in,
+                which is finer than any nudge button could be, so there are
+                none. */}
             {/* <SectionLabel text="The part that loops" /> */}
             <WaveformTrimmer
               peaks={analysis.peaks}
@@ -848,12 +850,7 @@ export default function ImportLoopScreen() {
               end={trim.end}
               onChange={(start, end) => setTrim({ start, end })}
               onComplete={commitTrim}
-              onEdgeLongPress={(edge) => {
-                hapticImpact(prefs.haptics, "medium");
-                requestZoom(edge, edge === "start" ? trim.start : trim.end);
-              }}
-              onEdgeRelease={() => setZoom(null)}
-              onNeedPeaks={handleNeedPeaks}
+              onViewChange={handleViewChange}
               zoom={zoom}
               classname="mt-2"
             />
@@ -869,9 +866,9 @@ export default function ImportLoopScreen() {
                     ? `${wholeBars} ${wholeBars === 1 ? "bar" : "bars"} · ${formatSeconds(trimLength)}`
                     : `${formatSeconds(trimLength)} — not a whole bar`}
                 </Text> */}
-                <Text className="text-white text-[12px] font-satoshiRegular mt-[2px]">
+                <Text className="text-white text-overline font-satoshiRegular mt-0.5">
                   {isOnGrid
-                    ? "Drag the ends to trim. Hold one to zoom in."
+                    ? "Drag the ends to trim. Pinch to zoom in."
                     : "It'll drift out of time as it repeats."}
                 </Text>
               </View>
@@ -880,81 +877,46 @@ export default function ImportLoopScreen() {
                 <TouchableOpacity
                   onPress={() => snapTrimToGrid(wholeBars, bpm)}
                   accessibilityLabel="Snap the region to whole bars"
-                  className="px-3 py-2 ml-2 bg-white rounded-sm"
+                  className="px-3 py-2 ml-2 bg-white rounded-md"
                 >
-                  <Text className="text-black text-xs font-spaceBold">FIX</Text>
+                  <Text className="text-black text-overline font-spaceBold">FIX</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 onPress={resetTrimToAudible}
                 accessibilityLabel="Reset to the whole file"
-                className="px-3 py-2 ml-2 rounded-sm bg-white/10"
+                className="px-3 py-2 ml-2 rounded-md bg-white/10"
               >
-                <Text className="text-white text-xs font-spaceBold">RESET</Text>
+                <Text className="text-white text-overline font-spaceBold">RESET</Text>
               </TouchableOpacity>
             </View>
 
-            {/* <SectionLabel text="Tempo" /> */}
-            <View
-              className="flex-row items-center mt-8 gap-[10px] self-center"
-              onLayout={(event) => {
-                tempoOffsetRef.current = event.nativeEvent.layout.y;
-              }}
-            >
-              <View className="flex-row items-center justify-between">
-                <TouchableOpacity
-                  accessibilityLabel="Decrease loop tempo"
-                  onPress={decrease}
-                  onLongPress={startHoldDecrease}
-                  onPressOut={endHold}
-                  className="p-2 rounded-lg bg-white/10"
-                >
-                  <MinusCircle size={28} color={COLORS.white} />
-                </TouchableOpacity>
+            <View className="flex-row items-center self-center gap-3 mt-8">
+              <StepperButton
+                direction="down"
+                controls={controls}
+                label="Decrease loop tempo"
+              />
 
-                <View
-                  className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
-                >
-                  <TextInput
-                    className="p-0 text-center font-spaceBold"
-                    style={{
-                      minWidth: 86,
-                      fontSize: 40,
-                      color: isPlaying ? COLORS.brand : COLORS.white,
-                    }}
-                    value={bpmText}
-                    onChangeText={handleBpmTextChange}
-                    onEndEditing={commitBpmText}
-                    keyboardType="numeric"
-                    maxLength={3}
-                    selectTextOnFocus
-                    underlineColorAndroid="transparent"
-                    onFocus={() => {
-                      setFieldFocused(true);
-                      scrollFieldIntoView(tempoOffsetRef.current);
-                    }}
-                    onBlur={() => setFieldFocused(false)}
-                  />
-                  <Text className="uppercase text-label text-ink-muted font-satoshiBold">
-                    BPM
-                  </Text>
-                </View>
+              {/* The same dial the metronome and the loop player use, in its
+                  compact form: no transport here for the beat rings to flare
+                  against, and it has to sit inline between the steppers. */}
+              <BpmDial
+                controls={controls}
+                isPlaying={isPlaying}
+                variant="compact"
+              />
 
-                <TouchableOpacity
-                  accessibilityLabel="Increase loop tempo"
-                  onPress={increase}
-                  onLongPress={startHoldIncrease}
-                  onPressOut={endHold}
-                  className="p-2 rounded-lg bg-white/10"
-                >
-                  <AddCircle size={28} color={COLORS.white} />
-                </TouchableOpacity>
-              </View>
+              <StepperButton
+                direction="up"
+                controls={controls}
+                label="Increase loop tempo"
+              />
             </View>
 
 
             <Text
-              className="mt-1 text-xs text-center font-satoshiRegular"
+              className="mt-1 text-overline text-center font-satoshiRegular"
               style={{
                 color:
                   tempoSource === "detected" &&
@@ -972,7 +934,7 @@ export default function ImportLoopScreen() {
                 back as 140 and the reading you wanted is usually right here. */}
             {!isShipped && alternatives.length > 0 && (
               <View className="flex-row flex-wrap items-center justify-center gap-2 mt-3">
-                <Text className="text-xs text-ink-muted font-satoshiRegular">
+                <Text className="text-overline text-ink-muted font-satoshiRegular">
                   {tempoSource === "detected" ? "" : "Heard:"}
                 </Text>
                 {alternatives.map((option) => (
@@ -1007,9 +969,10 @@ export default function ImportLoopScreen() {
             {!isShipped && (
             <View className="flex-row gap-2 mt-4">
               <TouchableOpacity
-                onPressIn={handleTapTempo}
+                onPressIn={controls.handleTapTempo}
                 accessibilityLabel="Tap along to set the tempo"
-                className="items-center justify-center flex-1 py-[10px] border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-md"
+                style={{ height: SIZES.control }}
               >
                 <Text className="text-white text-title font-spaceBold">
                   TAP IT OUT
@@ -1018,9 +981,9 @@ export default function ImportLoopScreen() {
               <TouchableOpacity
                 onPress={redetectTempo}
                 disabled={detecting}
-                style={detecting ? { opacity: 0.5 } : undefined}
+                style={{ height: SIZES.control, opacity: detecting ? 0.5 : 1 }}
                 accessibilityLabel="Find the tempo in the audio again"
-                className="items-center justify-center flex-1 py-[10px] border-2 border-hairline-strong rounded-sm"
+                className="items-center justify-center flex-1 border-2 border-hairline-strong rounded-md"
               >
                 <Text className="text-white text-title font-spaceBold">
                   {detecting ? "LISTENING…" : "FIND IT"}
@@ -1051,7 +1014,7 @@ export default function ImportLoopScreen() {
                   clickOn ? "Turn off the check click" : "Turn on the check click"
                 }
                 onPress={() => setClickOn((on) => !on)}
-                className={`items-center justify-center px-2 py-2 rounded-sm border-2 ${clickOn ? "bg-white border-white" : "border-hairline-strong"
+                className={`items-center justify-center px-2 py-2 rounded-md border-2 ${clickOn ? "bg-white border-white" : "border-hairline-strong"
                   }`}
               >
                 {clickOn ? (
@@ -1062,7 +1025,7 @@ export default function ImportLoopScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* <Text className="mt-2 text-[11px] text-center text-ink-muted font-satoshiRegular">
+            {/* <Text className="mt-2 text-micro text-center text-ink-muted font-satoshiRegular">
               {isBlockedByOtherEngine
                 ? "Stop the Metronome first"
                 : clickOn
@@ -1075,12 +1038,7 @@ export default function ImportLoopScreen() {
                 that silently discarded what you typed would be worse than no
                 field at all. */}
             {canRename ? (
-              <View
-                className="mt-5"
-                onLayout={(event) => {
-                  nameOffsetRef.current = event.nativeEvent.layout.y;
-                }}
-              >
+              <View className="mt-5">
                 <BrandInput
                   label="Name"
                   value={title}
@@ -1088,15 +1046,12 @@ export default function ImportLoopScreen() {
                   placeholder="Loop name"
                   maxLength={40}
                   error={title.trim() ? undefined : "Give it a name"}
-                  onFocus={() => {
-                    setFieldFocused(true);
-                    scrollFieldIntoView(nameOffsetRef.current);
-                  }}
-                  onBlur={() => setFieldFocused(false)}
+                  returnKeyType="done"
+                  keyboardAppearance="dark"
                 />
               </View>
             ) : (
-              <Text className="my-5 text-xs text-ink-muted font-satoshiRegular">
+              <Text className="my-5 text-overline text-ink-muted font-satoshiRegular">
                 {title} · this loop came with the app, so only its tempo and
                 region are saved.
               </Text>
@@ -1158,7 +1113,7 @@ export default function ImportLoopScreen() {
                 </>
               )}
 
-              <Text className="mt-5 text-xs text-ink-soft font-satoshiRegular">
+              <Text className="mt-5 text-overline text-ink-soft font-satoshiRegular">
                 Hear it warp: play it at another tempo.
               </Text>
               <View className="flex-row items-center justify-center gap-4 mt-2">
@@ -1180,7 +1135,7 @@ export default function ImportLoopScreen() {
                   >
                     {targetBpm} BPM
                   </Text>
-                  <Text className="text-ink-muted text-[10px] font-spaceBold uppercase">
+                  <Text className="text-ink-muted text-nav font-spaceBold uppercase">
                     playing at {(targetBpm / bpm).toFixed(2)}x
                   </Text>
                 </View>
@@ -1206,8 +1161,8 @@ export default function ImportLoopScreen() {
             </Disclosure>
           </>
         )}
+        </Pressable>
       </ScrollView>
-      {/* </KeyboardAvoidingView> */}
 
       <LoopPreviewEngine
         ref={engineRef}
@@ -1225,7 +1180,7 @@ export default function ImportLoopScreen() {
         }}
         clickEnabled={clickOn}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -1275,12 +1230,12 @@ function Disclosure({
           </Text>
           <View className="flex-row items-center gap-2">
             {!expanded && summary ? (
-              <Text className="text-xs text-ink-muted font-satoshiRegular">
+              <Text className="text-overline text-ink-muted font-satoshiRegular">
                 {summary}
               </Text>
             ) : null}
             <Text
-              className="text-[11px] font-spaceBold"
+              className="text-micro font-spaceBold"
               style={{ color: COLORS.brand }}
             >
               {expanded ? "HIDE" : "SHOW"}
@@ -1311,7 +1266,7 @@ function Chip({ label, selected, onPress }: ChipProps) {
         }`}
     >
       <Text
-        className={`text-sm font-satoshiMedium ${selected ? "text-black" : "text-white"
+        className={`text-label font-satoshiMedium ${selected ? "text-black" : "text-white"
           }`}
       >
         {label}

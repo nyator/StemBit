@@ -3,6 +3,10 @@ import { View, Text, TouchableOpacity } from "react-native";
 
 import { MAX_PAD_LAYERS, NATURE_CHANNEL } from "../constants/pads";
 import { COLORS } from "../constants/theme";
+import {
+  DEFAULT_NATURE_LEVEL,
+  DEFAULT_PAD_LEVEL,
+} from "../context/PreferencesContext";
 import { usePadLayers, type MixerChannel } from "../hooks/usePadLayers";
 import { MinusCircle } from "./icons";
 import VerticalFader from "./ui/verticalFader";
@@ -45,14 +49,14 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
       )}
 
       <Text
-        className="text-white text-[11px] font-satoshiMedium"
+        className="text-white text-micro font-satoshiMedium"
         numberOfLines={1}
         style={{ paddingHorizontal: 16 }}
       >
         {channel.title}
       </Text>
       <Text
-        className="text-[10px] font-spaceBold mb-2"
+        className="text-nav font-spaceBold mb-2"
         style={{ color: channel.muted ? COLORS.danger : COLORS.textMuted }}
       >
         {channel.muted
@@ -68,6 +72,7 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
             setDraftLevel(null);
             setLevel(channel.id, level);
           }}
+          defaultValue={isNature ? DEFAULT_NATURE_LEVEL : DEFAULT_PAD_LEVEL}
           accessibilityLabel={`${channel.title} level`}
         />
       </View>
@@ -79,14 +84,14 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
         accessibilityState={{ selected: channel.muted }}
         accessibilityLabel={`${channel.muted ? "Unmute" : "Mute"} ${channel.title
           }`}
-        className="items-center justify-center w-full py-[6px] mt-3 rounded"
+        className="items-center justify-center w-full py-1.5 mt-3 rounded"
         style={{
           backgroundColor: channel.muted
             ? COLORS.danger
             : "rgba(255,255,255,0.1)",
         }}
       >
-        <Text className="text-white text-[10px] font-spaceBold">MUTE</Text>
+        <Text className="text-white text-nav font-spaceBold">MUTE</Text>
       </TouchableOpacity>
     </View>
   );
@@ -105,7 +110,7 @@ function EmptyStrip() {
         borderColor: "rgba(255,255,255,0.06)",
       }}
     >
-      <Text className="text-white/20 text-[10px] uppercase font-spaceBold">
+      <Text className="text-white/20 text-nav uppercase font-spaceBold">
         Empty
       </Text>
     </View>
@@ -122,7 +127,7 @@ export default function PadMixer() {
         <Text className="uppercase text-overline tracking-widest text-ink-muted font-spaceBold">
           Mixer
         </Text>
-        <Text className="text-ink-muted text-[11px] font-satoshiRegular">
+        <Text className="text-ink-muted text-micro font-satoshiRegular">
           {loadedCount} of {MAX_PAD_LAYERS} pads
         </Text>
       </View>

@@ -7,15 +7,30 @@ import { getAllLoops, isLoopOverridden, type Loop } from "../constants/loops";
 import { COLORS } from "../constants/theme";
 import { useLoopPlayback } from "../context/LoopPlaybackContext";
 import { useUserLoops } from "../context/UserLoopsContext";
-import { Musicnote, PauseCircle, PlayCircle } from "./icons";
+import { useSaveLoopAsMine } from "../hooks/useSaveLoopAsMine";
+import { Musicnote } from "./icons";
+import EmptyState from "./ui/emptyState";
+import PreviewButton from "./ui/previewButton";
 
 type SelectLoopViewProps = {
   // Which loops to show — defaults to everything (catalog + the user's
-  // imports). The browser screen passes a category- or artist-filtered subset.
+  // imports). The browser screen passes a filtered subset.
   loops?: Loop[];
+  /**
+   * What to say when there is nothing to show.
+   *
+   * The default reads as "the catalog is still small" and tells you to import
+   * one, which is the right answer for an empty library and the wrong one for
+   * a filter combination that matches nothing -- there the fix is to drop a
+   * filter, not to go and make a loop.
+   */
+  emptyMessage?: string;
 };
 
-const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
+const SelectLoopView = ({
+  loops = getAllLoops(),
+  emptyMessage,
+}: SelectLoopViewProps) => {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const playbackSubscriptionRef =
@@ -23,6 +38,7 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
   const router = useRouter();
   const { setSelectedLoopKey, selectedKey } = useLoopPlayback();
   const { removeUserLoop, clearLoopOverride, overriddenKeys } = useUserLoops();
+  const { saveAsMine } = useSaveLoopAsMine();
 
   const unloadCurrentSound = async () => {
     if (!soundRef.current) return;
@@ -113,7 +129,9 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
   const confirmDelete = (loop: Loop) => {
     Alert.alert(
       "Delete Loop",
-      `Remove "${loop.title}"? Its audio is deleted from the app — the original file on your device isn't touched.`,
+      loop.packId
+        ? `Remove "${loop.title}"? Its audio is deleted from the app — you can download it again from the store.`
+        : `Remove "${loop.title}"? Its audio is deleted from the app — the original file on your device isn't touched.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -143,9 +161,16 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
     const buttons: Parameters<typeof Alert.alert>[2] = [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Edit tempo & trim",
+        // Their own loop gets the short editor -- name and playback tempo. A
+        // shipped one has neither to offer, so it goes to the import screen,
+        // where correcting the tempo it was recorded at is all there is to do.
+        text: loop.userAdded ? "Rename & set tempo" : "Correct its tempo",
         onPress: async () => {
           await unloadCurrentSound();
+          if (loop.userAdded) {
+            saveAsMine(loop); // already theirs: opens the editor, copies nothing
+            return;
+          }
           router.push({
             pathname: "/(loops)/import",
             params: { key: loop.key },
@@ -153,6 +178,19 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
         },
       },
     ];
+
+    if (!loop.userAdded) {
+      // The way to get a shipped loop's name, meter and category unlocked.
+      // Editing one in place can only move its tempo and trim -- everything
+      // else is a catalog fact -- so making it yours is a copy, not a mode.
+      buttons.push({
+        text: "Save as my loop",
+        onPress: async () => {
+          await unloadCurrentSound();
+          saveAsMine(loop);
+        },
+      });
+    }
 
     if (loop.userAdded) {
       buttons.push({
@@ -177,7 +215,7 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
       loop.title,
       loop.userAdded
         ? "Edit this loop's tempo, trim and details, or remove it."
-        : "Change what the app believes this loop's tempo is. Its audio isn't touched.",
+        : "Editing changes what the app believes this loop's tempo is — its name and meter stay as they ship. Save a copy to make it yours and rename it.",
       buttons,
       { cancelable: true }
     );
@@ -185,19 +223,29 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
 
   if (loops.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center px-10">
-        <Musicnote size={40} color="rgba(255,255,255,0.3)" />
-        <Text className="mt-4 text-center text-white/50 font-satoshiMedium">
-          No loops here yet — they'll show up as the catalog grows, or add one of
-          your own with + above.
-        </Text>
+      <View className="items-center justify-center flex-1">
+        <EmptyState
+          icon={Musicnote}
+          message={
+            emptyMessage ??
+            "No loops here yet — they'll show up as the catalog grows, or add one of your own with + above."
+          }
+        />
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView className="flex-1 px-5">
+      {/* handled, not the default: the search field above can leave the
+          keyboard up, and without this the first tap on a row only dismisses
+          it -- the row's own onPress never fires, so nothing asks to load it
+          until you tap a second time. */}
+      <ScrollView
+        className="flex-1 px-screen"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {loops.map((item, i) => (
           <TouchableOpacity
             key={item.key}
@@ -206,25 +254,16 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
             onLongPress={() => handleRowLongPress(item)}
             delayLongPress={400}
           >
-            <TouchableOpacity
+            <PreviewButton
+              isPlaying={playingIndex === i}
               onPress={() => handlePlayPause(i)}
-              className="items-center justify-center rounded-full"
-              style={{
-                width: 34,
-                height: 34,
-                backgroundColor: "rgba(0,89,128,0.3)",
-              }}>
-              {playingIndex === i ? (
-                <PauseCircle size={24} color="white" />
-              ) : (
-                <PlayCircle size={24} color="white" />
-              )}
-            </TouchableOpacity>
+              title={item.title}
+            />
 
             <View className="w-2/6">
               <View className="flex-row items-center gap-2">
                 <Text
-                  className="text-white text-md font-satoshiBold"
+                  className="text-white text-label font-satoshiBold"
                   numberOfLines={1}
                   style={{ flexShrink: 1 }}
                 >
@@ -242,27 +281,34 @@ const SelectLoopView = ({ loops = getAllLoops() }: SelectLoopViewProps) => {
                 )}
               </View>
               <View className="flex-row items-center justify-start gap-2">
-                <Text className="text-ink-muted text-xs font-satoshiRegular">
-                  {item.userAdded
-                    ? "Imported"
-                    : overriddenKeys.includes(item.key)
-                      ? "Edited"
-                      : `${item.artist} Artist`}
+                <Text className="text-ink-muted text-overline font-satoshiRegular">
+                  {/* A downloaded loop is credited to whoever made the pack,
+                      ahead of the "Imported" its userAdded flag would otherwise
+                      give it. Both are the user's own copy, but only one of
+                      them is theirs in the sense that caption means -- and the
+                      artist's name is the reason an artist pack exists. */}
+                  {item.packId
+                    ? item.artist
+                    : item.userAdded
+                      ? "Imported"
+                      : overriddenKeys.includes(item.key)
+                        ? "Edited"
+                        : `${item.artist} Artist`}
                 </Text>
-                <Text className="text-ink-muted text-xs font-satoshiRegular">
+                <Text className="text-ink-muted text-overline font-satoshiRegular">
                   .
                 </Text>
-                <Text className="text-xs text-ink-muted font-satoshiRegular">
+                <Text className="text-overline text-ink-muted font-satoshiRegular">
                   {item.category}
                 </Text>
               </View>
             </View>
 
             <View className="flex items-center justify-between w-2/6">
-              <Text className="text-white text-md font-satoshiRegular">
+              <Text className="text-white text-label font-satoshiRegular">
                 {item.timeSignature}
               </Text>
-              <Text className="text-sm text-white font-satoshiRegular">
+              <Text className="text-label text-white font-satoshiRegular">
                 {item.bpm} bpm
               </Text>
             </View>

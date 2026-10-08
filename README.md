@@ -46,8 +46,9 @@ StemBit is a React Native mobile application designed for musicians and performe
 - Manage session setlists (in progress).
 
 ### Profile & Auth (`app/(settings)`, `app/(auths)`)
-- Authentication via Appwrite: register, login, forgot/reset password.
-- Login currently has a `DEV_SKIP_AUTH` flag enabled in `app/(auths)/login.tsx` — set it to `false` to require real credentials.
+- Passwordless authentication via Clerk: enter an email, get a 6-digit code, done. An address with no account gets one created for it, so sign-in and sign-up are the same gesture.
+- There are no passwords, which is why `forgot-password.tsx` and `reset-password.tsx` are dead screens awaiting removal.
+- `app/(tabs)/_layout.tsx` is the gate: it redirects to sign-in unless Clerk reports a session, and covers the `(loops)`/`(pads)`/`(sessions)`/`(settings)` stacks too, since all of them are pushed from inside a tab.
 
 ---
 
@@ -194,7 +195,8 @@ different loop wearing that key, so that's an add.
 - **UI Styling:** Tailwind CSS (NativeWind)
 - **Audio:** Web Audio (via react-native-webview) for metronome & loops; expo-audio for pads & previews
 - **Icons:** @expo/vector-icons
-- **Backend:** Appwrite (authentication and data)
+- **Auth:** Clerk (`@clerk/expo`), passwordless email code; session token in the Keychain/Keystore via `expo-secure-store`
+- **Loop store:** Cloudflare R2 behind a public URL — see `docs/loop-store.md`
 - **Language:** TypeScript
 
 ---
@@ -215,9 +217,15 @@ different loop wearing that key, so that's an add.
 3. **Configure environment:**
    ```sh
    cp .env.example .env
-   # fill in EXPO_PUBLIC_APPWRITE_DEV_KEY (Appwrite console -> Project -> Settings -> Dev keys)
+   # EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY  (Clerk Dashboard -> API keys)
+   # EXPO_PUBLIC_LOOP_STORE_URL         (R2 bucket's public URL, no trailing slash)
    ```
-   Never commit `.env`. The dev key is only needed for development builds.
+   Never commit `.env`. Both are public-half keys and are compiled into the
+   bundle — no secret key belongs in an `EXPO_PUBLIC_` variable.
+
+   Expo reads `.env` once, at CLI startup, and Babel inlines these at transform
+   time. After changing either, restart with `npx expo start --dev-client -c`;
+   a reload alone keeps the old value.
 
 4. **Start the dev server:**
    ```sh
@@ -266,7 +274,7 @@ different loop wearing that key, so that's an add.
 - `constants/` - Static config and the audio engines (`metronomeEngine.ts`, `loopEngine.ts`, `loops.ts`, `audio.js`, `icons.js`)
 - `context/` - Providers: `MetronomeContext`, `LoopPlaybackContext`, `PlaybackLockContext`, `UserLoopsContext`
 - `hooks/` - Shared hooks (`useBpmControl.ts`)
-- `lib/` - Backend integration (`appwrite.ts`)
+- `lib/` - Backend integration (`tokenCache.ts` — Clerk's session store)
 - `utils/` - Helpers (`loadAssetBase64.ts`) and tests
 - `assets/` - Images, icons, fonts, audio
 

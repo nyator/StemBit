@@ -35,6 +35,7 @@
 // constants/vendor/bpmAnalyzerSource.ts for how it gets here.
 import { SILENT_MODE_KEEP_ALIVE_SOURCE } from "./silentModeKeepAlive";
 import { BPM_ANALYZER_SOURCE } from "./vendor/bpmAnalyzerSource";
+import { TEMPO_DETECT_SOURCE } from "./tempoDetect";
 
 export const buildLoopEngineHtml = () => `<!DOCTYPE html>
 <html>
@@ -84,15 +85,32 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // the lookahead scheduler's cursor.
         var clickBuffers = {};
         var clickEnabled = false;
+        // Subdivision, as a multiplier on how often the click sounds: 0.5 is
+        // half time, 1 every beat, 2 eighths.
+        //
+        // It moves the CLICK only. The playback rate, the beat grid, the dots
+        // and the accent are all untouched, because the loop's tempo is what
+        // the BPM dial is for and a second control that also changed it would
+        // just be the dial again. See the note on beatScheduler.
+        var clickFeel = 1;
         var clickPan = 0; // -1 left .. 0 center .. +1 right
         var clickAccentId = null;
         var clickBeatId = null;
         var clickAccentVol = 1.0;
         var clickBeatVol = 0.8;
-        var clickTimer = null;
-        var clickNextTime = 0;
-        var clickBeatIndex = 0;
         var clickSources = [];
+        // The beat grid, shared by the click and the dots. It runs whenever the
+        // loop plays, whether or not the click is switched on.
+        //
+        // gridBeatIndex is BAR-relative -- 0 .. beatsPerBar-1 -- because it is
+        // the one number both the click and the screen are given. The metronome
+        // engine keeps its beat the same way and for the same reason.
+        var beatTimer = null;
+        var gridNextTime = 0;
+        var gridBeatIndex = 0;
+        // One pending "a beat is landing now" timeout per scheduled beat, so
+        // they can be cancelled when the loop stops.
+        var beatTimers = [];
 
         // Catalog caches. Loops are preloaded (and decoded) up front so
         // selecting one is just a pointer swap — no decode wait at play
@@ -116,23 +134,8 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // long file's frames to draw right).
         var PEAK_BUCKETS = 480;
         var PEAK_SAMPLES_PER_BUCKET = 256;
-        // How much audio a repeated region is built up to, and the ceiling on it.
-        var ANALYSIS_MIN_SECONDS = 20;
-        var ANALYSIS_MAX_SECONDS = 40;
-        // Only regions shorter than this are worth repeating. Longer ones already
-        // hold the peaks the detector wants, and repeating them measurably makes
-        // things worse: a four-bar mix reads correctly as itself and a whole
-        // octave out when tiled, because every join adds an interval that isn't
-        // in the music.
-        var ANALYSIS_TILE_UNDER_SECONDS = 6;
-        // The detector lowpasses at 200Hz before looking for peaks, so it is deaf
-        // to anything whose pulse isn't carried by a kick or a bass note: a click
-        // track, a hi-hat loop, a shaker, a rimshot groove. When the first pass
-        // comes back with nothing, or next to nothing, the same audio is read
-        // again with the filter opened up this far.
-        var ANALYSIS_FALLBACK_HZ = 3000;
-        // A first pass under this is worth a second opinion.
-        var ANALYSIS_RETRY_CONFIDENCE = 0.15;
+        // The ANALYSIS_* constants that used to sit here moved with the detector
+        // into constants/tempoDetect.ts, which is embedded below.
         // Only snap to the beat grid if the trimmed length is within this
         // fraction of a whole number of beats; otherwise trust the trim.
         var BEAT_SNAP_TOLERANCE = 0.1;
@@ -151,7 +154,17 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // Loop click scheduler cadence (same lookahead approach the metronome
         // engine uses): wake every ~25ms, schedule clicks up to 100ms ahead.
         var CLICK_LOOKAHEAD_MS = 25;
-        var CLICK_SCHEDULE_AHEAD = 0.1;
+        // Hosted natively (utils/nativeEngineHost.ts) this page runs on the
+        // React Native JS thread, which a heavy render can hold up for longer
+        // than a WebView timer ever is -- so the horizon is wider there, and
+        // wider still in the background, where iOS can stretch timers out.
+        // Clicks are still placed on the audio clock either way; a wider
+        // horizon only means a tempo change takes that long to be heard.
+        function clickScheduleAhead() {
+          if (!window.__nativeHost) return 0.1;
+          return document.hidden ? 1.0 : 0.15;
+        }
+        var CLICK_SCHEDULE_AHEAD = clickScheduleAhead();
         // How often the playhead is reported while it's wanted. ~16 a second:
         // smooth enough to read as movement, and far cheaper than a message per
         // frame across the bridge.
@@ -192,8 +205,15 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               // Read-only in this implementation; the default stands.
             }
           }
-          if (audioContext.state === "suspended") {
-            audioContext.resume();
+          // Anything but running wakes it -- "interrupted" as well as
+          // "suspended". iOS marks the context interrupted when another app
+          // takes the audio (a YouTube video in picture-in-picture, say), and
+          // it stays that way until someone asks for it back. Checking only
+          // for suspended meant nobody ever did: a loop loaded and "played"
+          // against a clock that never moved.
+          if (audioContext.state !== "running" && audioContext.state !== "closed") {
+            var waking = audioContext.resume();
+            if (waking && waking.catch) waking.catch(function () {});
           }
           return audioContext;
         }
@@ -492,19 +512,19 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         }
         // --- end time-stretch ---------------------------------------------
 
-        // Render (or fetch the cached render of) the active loop region
-        // stretched to the given rate. The stretched buffer contains ONLY
-        // the loop region, so it loops over its full length.
-        function getStretchedBuffer(rate) {
-          if (!active) return null;
-          if (stretched && Math.abs(stretched.rate - rate) < 0.0005) {
-            return stretched.buffer;
-          }
-
-          var src = active.buffer;
+        // Render one loop region stretched to a rate. The rendered buffer holds
+        // ONLY the region, so it loops over its full length.
+        //
+        // Takes the region explicitly rather than reading the active loop,
+        // because the
+        // quantised swap has to render the INCOMING loop while the outgoing one
+        // is still playing and still the active one. This blocks the JS thread
+        // for tens of milliseconds, which is exactly why it happens when a cue
+        // is armed rather than on the downbeat it lands on.
+        function renderStretch(src, loopStart, loopEnd, rate) {
           var sr = src.sampleRate;
-          var startFrame = Math.round(active.loopStart * sr);
-          var endFrame = Math.min(Math.round(active.loopEnd * sr), src.length);
+          var startFrame = Math.round(loopStart * sr);
+          var endFrame = Math.min(Math.round(loopEnd * sr), src.length);
 
           var channels = [];
           for (var c = 0; c < src.numberOfChannels; c++) {
@@ -517,7 +537,22 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           for (var c2 = 0; c2 < outs.length; c2++) {
             out.getChannelData(c2).set(outs[c2]);
           }
+          return out;
+        }
 
+        // The active loop's render at a rate, cached so a repeated rate change
+        // doesn't re-render what it already has.
+        function getStretchedBuffer(rate) {
+          if (!active) return null;
+          if (stretched && Math.abs(stretched.rate - rate) < 0.0005) {
+            return stretched.buffer;
+          }
+          var out = renderStretch(
+            active.buffer,
+            active.loopStart,
+            active.loopEnd,
+            rate
+          );
           stretched = { rate: rate, buffer: out };
           return out;
         }
@@ -613,194 +648,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           return { start: entry.loopStart, end: entry.loopEnd };
         }
 
-        // --- Tempo detection (realtime-bpm-analyzer) ----------------------
-        // The library's analyzeFullBuffer takes a whole AudioBuffer, so a region
-        // becomes a buffer of its own first. That isn't only plumbing: analysing
-        // the trim rather than the file is a cleaner read, with no count-in, tail
-        // or applause to drag the answer around.
-        //
-        // Optionally REPEATED to fill it, which is how a short loop gets read at
-        // all: the detector wants 15 peaks before it will answer, and below that
-        // returns nothing rather than a weak guess. Two bars at 120 BPM is four
-        // seconds and eight kick hits. Repeating is fair rather than a trick,
-        // since repeating is what a loop does -- the audio analysed is the audio
-        // the file will actually make.
-        //
-        // It is not free, though, which is why detectTempo asks for it rather
-        // than assuming it. Where the region isn't a whole number of beats -- a
-        // reverb tail past the last hit, say -- every join adds an interval that
-        // doesn't exist in the music, and enough joins can outvote the real
-        // tempo. See detectTempo for how that's kept honest.
-        function sliceRegion(buffer, startSeconds, endSeconds, repeat) {
-          var ctx = ensureContext();
-          var sampleRate = buffer.sampleRate;
-          var from = Math.max(0, Math.floor(startSeconds * sampleRate));
-          var to = Math.min(buffer.length, Math.ceil(endSeconds * sampleRate));
-          var length = to - from;
-          if (length < sampleRate) return null; // under a second: nothing to read
-
-          var copies = repeat ? analysisCopies(length / sampleRate) : 1;
-          var total = Math.min(
-            length * copies,
-            Math.ceil(ANALYSIS_MAX_SECONDS * sampleRate)
-          );
-          var region = ctx.createBuffer(buffer.numberOfChannels, total, sampleRate);
-
-          for (var c = 0; c < buffer.numberOfChannels; c++) {
-            var source = buffer.getChannelData(c).subarray(from, to);
-            var target = region.getChannelData(c);
-            for (var at = 0; at < total; at += length) {
-              // The last copy is trimmed to whatever room is left, which is fine:
-              // a partial pass still holds whole beats.
-              target.set(
-                at + length <= total ? source : source.subarray(0, total - at),
-                at
-              );
-            }
-          }
-          return region;
-        }
-
-        // How many times a region of this length is repeated before analysis.
-        function analysisCopies(seconds) {
-          if (!(seconds > 0)) return 1;
-          return Math.max(1, Math.ceil(ANALYSIS_MIN_SECONDS / seconds));
-        }
-
-        // Turn the library's candidate list into the one answer the app wants.
-        //
-        // Candidates come back sorted by "count" -- how many peak-to-peak
-        // intervals agree with that tempo -- and the library leaves its own
-        // confidence field at 0 in the offline path, so confidence here is the
-        // winner's share of all the candidates' counts. A loop with a clear pulse
-        // puts half the intervals or more on one tempo; on material with no pulse
-        // the top few come out level, which is exactly what a low share means.
-        function describeTempo(candidates) {
-          if (!candidates || !candidates.length) return null;
-
-          var total = 0;
-          for (var i = 0; i < candidates.length; i++) {
-            total += candidates[i].count || 0;
-          }
-          var top = candidates[0];
-          if (!top || !top.tempo) return null;
-
-          return {
-            bpm: top.tempo,
-            confidence: total > 0 ? (top.count || 0) / total : 0,
-            // The other readings, best first. The library folds every tempo into
-            // 90-180 BPM, so the reading a listener wanted is often one of these
-            // rather than the winner -- the screen offers them as one-tap chips,
-            // which beats making someone tap the tempo out.
-            alternatives: candidates.slice(1, 4).map(function (candidate) {
-              return candidate.tempo;
-            }),
-          };
-        }
-
-        // One pass of the detector over a prepared buffer, at a given filter.
-        function analyzePass(region, options, onDone) {
-          try {
-            window.bpmAnalyzer
-              .analyzeFullBuffer(region, options)
-              .then(function (candidates) {
-                onDone(describeTempo(candidates));
-              })
-              .catch(function () {
-                // A file it can't read isn't worth surfacing as an error: the
-                // screen falls back to working the tempo out from the loop's
-                // length, and says that's what it did.
-                onDone(null);
-              });
-          } catch (e) {
-            onDone(null);
-          }
-        }
-
-        // Read the tempo of a region. Asynchronous: the library renders its
-        // lowpass through an OfflineAudioContext, which is a promise.
-        // Up to three readings of the same region, each covering a way the one
-        // before it goes deaf, stopping as soon as one is convincing and otherwise
-        // keeping whichever put most of its evidence on a single tempo:
-        //
-        //   1. The region as it stands -- unless it's short, in which case the
-        //      repeated reading goes first. On a region too short to hold the
-        //      peaks the detector wants, this pass is the UNRELIABLE one: it
-        //      answers off a handful of intervals and can look confident doing it,
-        //      so leading with it means a two-bar loop settles for 117 when the
-        //      repeated reading would have said 120.
-        //   2. The region repeated. A one-bar loop returns NOTHING at all from the
-        //      pass above and reads exactly right from this one. Only for short
-        //      regions: a four-bar mix reads correctly as itself and an octave out
-        //      when tiled, because a region that isn't a whole number of beats
-        //      puts an interval at every join that isn't in the music.
-        //   3. The filter opened up. The detector lowpasses at 200Hz before
-        //      looking for peaks, so a click track -- nothing down there at all --
-        //      or a loop driven by hats comes back empty from both passes above.
-        //      Not the better default: on a full mix the low band is exactly what
-        //      makes the beat legible.
-        function detectTempo(buffer, startSeconds, endSeconds, onDone) {
-          if (!window.bpmAnalyzer) {
-            onDone(null);
-            return;
-          }
-
-          var plain = sliceRegion(buffer, startSeconds, endSeconds, false);
-          if (!plain) {
-            onDone(null);
-            return;
-          }
-
-          var seconds = plain.length / plain.sampleRate;
-          var repeated =
-            seconds < ANALYSIS_TILE_UNDER_SECONDS
-              ? sliceRegion(buffer, startSeconds, endSeconds, true)
-              : null;
-
-          var attempts = repeated
-            ? [
-                { region: repeated, options: undefined },
-                { region: plain, options: undefined },
-                {
-                  region: repeated,
-                  options: { frequencyValue: ANALYSIS_FALLBACK_HZ },
-                },
-              ]
-            : [
-                { region: plain, options: undefined },
-                {
-                  region: plain,
-                  options: { frequencyValue: ANALYSIS_FALLBACK_HZ },
-                },
-              ];
-
-          var best = null;
-          var index = 0;
-
-          function next() {
-            while (index < attempts.length && !attempts[index]) index += 1;
-            if (index >= attempts.length) {
-              onDone(best);
-              return;
-            }
-
-            var attempt = attempts[index];
-            index += 1;
-            analyzePass(attempt.region, attempt.options, function (result) {
-              if (result && (!best || result.confidence > best.confidence)) {
-                best = result;
-              }
-              // Convincing enough to stop asking.
-              if (best && best.confidence >= ANALYSIS_RETRY_CONFIDENCE) {
-                onDone(best);
-                return;
-              }
-              next();
-            });
-          }
-
-          next();
-        }
+        ${TEMPO_DETECT_SOURCE}
 
         // Re-read the tempo of one region of an already-decoded file. The import
         // screen calls this on the trim the user has settled on.
@@ -1016,22 +864,49 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // render blocks the JS thread, and scheduling after it with a stale
         // phase makes the loop audibly jump.
         function startSource(phase, fadeSeconds, atTime) {
+          if (!active) return null;
+          return startSourceFrom(
+            {
+              buffer: active.buffer,
+              loopStart: active.loopStart,
+              loopEnd: active.loopEnd,
+              // Rendered on demand and cached; in the swap path it is already
+              // in hand, which is what keeps the swap off the JS thread.
+              stretch:
+                Math.abs(currentRate - 1) > UNITY_RATE_EPSILON
+                  ? getStretchedBuffer(currentRate)
+                  : null,
+            },
+            phase,
+            fadeSeconds,
+            atTime
+          );
+        }
+
+        // Start a source from an explicit loop rather than from the active one.
+        //
+        // target is { buffer, loopStart, loopEnd, stretch } -- stretch being a
+        // pre-rendered warp of the region, or null to play the region as it is.
+        // Splitting this out is what lets a queued cue be started at an exact
+        // time without having been made active first: the swap needs the new
+        // audio scheduled BEFORE the old one is told to stop, and both have to
+        // land on the same sample.
+        function startSourceFrom(target, phase, fadeSeconds, atTime) {
           var ctx = ensureContext();
-          var useStretch = Math.abs(currentRate - 1) > UNITY_RATE_EPSILON;
 
           var buf;
           var ls;
           var le;
-          if (useStretch) {
-            buf = getStretchedBuffer(currentRate); // cached in the swap path
-            if (!buf) return null;
+          if (target.stretch) {
+            buf = target.stretch;
             ls = 0;
             le = buf.duration;
           } else {
-            buf = active.buffer;
-            ls = active.loopStart;
-            le = active.loopEnd;
+            buf = target.buffer;
+            ls = target.loopStart;
+            le = target.loopEnd;
           }
+          if (!buf) return null;
 
           var loopLength = le - ls;
           var offset = ls + phase * loopLength;
@@ -1082,6 +957,11 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // timer rather than computed by the app: the position comes off the audio
         // hardware clock, which is the only clock that knows what is actually
         // being heard.
+        //
+        // Deliberately NOT where the beat comes from. This is a 60ms sampler --
+        // it says where the loop is when it happens to look, which is up to a
+        // frame late and by a different amount each time. Beats are announced by
+        // the grid that schedules them (see emitBeat), at the moment they sound.
         function startPositionUpdates() {
           stopPositionUpdates();
           if (!positionUpdates) return;
@@ -1121,32 +1001,83 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
         }
 
-        // --- Loop click (metronome layered over the loop) -----------------
-        // The click shares this engine's AudioContext, so it's on the exact
-        // same hardware clock as the loop and cannot drift from it. Rather
-        // than free-running, its grid is derived from the loop's own phase
-        // (seedClickGrid), so it re-locks precisely on every rate change.
+        // --- The beat grid (and the click layered on it) ------------------
+        // One cursor walks the loop's beats: it schedules the click when the
+        // click is on, and announces every beat to the app either way. Both
+        // come off this engine's AudioContext, so they are on the exact same
+        // hardware clock as the loop and cannot drift from it. Rather than
+        // free-running, the grid is derived from the loop's own phase
+        // on every tick, so it re-locks continuously and cannot walk away.
         // The accent falls on each bar's downbeat (every beatsPerBar beats),
         // so a long multi-bar loop accents every bar, not just its first beat.
+        //
+        // The announcement exists because the screen's dots used to keep their
+        // own time. Every version of that drifts -- a JS interval at the tempo
+        // obviously, but so does sampling the playhead every 60ms, because it
+        // reports where the loop is when it happens to look rather than when a
+        // beat lands. The only number that can't drift from the click is the
+        // one the click is scheduled from.
 
-        // Real seconds between clicks at the current warp (= 60 / userBpm).
-        function clickBeatSeconds() {
+        // Real seconds between the loop's own beats at the current warp
+        // (= 60 / userBpm). The music's beat, unaffected by the subdivision --
+        // bar lines are measured in these.
+        function musicalBeatSeconds() {
           if (!active || !active.nativeBpm) return 0;
           return 60 / (active.nativeBpm * currentRate);
         }
 
-        // Aim the click cursor at the loop's next beat boundary as of atTime,
-        // so clicks line up with wherever the loop currently is.
-        function seedClickGrid(atTime) {
+        // Real seconds between grid ticks: the click's interval, and the rate
+        // the dots move at.
+        //
+        // The grid ticks at the subdivision, and barBeats() ticks of it make an
+        // accent cycle -- exactly what the metronome does, where double time
+        // doubles the click rate and still accents every fourth click. So 2x on
+        // a 4/4 loop gives a b b b a b b b, not one accent stranded in eight.
+        function beatSeconds() {
+          var musical = musicalBeatSeconds();
+          return musical > 0 ? musical / clickFeel : 0;
+        }
+
+        // Put the grid on the loop's next beat boundary as of atTime, with the
+        // bar counted from the loop's own start. Called on play and on every
+        // rate change, so the click and the dots line up with the music rather
+        // than with whenever the grid happened to be started.
+        function seedBeatGrid(atTime) {
           if (!playing || !active || active.loopBeats < 1) return;
-          var beatSec = clickBeatSeconds();
+          var beatSec = beatSeconds();
           if (beatSec <= 0) return;
-          var phase = phaseAt(playing, atTime); // 0..1 through the loop
-          var beatFloat = phase * active.loopBeats; // beats elapsed into loop
+          // In GRID ticks, not musical beats: at 2x there are two of them per
+          // beat, and the grid has to be seeded in the units it advances in or
+          // the first tick lands in the wrong place.
+          var beatFloat = phaseAt(playing, atTime) * active.loopBeats * clickFeel;
           var nextBeat = Math.ceil(beatFloat - 1e-6);
-          clickBeatIndex = ((nextBeat % active.loopBeats) + active.loopBeats) %
-            active.loopBeats;
-          clickNextTime = atTime + (nextBeat - beatFloat) * beatSec;
+          var bpb = barBeats();
+          gridBeatIndex = ((nextBeat % bpb) + bpb) % bpb;
+          gridNextTime = atTime + (nextBeat - beatFloat) * beatSec;
+        }
+
+        // Tell the app a beat is landing, at the moment it lands.
+        //
+        // A timeout per beat, measured from the audio clock at the instant the
+        // beat was scheduled -- exactly what the metronome engine does for its
+        // own beat indicator. The timeout can fire late, as JS timers always
+        // can, but the next one is measured from the audio clock again, so
+        // lateness is a few milliseconds of visual latency and never builds up.
+        //
+        // beatIndex arrives bar-relative and is passed through untouched. No
+        // arithmetic here, because this is the number the click was scheduled
+        // with, and doing anything to it is how the two came apart.
+        function emitBeat(beatIndex, time) {
+          if (!audioContext) return;
+          var timer = setTimeout(
+            function () {
+              var idx = beatTimers.indexOf(timer);
+              if (idx !== -1) beatTimers.splice(idx, 1);
+              post({ type: "beat", beat: beatIndex, accent: beatIndex === 0 });
+            },
+            Math.max(0, (time - audioContext.currentTime) * 1000)
+          );
+          beatTimers.push(timer);
         }
 
         // Route a click's gain node to the destination at the current pan.
@@ -1194,10 +1125,12 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
 
         function scheduleClick(beatIndex, time) {
           var ctx = audioContext;
-          // Accent on every bar downbeat, so a multi-bar loop keeps a click
-          // per bar rather than one accent stretched across the whole loop.
-          var bpb = active && active.beatsPerBar > 0 ? active.beatsPerBar : 1;
-          var isAccent = beatIndex % bpb === 0;
+          // beatIndex is already bar-relative, so the downbeat is beat 0 -- the
+          // accent on a multi-bar loop lands once per bar rather than once per
+          // loop. Read straight, with no arithmetic of its own: the screen is
+          // handed this same number, and any sum done here and not there is a
+          // way for the accent and the lit dot to disagree.
+          var isAccent = beatIndex === 0;
           var buffer = clickBuffers[isAccent ? clickAccentId : clickBeatId];
           if (!buffer) return;
           var source = ctx.createBufferSource();
@@ -1214,25 +1147,68 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           };
         }
 
-        function clickScheduler() {
-          if (!clickEnabled || !playing || !active || active.loopBeats < 1) {
-            return;
-          }
-          var beatSec = clickBeatSeconds();
-          if (beatSec <= 0) return;
-          while (clickNextTime < audioContext.currentTime + CLICK_SCHEDULE_AHEAD) {
-            scheduleClick(clickBeatIndex, clickNextTime);
-            clickBeatIndex = (clickBeatIndex + 1) % active.loopBeats;
-            clickNextTime += beatSec;
-          }
-          clickTimer = setTimeout(clickScheduler, CLICK_LOOKAHEAD_MS);
+        // How many beats are in a bar -- the number the dots are counting, and
+        // the number the accent falls on the first of.
+        function barBeats() {
+          if (!active) return 4;
+          if (active.beatsPerBar > 0) return active.beatsPerBar;
+          return active.loopBeats > 0 ? active.loopBeats : 4;
         }
 
-        function stopClick() {
-          if (clickTimer) {
-            clearTimeout(clickTimer);
-            clickTimer = null;
+        function advanceGrid(beatSec) {
+          gridNextTime += beatSec;
+          gridBeatIndex = (gridBeatIndex + 1) % barBeats();
+        }
+
+        // Runs whenever the loop does, not only when the click is audible: the
+        // dots move with or without a click, and they have to move on the same
+        // grid either way. Whether a beat is also heard is one line of it.
+        //
+        // Modelled on the metronome's scheduler (constants/metronomeEngine.ts),
+        // deliberately, and the two properties that matter are the ones this
+        // kept getting wrong:
+        //
+        //   1. ONE number describes the beat, and both the sound and the screen
+        //      are handed it. gridBeatIndex is already bar-relative, so the
+        //      click's accent and the lit dot cannot disagree about which beat
+        //      this is -- that is what made the accent land on a different
+        //      circle, and it is now unrepresentable rather than merely fixed.
+        //
+        //   2. The counter only ever advances, once per beat scheduled. An
+        //      earlier version re-derived it from the loop's phase on every
+        //      tick to stop the cursor accumulating error, and bought a worse
+        //      bug: the same beat re-derived a fraction of a millisecond later
+        //      slipped past the "already scheduled" guard and went out twice,
+        //      with a freshly computed index attached.
+        function beatScheduler() {
+          if (!playing || !active) return;
+          var beatSec = beatSeconds();
+          if (beatSec <= 0) return;
+          while (gridNextTime < audioContext.currentTime + CLICK_SCHEDULE_AHEAD) {
+            emitBeat(gridBeatIndex, gridNextTime);
+            if (clickEnabled) scheduleClick(gridBeatIndex, gridNextTime);
+            advanceGrid(beatSec);
           }
+
+          // A queued cue whose boundary is now close enough to schedule. Done
+          // here rather than on a timer of its own because this is already the
+          // thing that wakes up in time to hand the audio clock what happens
+          // next -- and runQueuedSwap restarts the grid, so it must be the last
+          // word in this pass.
+          if (
+            pendingSwap &&
+            pendingSwap.at < audioContext.currentTime + CLICK_SCHEDULE_AHEAD
+          ) {
+            runQueuedSwap();
+            return;
+          }
+
+          beatTimer = setTimeout(beatScheduler, CLICK_LOOKAHEAD_MS);
+        }
+
+        // Silence pending clicks without touching the grid -- for turning the
+        // click off mid-loop, where the beats must carry on being announced.
+        function stopClickSources() {
           for (var i = 0; i < clickSources.length; i++) {
             try {
               clickSources[i].stop();
@@ -1243,13 +1219,25 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           clickSources = [];
         }
 
-        // (Re)start the click from the loop's position at atTime. Cancels any
-        // pending clicks first so a rate change can't double up the grid.
-        function startClick(atTime) {
-          stopClick();
-          if (!clickEnabled || !playing || !active) return;
-          seedClickGrid(atTime == null ? audioContext.currentTime : atTime);
-          clickScheduler();
+        function stopBeatGrid() {
+          if (beatTimer) {
+            clearTimeout(beatTimer);
+            beatTimer = null;
+          }
+          // Beats already queued for a moment that is no longer coming: without
+          // this, stopping leaves a dot lighting up on a silent loop.
+          for (var t = 0; t < beatTimers.length; t++) clearTimeout(beatTimers[t]);
+          beatTimers = [];
+          stopClickSources();
+        }
+
+        // (Re)start the grid from the loop's position at atTime. Cancels
+        // anything pending first so a rate change can't double it up.
+        function startBeatGrid(atTime) {
+          stopBeatGrid();
+          if (!playing || !active) return;
+          seedBeatGrid(atTime == null ? audioContext.currentTime : atTime);
+          beatScheduler();
         }
 
         // Swap sources at the same musical position with a short crossfade.
@@ -1271,8 +1259,150 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var next = startSource(phase, SWAP_FADE_SECONDS, swapTime);
           if (!next) return;
           stopSource(old, SWAP_FADE_SECONDS, swapTime);
-          // Re-lock the click to the loop at its new warp.
-          startClick(swapTime);
+          // Re-lock the grid to the loop at its new warp, so the click and the
+          // dots both follow the tempo change instead of carrying on at the old
+          // spacing.
+          startBeatGrid(swapTime);
+        }
+
+        // --- Quantised cue swap -------------------------------------------
+        // Firing a cue over a running loop should land on the next downbeat, and
+        // land on it exactly. The app can say WHEN cheaply enough -- it gets a
+        // message per beat -- but it cannot start audio on time: everything
+        // between the message and the call is JS, and JS is the one clock this
+        // engine exists to avoid. So the whole swap is handed over as an intent
+        // and executed here, against the audio clock.
+        //
+        // Two halves, deliberately far apart in time:
+        //
+        //   queueLoopSwap  runs when the cue is pressed. It decodes if it must
+        //                  and renders the warp, which blocks for tens of ms --
+        //                  fine, there is most of a bar to do it in.
+        //   runQueuedSwap  runs on the boundary. It only schedules: the new
+        //                  source starts at exactly T and the old one is faded
+        //                  out at exactly T, both already prepared.
+        var pendingSwap = null;
+
+        /** The audio-clock time of the next bar line, or null if there isn't one.
+         *
+         * Worked out from the loop's own position rather than from the click
+         * grid, because the two stopped being the same thing when the
+         * subdivision arrived: at 2x the grid accents twice a bar, and reading
+         * the next accent off it would swap cues half a bar early. A bar line
+         * is a fact about the music, so it is measured in the music's beats.
+         */
+        function nextDownbeatTime() {
+          if (!playing || !active || active.loopBeats < 1) return null;
+          var spb = musicalBeatSeconds();
+          if (spb <= 0) return null;
+          var bpb = barBeats();
+
+          var now = audioContext.currentTime;
+          // Where the loop stands, in its own beats.
+          var beatFloat = phaseAt(playing, now) * active.loopBeats;
+          // The next whole bar at or after that.
+          var nextBar = Math.ceil(beatFloat / bpb - 1e-6) * bpb;
+          var at = now + (nextBar - beatFloat) * spb;
+
+          // Never a boundary that has already gone by while this was being
+          // worked out; take the following bar instead.
+          var floor = now + MIN_SCHEDULE_LEAD;
+          while (at < floor) at += bpb * spb;
+          return at;
+        }
+
+        function queueLoopSwap(key, nativeBpm, beatsPerBar, trimStart, trimEnd, rate) {
+          var entry = decodedByKey[key];
+          // Nothing decoded and nothing playing to wait for: not a swap at all.
+          // The app falls back to selecting and playing outright.
+          if (!entry || !playing || !active) {
+            post({ type: "swapFailed", key: key });
+            return;
+          }
+
+          var at = nextDownbeatTime();
+          if (at == null) {
+            post({ type: "swapFailed", key: key });
+            return;
+          }
+
+          var region = resolveRegion(entry, trimStart, trimEnd);
+          var bpm = nativeBpm > 0 ? nativeBpm : entry.nativeBpm;
+          var loopBeats =
+            bpm > 0 ? Math.round(((region.end - region.start) * bpm) / 60) : 0;
+          var useStretch = Math.abs(rate - 1) > UNITY_RATE_EPSILON;
+
+          pendingSwap = {
+            at: at,
+            key: key,
+            buffer: entry.buffer,
+            loopStart: region.start,
+            loopEnd: region.end,
+            nativeBpm: bpm,
+            loopBeats: loopBeats,
+            beatsPerBar: beatsPerBar > 0 ? beatsPerBar : loopBeats || 1,
+            rate: rate,
+            // Rendered NOW, while there is a bar to spare. Left until the
+            // boundary it would block straight through it.
+            stretch: useStretch
+              ? renderStretch(entry.buffer, region.start, region.end, rate)
+              : null,
+          };
+
+          post({ type: "swapQueued", key: key, at: at });
+        }
+
+        function cancelQueuedSwap() {
+          pendingSwap = null;
+        }
+
+        // Perform the swap. Called from the beat scheduler once the boundary is
+        // inside the lookahead, so both sources are scheduled ahead of time
+        // rather than started when JS happens to wake up.
+        function runQueuedSwap() {
+          var swap = pendingSwap;
+          pendingSwap = null;
+
+          var old = playing;
+          var next = startSourceFrom(
+            {
+              buffer: swap.buffer,
+              loopStart: swap.loopStart,
+              loopEnd: swap.loopEnd,
+              stretch: swap.stretch,
+            },
+            0,
+            SWAP_FADE_SECONDS,
+            swap.at
+          );
+          if (!next) {
+            post({ type: "swapFailed", key: swap.key });
+            return;
+          }
+          if (old) stopSource(old, SWAP_FADE_SECONDS, swap.at);
+
+          // Only now does the incoming loop become the active one -- everything
+          // that reads the active loop (the click's spacing, the bar length)
+          // was describing the outgoing loop right up to the boundary, which is
+          // what kept the click in time through the bar leading into it.
+          active = {
+            key: swap.key,
+            buffer: swap.buffer,
+            loopStart: swap.loopStart,
+            loopEnd: swap.loopEnd,
+            nativeBpm: swap.nativeBpm,
+            loopBeats: swap.loopBeats,
+            beatsPerBar: swap.beatsPerBar,
+          };
+          stretched = swap.stretch
+            ? { rate: swap.rate, buffer: swap.stretch }
+            : null;
+          currentRate = swap.rate;
+
+          // The new loop's downbeat is exactly swap.at, so the grid re-locks
+          // there and beat 0 lands on it.
+          startBeatGrid(swap.at);
+          post({ type: "swapped", key: swap.key, at: swap.at });
         }
 
         function play(rate) {
@@ -1283,13 +1413,15 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             return;
           }
           if (rate) currentRate = rate;
+          // Starting outright supersedes anything queued for a boundary.
+          cancelQueuedSwap();
           startKeepAlive(); // see silentModeKeepAlive.ts
           if (playing) stopSource(playing, 0);
           playing = null;
           startSource(0, 0);
-          // The loop's downbeat is playing.startedAt (phase 0); start the
-          // click there so beat 0 lands exactly on it.
-          startClick(playing ? playing.startedAt : null);
+          // The loop's downbeat is playing.startedAt (phase 0); start the grid
+          // there so beat 0 lands exactly on it.
+          startBeatGrid(playing ? playing.startedAt : null);
           startPositionUpdates();
         }
 
@@ -1299,12 +1431,33 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             rateTimer = null;
           }
           stopKeepAlive();
-          stopClick();
+          stopBeatGrid();
           stopPositionUpdates();
+          // A cue queued for a boundary that is no longer coming. Without this
+          // it would swap into a stopped transport and start playing again.
+          cancelQueuedSwap();
+          // The dots go dark with the sound rather than sticking on whichever
+          // beat the loop happened to stop on.
+          post({ type: "beat", beat: null, accent: false });
           if (playing) {
             stopSource(playing, 0.008); // tiny fade: no click on stop
             playing = null;
           }
+        }
+
+        // The subdivision. Changes the grid's spacing, so the grid has to be
+        // re-laid from the loop's current position -- beats already queued are
+        // on the old spacing, and leaving them would put the first tick of the
+        // new feel wherever the last one of the old feel happened to land.
+        //
+        // Nothing about the audio moves: the rate, the buffer and the phase are
+        // all untouched, so this is only ever a re-timing of the click and the
+        // dots. That is the whole point of the control.
+        function setClickFeel(multiplier) {
+          if (typeof multiplier !== "number" || !(multiplier > 0)) return;
+          if (multiplier === clickFeel) return;
+          clickFeel = multiplier;
+          if (playing) startBeatGrid(null);
         }
 
         function setRate(rate) {
@@ -1347,22 +1500,70 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           if (typeof cfg.accentId === "string") clickAccentId = cfg.accentId;
           if (typeof cfg.beatId === "string") clickBeatId = cfg.beatId;
+          // Up to 2, not 1. These arrive already multiplied by the metronome's
+          // master (see postClickConfig), which is allowed past full scale so
+          // the click can be heard over a band -- clamping to 1 here would quietly
+          // put the ceiling back. Keep in step with METRONOME_MAX_VOLUME in
+          // context/PreferencesContext.tsx.
           if (typeof cfg.accentVolume === "number") {
-            clickAccentVol = Math.max(0, Math.min(1, cfg.accentVolume));
+            clickAccentVol = Math.max(0, Math.min(2, cfg.accentVolume));
           }
           if (typeof cfg.beatVolume === "number") {
-            clickBeatVol = Math.max(0, Math.min(1, cfg.beatVolume));
+            clickBeatVol = Math.max(0, Math.min(2, cfg.beatVolume));
           }
           var wasEnabled = clickEnabled;
           if (typeof cfg.enabled === "boolean") clickEnabled = cfg.enabled;
           if (playing) {
             if (clickEnabled && !wasEnabled) {
-              startClick(null); // join in from the loop's current position
+              // Re-seed rather than wait: the grid is already running, but the
+              // beats it has queued ahead have no click attached to them, so
+              // without this the click joins a lookahead late.
+              startBeatGrid(null);
             } else if (!clickEnabled && wasEnabled) {
-              stopClick();
+              // Only the sound. The grid keeps running, because the dots do.
+              stopClickSources();
             }
           }
         }
+
+        // Bring the audio back when the app does.
+        //
+        // Android suspends a WebView AudioContext when the activity pauses,
+        // and pulling the notification shade down is a pause. Suspending stops
+        // the context clock, so everything scheduled against it stops with it
+        // -- the audio simply cuts out.
+        //
+        // Nothing used to bring it back. Every resume in this file lives inside
+        // ensureContext, which runs when a COMMAND arrives -- a load, a launch,
+        // a tempo change. Coming back to the app is not a command, so the audio
+        // stayed dead until the next thing the user pressed. A glance at a
+        // notification killed the song.
+        //
+        // Suspension pauses rather than tears down: the sources are still
+        // there and the clock picks up where it stopped, so this continues the
+        // song rather than restarting it.
+        function resumeAudio() {
+          if (!audioContext) return;
+          // Suspended or interrupted -- see ensureContext.
+          if (audioContext.state === "running" || audioContext.state === "closed") return;
+          var resumed = audioContext.resume();
+          if (resumed && resumed.catch) {
+            resumed.catch(function () {
+              // Refused: the page is back but the OS has not handed the audio
+              // session over yet. ensureContext tries again on the next
+              // command, and the app re-sends this on the next foreground.
+            });
+          }
+        }
+
+        // Both, because neither is reliable alone. The page event is the fast
+        // path and needs no bridge; the explicit command covers the case where
+        // an offscreen WebView is never considered hidden in the first place,
+        // and so never fires one.
+        document.addEventListener("visibilitychange", function () {
+          CLICK_SCHEDULE_AHEAD = clickScheduleAhead();
+          if (!document.hidden) resumeAudio();
+        });
 
         function handleMessage(event) {
           var data;
@@ -1402,8 +1603,24 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             case "play":
               play(data.rate);
               break;
+            case "queueSwap":
+              queueLoopSwap(
+                data.key,
+                data.nativeBpm,
+                data.beatsPerBar,
+                data.trimStart,
+                data.trimEnd,
+                data.rate
+              );
+              break;
+            case "cancelSwap":
+              cancelQueuedSwap();
+              break;
             case "stop":
               stop();
+              break;
+            case "setClickFeel":
+              setClickFeel(data.multiplier);
               break;
             case "setRate":
               setRate(data.rate);
@@ -1420,6 +1637,12 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             // Liveness check. The app pings after returning to the foreground:
             // if this page's process was reclaimed while backgrounded there is
             // nobody left to answer, and the app rebuilds the engine.
+            case "resume":
+              resumeAudio();
+              break;
+            case "setMixWithOthers":
+              setMixWithOthers(data.enabled);
+              break;
             case "ping":
               post({ type: "pong" });
               break;

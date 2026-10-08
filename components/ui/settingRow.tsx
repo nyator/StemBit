@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { View, Text, TouchableOpacity, Switch } from "react-native";
 
 import Radio from "./radio";
@@ -48,12 +48,17 @@ type SegmentedRowProps<T extends string> = BaseProps & {
   onChange: (value: T) => void;
 };
 
-// Same shape as a switch row but the value is continuous, 0–1.
+// Same shape as a switch row but the value is continuous, 0 to max.
 type SliderRowProps = BaseProps & {
   value: number;
-  onValueChange: (value: number) => void;
+  /** Every tick of a drag. Optional: the row shows its own drag already. */
+  onValueChange?: (value: number) => void;
   /** Fires once when the drag ends -- persist here, not on every tick. */
   onComplete?: (value: number) => void;
+  /** Where a double tap puts the slider. Omitted, a double tap does nothing. */
+  defaultValue?: number;
+  /** Top of the throw; 1 (full scale) unless a control can be pushed past it. */
+  max?: number;
 };
 
 const RowShell = ({
@@ -75,12 +80,12 @@ const RowShell = ({
     )}
     <View className="flex-1">
       <Text
-        className={`text-lg font-satoshiRegular ${danger ? "text-danger" : "text-white"}`}
+        className={`text-title font-satoshiRegular ${danger ? "text-danger" : "text-white"}`}
       >
         {label}
       </Text>
       {sublabel && (
-        <Text className="text-sm text-white/50 font-satoshiRegular">
+        <Text className="text-label text-white/50 font-satoshiRegular">
           {sublabel}
         </Text>
       )}
@@ -98,7 +103,7 @@ export function SettingLink({ onPress, value, ...base }: LinkRowProps) {
         right={
           <View className="flex-row items-center">
             {value && (
-              <Text className="mr-2 text-sm text-white/50 font-satoshiRegular">
+              <Text className="mr-2 text-label text-white/50 font-satoshiRegular">
                 {value}
               </Text>
             )}
@@ -119,7 +124,7 @@ export function SettingNoLink({ onPress, value, ...base }: LinkRowProps) {
         right={
           <View className="flex-row items-center">
             {value && (
-              <Text className="mr-2 text-sm text-white/50 font-satoshiRegular">
+              <Text className="mr-2 text-label text-white/50 font-satoshiRegular">
                 {value}
               </Text>
             )}
@@ -143,7 +148,7 @@ export function SettingStatus({
       {...base}
       right={
         value ? (
-          <Text className="text-sm text-white/50 font-satoshiRegular">
+          <Text className="text-label text-white/50 font-spaceMedium">
             {value}
           </Text>
         ) : null
@@ -170,22 +175,60 @@ export function SettingSwitch({ value, onValueChange, ...base }: SwitchRowProps)
 }
 
 // Continuous-value row -- a volume level rather than an on/off.
+//
+// The percentage is read out beside the slider because the throw alone stops
+// being self-explanatory the moment one of these runs past full scale: on a
+// control that reaches 200%, the thumb sitting halfway means "normal", and
+// there is nothing about a half-full track that says so.
+//
+// The drag lives in this row's own state, not the screen's. Ticks arrive at
+// frame rate, and lifting them into the screen re-rendered every row on it for
+// each one -- JS-thread work that, with native audio, the loop click's
+// scheduler shares, and that it was heard losing. Only onComplete leaves the
+// row; a new `value` from outside (a reset, a load) takes over again.
 export function SettingSlider({
   value,
   onValueChange,
   onComplete,
+  defaultValue,
+  max = 1,
   ...base
 }: SliderRowProps) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
   return (
     <RowShell
       {...base}
       right={
-        <Slider
-          value={value}
-          onChange={onValueChange}
-          onComplete={onComplete}
-          accessibilityLabel={base.label}
-        />
+        <View className="flex-row items-center">
+          <Slider
+            value={draft}
+            onChange={(next) => {
+              setDraft(next);
+              onValueChange?.(next);
+            }}
+            onComplete={(next) => {
+              setDraft(next);
+              onComplete?.(next);
+            }}
+            defaultValue={defaultValue}
+            max={max}
+            accessibilityLabel={base.label}
+          />
+          <Text
+            className="ml-2 text-micro text-ink-muted font-spaceBold"
+            style={{
+              // Fixed width and tabular digits, so the slider doesn't shuffle
+              // sideways as the number goes from 9% to 100%.
+              width: 38,
+              textAlign: "right",
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {Math.round(draft * 100)}%
+          </Text>
+        </View>
       }
     />
   );
@@ -235,7 +278,7 @@ export function SettingSegmented<T extends string>({
               accessibilityRole="radio"
               accessibilityLabel={option.label}
               accessibilityState={{ selected }}
-              className="items-center justify-center flex-1 py-[10px]"
+              className="items-center justify-center flex-1 py-2.5"
               style={{
                 borderRadius: RADII.sm,
                 backgroundColor: selected ? CONTROL.active : "transparent",
@@ -243,7 +286,7 @@ export function SettingSegmented<T extends string>({
             >
               <Text
                 numberOfLines={1}
-                className="text-sm font-satoshiMedium"
+                className="text-label font-satoshiMedium"
                 style={{ color: selected ? COLORS.white : COLORS.textMuted }}
               >
                 {option.label}
@@ -266,7 +309,7 @@ export function SettingSection({
 }) {
   return (
     <View className="mb-7">
-      {/* text-overline is the design's 12px group header; `text-md` is not a
+      {/* text-overline is the design's 12px group header; `text-label` is not a
           Tailwind size and silently produced no font-size at all. */}
       <Text className="mb-4 uppercase text-overline tracking-widest text-ink-muted font-spaceBold">
         {title}
