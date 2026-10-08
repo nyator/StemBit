@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { Alert, Animated, AppState, Easing } from "react-native";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { type WebViewMessageEvent } from "react-native-webview";
+import EngineView, { type EngineViewHandle } from "../components/engineView";
 import { setAudioModeAsync } from "expo-audio";
 
 import {
@@ -21,6 +22,8 @@ import { buildLoopEngineHtml } from "../constants/loopEngine";
 import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 import { useUserLoops } from "./UserLoopsContext";
 import {
   ACCENT_SOUND_ID,
@@ -244,7 +247,7 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // the engine reports it loaded.
   const pendingPlayRef = useRef(false);
 
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildLoopEngineHtml);
   // Position reporting is off in the engine by default because it posts a
   // message every 60ms. It's switched on with playback and off again on stop,
@@ -454,6 +457,19 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     setEngineGeneration((generation) => generation + 1);
   };
 
+  // Native audio (Settings) swaps the engine underneath: rebuild it the way a
+  // dead one is rebuilt, which also resets everything the old one had loaded.
+  const useNative = useNativeAudio();
+  const useNativeRef = useRef(useNative);
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    useNativeRef.current = useNative;
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    restartEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
+
   // Ask the engine to answer for itself. onRenderProcessGone /
   // onContentProcessDidTerminate cover most deaths, but they don't fire on
   // every OS and build, and a silently dead engine is exactly the failure
@@ -588,6 +604,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
 
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "background") {
+        // On native audio the loop keeps playing in the background -- the
+        // app's own session runs there. Only the WebView engine, which WebKit
+        // silences, still gets stopped after the grace period.
+        if (useNativeRef.current) return;
         if (!isPlayingRef.current || backgroundStopTimerRef.current) return;
         backgroundStopTimerRef.current = setTimeout(() => {
           backgroundStopTimerRef.current = null;
@@ -864,6 +884,30 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.loopVolume]);
 
+  // The same two levels live, while their Settings slider is still moving
+  // (see utils/volumePreview.ts). Only the levels: the rest of the click's
+  // config is unchanged by a drag, and the engine takes a partial setClick.
+  const clickVoicesRef = useRef({ accent: prefs.accentVolume, beat: prefs.beatVolume });
+  clickVoicesRef.current = { accent: prefs.accentVolume, beat: prefs.beatVolume };
+  useEffect(() => {
+    const stopLoopPreview = onVolumePreview("loop", (volume) =>
+      postToEngine({ type: "setLoopVolume", volume })
+    );
+    const stopClickPreview = onVolumePreview("metronome", (master) =>
+      postToEngine({
+        type: "setClick",
+        accentVolume: clickVoicesRef.current.accent * master,
+        beatVolume: clickVoicesRef.current.beat * master,
+      })
+    );
+    return () => {
+      stopLoopPreview();
+      stopClickPreview();
+    };
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Share the audio with other apps, or take it (Settings -> Audio). Re-sent
   // on "ready" above too, since a rebuilt engine starts with the default.
   useEffect(() => {
@@ -994,12 +1038,13 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <WebView
+      <EngineView
         // Remounting on a new generation is what actually rebuilds a dead
         // engine — see restartEngine.
         key={engineGeneration}
         ref={webViewRef}
-        source={{ html: engineHtml }}
+        html={engineHtml}
+        native={useNative}
         onMessage={handleWebViewMessage}
         // The OS reclaimed this WebView's process, almost always while the
         // app was backgrounded. Both callbacks mean the same thing: the page
@@ -1012,12 +1057,6 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
           console.warn("Loop engine content process ended — restarting it");
           restartEngine();
         }}
-        originWhitelist={["*"]}
-        mediaPlaybackRequiresUserAction={false}
-        allowsInlineMediaPlayback
-        containerStyle={{ flex: 0, width: 0, height: 0 }}
-        style={{ flex: 0, width: 0, height: 0, opacity: 0 }}
-        pointerEvents="none"
       />
     </LoopPlaybackContext.Provider>
   );

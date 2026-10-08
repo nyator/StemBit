@@ -30,6 +30,8 @@ import * as FileSystem from "expo-file-system/legacy";
 //   launchScreen  -> which tab opens after signing in
 //   mixWithOthers -> loop, metronome and session engines share the audio with
 //                    other apps instead of taking it (see silentModeKeepAlive)
+//   nativeAudio   -> run the audio engines on native audio instead of WebViews
+//                    (experimental; see utils/nativeEngineHost.ts)
 /**
  * How far the metronome's master gain can be pushed, where 1 is the click as
  * its sample was recorded.
@@ -81,10 +83,17 @@ export type Preferences = {
    * Play the WebView engines (loop, metronome, session) alongside other apps'
    * audio -- practising over a YouTube video -- rather than taking the audio
    * from them. Costs the silent-switch override for those three engines, which
-   * is why it's opt-in. Pads mix either way: they're native, and don't have to
-   * choose.
+   * is why it's opt-in. Pads mix either way, and so does nativeAudio: both are
+   * on the app's own session, and don't have to choose.
    */
   mixWithOthers: boolean;
+  /**
+   * Run the metronome, loop, session and loop-preview engines on native audio
+   * (react-native-audio-api) rather than in WebViews. Experimental and off by
+   * default while it's proven on devices; it is what lets them keep playing
+   * with the app in the background and ignore the silent switch.
+   */
+  nativeAudio: boolean;
 };
 
 /** A mixer channel's own settings. Muting keeps the level for when it returns. */
@@ -161,6 +170,7 @@ const DEFAULTS: Preferences = {
   // Off: out of the box the engines take the audio, which keeps them audible
   // with the silent switch on -- the right default for a phone on a stand.
   mixWithOthers: false,
+  nativeAudio: false,
 };
 
 type PreferencesContextValue = {

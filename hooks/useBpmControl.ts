@@ -54,16 +54,18 @@ export function useBpmControl({
     setBpmDraft(text.replace(/[^0-9]/g, ""));
   };
 
+  // Reads the draft from render rather than from a setBpmDraft updater:
+  // updaters run during render, and setBpm can belong to another component
+  // (the loop's lives in LoopPlaybackContext), which React refuses to update
+  // mid-render.
   const commitBpmText = () => {
-    setBpmDraft((draft) => {
-      if (draft !== null) {
-        const parsed = parseInt(draft, 10);
-        if (!Number.isNaN(parsed)) {
-          setBpm(clampBpm(parsed));
-        }
+    if (bpmDraft !== null) {
+      const parsed = parseInt(bpmDraft, 10);
+      if (!Number.isNaN(parsed)) {
+        setBpm(clampBpm(parsed));
       }
-      return null; // fall back to showing the (clamped) bpm value
-    });
+    }
+    setBpmDraft(null); // fall back to showing the (clamped) bpm value
   };
 
   // --- Steppers with hold-to-repeat --------------------------------------

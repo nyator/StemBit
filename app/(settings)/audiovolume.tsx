@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { ScrollView } from "react-native";
 
 import Screen from "../../components/ui/screen";
@@ -10,6 +9,8 @@ import {
     SettingSlider
 } from "../../components/ui/settingRow";
 import type { Preferences } from "../../context/PreferencesContext";
+import { isNativeAudioAvailable } from "../../utils/nativeAudio";
+import { previewVolume, settleVolumePreview } from "../../utils/volumePreview";
 import {
     DEFAULT_LOOP_VOLUME,
     DEFAULT_METRONOME_VOLUME,
@@ -33,6 +34,10 @@ import {
 
 // Three-way stereo placement for the loop click. Typed off the preference so
 // adding a position here without widening Preferences won't compile.
+
+// Fixed for the life of the binary, so read once.
+const nativeAudioAvailable = isNativeAudioAvailable();
+
 const PAN_OPTIONS: readonly { value: Preferences["loopClickPan"]; label: string }[] = [
     { value: "left", label: "Left" },
     { value: "center", label: "Center" },
@@ -41,22 +46,11 @@ const PAN_OPTIONS: readonly { value: Preferences["loopClickPan"]; label: string 
 
 const AudioVolume = () => {
     const { prefs, setPref } = usePreferences();
-    const [volumes, setVolumes] = useState({
-        metronome: prefs.metronomeVolume,
-        pad: prefs.padVolume,
-        loop: prefs.loopVolume,
-    });
-    useEffect(() => {
-        setVolumes({
-            metronome: prefs.metronomeVolume,
-            pad: prefs.padVolume,
-            loop: prefs.loopVolume,
-        });
-    }, [prefs.metronomeVolume, prefs.padVolume, prefs.loopVolume]);
-
-    const setVolume = (engine: keyof typeof volumes) => (value: number) =>
-        setVolumes((prev) => ({ ...prev, [engine]: value }));
-
+    const nativeAudioOn = nativeAudioAvailable && prefs.nativeAudio;
+    // No drag state here: each SettingSlider holds its own while the thumb
+    // moves, so a drag re-renders one row rather than this whole screen. The
+    // engines still follow the drag, through utils/volumePreview.ts; only the
+    // release is saved.
     return (
         <Screen glows={["topLeft"]}>
             <ScreenHeader title="Audio output / volume" />
@@ -66,18 +60,24 @@ const AudioVolume = () => {
                     <SettingSlider
                         icon={Loop}
                         label="Loops"
-                        value={volumes.loop}
-                        onValueChange={setVolume("loop")}
-                        onComplete={(v) => setPref("loopVolume", v)}
+                        value={prefs.loopVolume}
+                        onValueChange={(v) => previewVolume("loop", v)}
+                        onComplete={(v) => {
+                            settleVolumePreview("loop", v);
+                            setPref("loopVolume", v);
+                        }}
                         defaultValue={DEFAULT_LOOP_VOLUME}
                         border={true}
                     />
                     <SettingSlider
                         icon={Pad}
                         label="Pad"
-                        value={volumes.pad}
-                        onValueChange={setVolume("pad")}
-                        onComplete={(v) => setPref("padVolume", v)}
+                        value={prefs.padVolume}
+                        onValueChange={(v) => previewVolume("pad", v)}
+                        onComplete={(v) => {
+                            settleVolumePreview("pad", v);
+                            setPref("padVolume", v);
+                        }}
                         defaultValue={DEFAULT_PAD_VOLUME}
                         border={true}
                     />
@@ -86,9 +86,12 @@ const AudioVolume = () => {
                         icon={Metromone}
                         label="Metronome"
                         // sublabel="100% is the click as recorded"
-                        value={volumes.metronome}
-                        onValueChange={setVolume("metronome")}
-                        onComplete={(v) => setPref("metronomeVolume", v)}
+                        value={prefs.metronomeVolume}
+                        onValueChange={(v) => previewVolume("metronome", v)}
+                        onComplete={(v) => {
+                            settleVolumePreview("metronome", v);
+                            setPref("metronomeVolume", v);
+                        }}
                         defaultValue={DEFAULT_METRONOME_VOLUME}
                         max={METRONOME_MAX_VOLUME}
                     />
@@ -113,16 +116,40 @@ const AudioVolume = () => {
                 </SettingSection>
 
                 <SettingSection title="General">
-                    {/* Loops, the metronome and sessions can either take the
-                        audio (heard even on silent) or share it with other
-                        apps (muted by the silent switch). iOS offers them no
-                        way to do both; pads always mix. */}
+                    {/* In WebViews, loops, the metronome and sessions can
+                        either take the audio (heard even on silent) or share
+                        it with other apps (muted by the silent switch). iOS
+                        offers them no way to do both; pads always mix, and so
+                        does native audio, which shows here as locked on. */}
                     <SettingSwitch
                         icon={Musicnote}
                         label="Play alongside other apps"
-                        sublabel="Keep YouTube or music playing under loops and the metronome. The silent switch will mute them."
-                        value={prefs.mixWithOthers}
-                        onValueChange={(value) => setPref("mixWithOthers", value)}
+                        sublabel={
+                            nativeAudioOn
+                                ? "Always on with native audio: Apple Music, Spotify or YouTube keep playing, and the silent switch doesn't mute StemBits."
+                                : "Keep YouTube or music playing under loops and the metronome. The silent switch will mute them."
+                        }
+                        value={nativeAudioOn || prefs.mixWithOthers}
+                        onValueChange={(value) => {
+                            if (!nativeAudioOn) setPref("mixWithOthers", value);
+                        }}
+                        border={true}
+                    />
+                    {/* Experimental: the same engines on the app's own audio
+                        session instead of WebViews'. Here so the two can be
+                        compared on a real phone before either is chosen. */}
+                    <SettingSwitch
+                        icon={Musicnote}
+                        label="Native audio (beta)"
+                        sublabel={
+                            nativeAudioAvailable
+                                ? "Runs the metronome, loops and sessions on native audio, so they keep playing in the background and ignore the silent switch."
+                                : "Not available in this build of the app. Install a newer build to try it."
+                        }
+                        value={nativeAudioAvailable && prefs.nativeAudio}
+                        onValueChange={(value) => {
+                            if (nativeAudioAvailable) setPref("nativeAudio", value);
+                        }}
                     />
                 </SettingSection>
             </ScrollView>

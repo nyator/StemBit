@@ -7,7 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { AppState } from "react-native";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { type WebViewMessageEvent } from "react-native-webview";
+import EngineView, { type EngineViewHandle } from "../components/engineView";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
@@ -20,6 +21,8 @@ import {
   useMetronome,
 } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 import type { CueTrack } from "./SessionsContext";
 
 // The session's own playback, in a hidden WebView of its own.
@@ -189,7 +192,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   const { isPlaying: metroPlaying, stopMetronome } = useMetronome();
   const metroPlayingRef = useRef(metroPlaying);
   metroPlayingRef.current = metroPlaying;
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildSessionEngineHtml);
   const [engineGeneration, setEngineGeneration] = useState(0);
 
@@ -310,6 +313,24 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     prefs.metronomeVolume,
     engineGeneration,
   ]);
+
+  // The click's level live, while the metronome slider in Settings is still
+  // moving (see utils/volumePreview.ts). setClick takes a partial config.
+  const clickVoicesRef = useRef({ accent: prefs.accentVolume, beat: prefs.beatVolume });
+  clickVoicesRef.current = { accent: prefs.accentVolume, beat: prefs.beatVolume };
+  useEffect(
+    () =>
+      onVolumePreview("metronome", (master) =>
+        postToEngine({
+          type: "setClick",
+          accentVolume: clickVoicesRef.current.accent * master,
+          beatVolume: clickVoicesRef.current.beat * master,
+        })
+      ),
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const loadCue = async (cueId: string, tracks: CueTrack[], force = false) => {
     if (cueId === loadedCueId && !force) return;
@@ -567,6 +588,17 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     setEngineGeneration((generation) => generation + 1);
   };
 
+  // Native audio (Settings) swaps the engine underneath: rebuild it the way a
+  // dead one is rebuilt, which also resets everything the old one had loaded.
+  const useNative = useNativeAudio();
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    restartEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
+
   return (
     <SessionPlaybackContext.Provider
       value={{
@@ -583,10 +615,11 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <WebView
+      <EngineView
         key={engineGeneration}
         ref={webViewRef}
-        source={{ html: engineHtml }}
+        html={engineHtml}
+        native={useNative}
         onMessage={handleWebViewMessage}
         onRenderProcessGone={() => {
           console.warn("Session engine renderer was killed — restarting it");
@@ -596,10 +629,6 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
           console.warn("Session engine content process ended — restarting it");
           restartEngine();
         }}
-        originWhitelist={["*"]}
-        mediaPlaybackRequiresUserAction={false}
-        allowsInlineMediaPlayback
-        containerStyle={{ flex: 0, width: 0, height: 0 }}
       />
     </SessionPlaybackContext.Provider>
   );

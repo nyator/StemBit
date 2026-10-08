@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
+  Keyboard,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -156,12 +158,6 @@ export default function ImportLoopScreen() {
   });
 
   const engineRef = useRef<LoopPreviewHandle>(null);
-  // For scrolling a focused field clear of the keyboard. The offset is measured
-  // rather than assumed: what's above the name field changes with the file, the
-  // notices and whether a tempo was detected.
-  const scrollRef = useRef<ScrollView>(null);
-  const nameOffsetRef = useRef(0);
-  const tempoOffsetRef = useRef(0);
 
   const [picked, setPicked] = useState<DocumentPicker.DocumentPickerAsset | null>(
     null
@@ -217,9 +213,6 @@ export default function ImportLoopScreen() {
   // Where playback has reached, as a fraction through the loop region, straight
   // off the engine's audio clock. Null when nothing is playing.
   const [playPhase, setPlayPhase] = useState<number | null>(null);
-  // Room for the keyboard, only while a field is focused -- otherwise the screen
-  // carries a keyboard's worth of empty space under Save the whole time.
-  const [fieldFocused, setFieldFocused] = useState(false);
 
   const beatsPerBar = beatsPerBarOf(timeSignature);
   const duration = analysis?.duration ?? 0;
@@ -527,16 +520,6 @@ export default function ImportLoopScreen() {
     );
   };
 
-  // Bring a field to the top of the scroll when it's focused, so the keyboard
-  // coming up can't leave it underneath. Delayed a frame: on Android the window
-  // resizes as the keyboard opens, and scrolling before that lands in the wrong
-  // place.
-  const scrollFieldIntoView = (offset: number) => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: Math.max(0, offset - 24), animated: true });
-    }, 120);
-  };
-
   const commitTrim = (start: number, end: number) => {
     setTrim({ start, end });
     setTrimCommits((count) => count + 1);
@@ -783,23 +766,27 @@ export default function ImportLoopScreen() {
       <ScreenHeader title={editing ? "Edit Loop" : "Add Loop"} />
 
       {/* The name field and the BPM field both sit low enough to be behind the
-          keyboard on a short screen. Three things keep them visible, because on
-          their own none of them covers both platforms: the view shrinks to the
-          space left over (iOS; Android does it through the window's own resize),
-          the padding at the bottom leaves room to scroll the last field clear,
-          and focusing a field scrolls it into view. */}
-      {/* <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      > */}
+          keyboard on a short screen. The keyboard's room comes off the scroll
+          view's insets rather than its layout -- natively on iOS, through the
+          window's own resize on Android -- and either way the focused field is
+          scrolled clear. Nothing on the screen re-lays out, so nothing jumps as
+          the keyboard comes and goes.
+
+          The bottom padding is permanent: without it Save and the More section
+          end flush against the bottom edge. */}
       <ScrollView
-        ref={scrollRef}
         className="flex-1 px-screen"
-        contentContainerStyle={{ paddingBottom: fieldFocused ? 220 : 0 }}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
+        {/* A tap on any empty space closes the keyboard, the way it does on the
+            Loop tab. The BPM field's number pad has no Done key, so without
+            this the only way out was to drag the screen. The controls inside
+            still get their own taps first. */}
+        <Pressable onPress={Keyboard.dismiss} accessible={false}>
         {/* The screen is laid out as the job actually goes: the file, the region,
             the tempo, hear it, name it, save. Detection sets the tempo and the
             region on its own, so on a good file there is nothing to do but listen
@@ -904,12 +891,7 @@ export default function ImportLoopScreen() {
               </TouchableOpacity>
             </View>
 
-            <View
-              className="flex-row items-center self-center gap-3 mt-8"
-              onLayout={(event) => {
-                tempoOffsetRef.current = event.nativeEvent.layout.y;
-              }}
-            >
+            <View className="flex-row items-center self-center gap-3 mt-8">
               <StepperButton
                 direction="down"
                 controls={controls}
@@ -923,11 +905,6 @@ export default function ImportLoopScreen() {
                 controls={controls}
                 isPlaying={isPlaying}
                 variant="compact"
-                onFocus={() => {
-                  setFieldFocused(true);
-                  scrollFieldIntoView(tempoOffsetRef.current);
-                }}
-                onBlur={() => setFieldFocused(false)}
               />
 
               <StepperButton
@@ -1061,12 +1038,7 @@ export default function ImportLoopScreen() {
                 that silently discarded what you typed would be worse than no
                 field at all. */}
             {canRename ? (
-              <View
-                className="mt-5"
-                onLayout={(event) => {
-                  nameOffsetRef.current = event.nativeEvent.layout.y;
-                }}
-              >
+              <View className="mt-5">
                 <BrandInput
                   label="Name"
                   value={title}
@@ -1074,11 +1046,8 @@ export default function ImportLoopScreen() {
                   placeholder="Loop name"
                   maxLength={40}
                   error={title.trim() ? undefined : "Give it a name"}
-                  onFocus={() => {
-                    setFieldFocused(true);
-                    scrollFieldIntoView(nameOffsetRef.current);
-                  }}
-                  onBlur={() => setFieldFocused(false)}
+                  returnKeyType="done"
+                  keyboardAppearance="dark"
                 />
               </View>
             ) : (
@@ -1192,8 +1161,8 @@ export default function ImportLoopScreen() {
             </Disclosure>
           </>
         )}
+        </Pressable>
       </ScrollView>
-      {/* </KeyboardAvoidingView> */}
 
       <LoopPreviewEngine
         ref={engineRef}
