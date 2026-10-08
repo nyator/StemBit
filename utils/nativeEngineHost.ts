@@ -92,13 +92,24 @@ const fakeMediaElement = () => ({
 
 /**
  * Configure the app's audio session for the native engines: playback, so the
- * ringer switch doesn't mute them, and shared with other apps or not.
+ * ringer switch doesn't mute them, and always mixed with other apps -- finding
+ * a song's tempo while it plays in Apple Music or Spotify is the point.
+ *
+ * Not tied to "Play alongside other apps". That setting is a trade only the
+ * WebView engines have to make (see silentModeKeepAlive); a playback session
+ * keeps ignoring the switch with mixWithOthers set, so here mixing is free.
+ *
+ * Has to be set before any native AudioContext starts: react-native-audio-api
+ * re-applies its desired options every time it activates the session, and its
+ * default is a plain non-mixing playback session that stops the other app. It
+ * is also the session the pads' expo-audio players share, so a non-mixing one
+ * here would take their mixing away too.
  */
-export const setNativeAudioSession = (mixWithOthers: boolean) => {
+export const setNativeAudioSession = () => {
   getAudioApi().AudioManager.setAudioSessionOptions({
     iosCategory: "playback",
     iosMode: "default",
-    iosOptions: mixWithOthers ? ["mixWithOthers"] : [],
+    iosOptions: ["mixWithOthers"],
   });
 };
 
@@ -108,6 +119,26 @@ export function createNativeEngineHost(
 ): NativeEngineHost {
   let disposed = false;
   const windowListeners: Listener[] = [];
+
+  // The page runs synchronously, inside this call, and most pages post "ready"
+  // as their last line -- so a reply delivered straight away reaches the host
+  // context before this function has returned, and before the caller has
+  // anything to post the answers to. Whatever it sends back on "ready" (the
+  // click config, the loop volume) went nowhere, and since the context then
+  // believes the engine is up, nothing re-sent it: the loop click stayed off
+  // until a settings change happened to post it again. A WebView never
+  // replies before it exists; held to the next microtask, neither does this.
+  let booting = true;
+  const bootReplies: string[] = [];
+  const reply = (data: string) => {
+    if (disposed) return;
+    if (booting) bootReplies.push(data);
+    else onMessage(data);
+  };
+  queueMicrotask(() => {
+    booting = false;
+    bootReplies.splice(0).forEach(reply);
+  });
 
   // Everything the page makes that outlives a call: its live audio contexts
   // and its timers. Tracked so dispose can end them -- a page's scheduler is a
@@ -177,9 +208,7 @@ export function createNativeEngineHost(
     AudioContext: HostedAudioContext,
     OfflineAudioContext: HostedOfflineAudioContext,
     ReactNativeWebView: {
-      postMessage: (data: string) => {
-        if (!disposed) onMessage(data);
-      },
+      postMessage: reply,
     },
     addEventListener(type: string, fn: Listener) {
       if (type === "message") windowListeners.push(fn);
@@ -239,7 +268,7 @@ export function createNativeEngineHost(
   } catch (error) {
     // Reported the way a page reports its own errors, so the host context's
     // existing handling picks it up.
-    onMessage(
+    reply(
       JSON.stringify({
         type: "error",
         message: `native engine failed to start: ${String(error)}`,

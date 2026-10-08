@@ -35,6 +35,7 @@ import type {
 
 // Loaded lazily -- see utils/nativeAudio.ts for why nothing imports it directly.
 import { getAudioApi } from "../utils/nativeAudio";
+import { setNativeAudioSession } from "../utils/nativeEngineHost";
 
 type EngineReply =
   | { type: "ready" }
@@ -115,7 +116,8 @@ export class NativeMetronomeEngine {
         this.resume();
         break;
       case "setMixWithOthers":
-        this.setMixWithOthers(!!message.enabled);
+        // Native always mixes -- see setNativeAudioSession. Taken and ignored
+        // so the host can keep sending the page's messages unchanged.
         break;
       case "setBackground":
         this.scheduleAhead = message.background
@@ -139,6 +141,8 @@ export class NativeMetronomeEngine {
 
   private async load() {
     try {
+      // Before the context exists, so its first activation already mixes.
+      setNativeAudioSession();
       this.context = new (getAudioApi().AudioContext)();
       const [accent, beat] = await Promise.all([
         this.context.decodeAudioData(this.sounds.accent),
@@ -153,17 +157,6 @@ export class NativeMetronomeEngine {
         message: `native metronome failed to load: ${String(error)}`,
       });
     }
-  }
-
-  // Playback, mixing with other apps or not. "mixWithOthers" is a real option
-  // on the app's own session, so unlike the WebView engine this isn't a trade
-  // against the ringer switch: playback ignores the switch either way.
-  private setMixWithOthers(enabled: boolean) {
-    getAudioApi().AudioManager.setAudioSessionOptions({
-      iosCategory: "playback",
-      iosMode: "default",
-      iosOptions: enabled ? ["mixWithOthers"] : [],
-    });
   }
 
   private resume() {

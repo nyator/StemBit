@@ -4,7 +4,6 @@ import WebView, {
   type WebViewProps,
 } from "react-native-webview";
 
-import { usePreferences } from "../context/PreferencesContext";
 import {
   createNativeEngineHost,
   setNativeAudioSession,
@@ -42,11 +41,11 @@ const EngineView = forwardRef<EngineViewHandle, EngineViewProps>(function Engine
   onMessageRef.current = onMessage;
 
   // The page's own "setMixWithOthers" only switches WebKit's session, which
-  // isn't in play natively -- the app's session is what decides here.
-  const { prefs } = usePreferences();
+  // isn't in play natively -- the app's session is what decides here, and it
+  // always mixes. Declared before the host effect so it runs first.
   useEffect(() => {
-    if (native) setNativeAudioSession(prefs.mixWithOthers);
-  }, [native, prefs.mixWithOthers]);
+    if (native) setNativeAudioSession();
+  }, [native]);
 
   useImperativeHandle(ref, () => ({
     postMessage: (data: string) => {

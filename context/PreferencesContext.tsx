@@ -83,8 +83,8 @@ export type Preferences = {
    * Play the WebView engines (loop, metronome, session) alongside other apps'
    * audio -- practising over a YouTube video -- rather than taking the audio
    * from them. Costs the silent-switch override for those three engines, which
-   * is why it's opt-in. Pads mix either way: they're native, and don't have to
-   * choose.
+   * is why it's opt-in. Pads mix either way, and so does nativeAudio: both are
+   * on the app's own session, and don't have to choose.
    */
   mixWithOthers: boolean;
   /**

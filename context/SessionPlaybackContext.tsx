@@ -22,6 +22,7 @@ import {
 } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
 import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 import type { CueTrack } from "./SessionsContext";
 
 // The session's own playback, in a hidden WebView of its own.
@@ -312,6 +313,24 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     prefs.metronomeVolume,
     engineGeneration,
   ]);
+
+  // The click's level live, while the metronome slider in Settings is still
+  // moving (see utils/volumePreview.ts). setClick takes a partial config.
+  const clickVoicesRef = useRef({ accent: prefs.accentVolume, beat: prefs.beatVolume });
+  clickVoicesRef.current = { accent: prefs.accentVolume, beat: prefs.beatVolume };
+  useEffect(
+    () =>
+      onVolumePreview("metronome", (master) =>
+        postToEngine({
+          type: "setClick",
+          accentVolume: clickVoicesRef.current.accent * master,
+          beatVolume: clickVoicesRef.current.beat * master,
+        })
+      ),
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const loadCue = async (cueId: string, tracks: CueTrack[], force = false) => {
     if (cueId === loadedCueId && !force) return;

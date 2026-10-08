@@ -24,6 +24,22 @@ describe("nativeEngineHost", () => {
     expect(replies.filter((reply) => reply.type === "pong")).toHaveLength(1);
   });
 
+  // The page posts "ready" while it is still being run, inside
+  // createNativeEngineHost. Delivered then, the host context answered into a
+  // host that didn't exist yet and its replies (the loop click's config among
+  // them) were lost -- the click stayed off until a setting re-sent it.
+  it("holds the page's start-up replies until the host has been returned", async () => {
+    let host = null;
+    const sawHost = [];
+    host = createNativeEngineHost(buildLoopEngineHtml(), (data) => {
+      if (JSON.parse(data).type === "ready") sawHost.push(host !== null);
+    });
+    expect(sawHost).toEqual([]);
+    await settle();
+    host.dispose();
+    expect(sawHost).toEqual([true]);
+  });
+
   it("goes quiet once disposed", async () => {
     const replies = [];
     const host = createNativeEngineHost(buildLoopEngineHtml(), (data) =>

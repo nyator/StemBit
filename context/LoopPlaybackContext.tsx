@@ -23,6 +23,7 @@ import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
 import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 import { useUserLoops } from "./UserLoopsContext";
 import {
   ACCENT_SOUND_ID,
@@ -882,6 +883,30 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.loopVolume]);
+
+  // The same two levels live, while their Settings slider is still moving
+  // (see utils/volumePreview.ts). Only the levels: the rest of the click's
+  // config is unchanged by a drag, and the engine takes a partial setClick.
+  const clickVoicesRef = useRef({ accent: prefs.accentVolume, beat: prefs.beatVolume });
+  clickVoicesRef.current = { accent: prefs.accentVolume, beat: prefs.beatVolume };
+  useEffect(() => {
+    const stopLoopPreview = onVolumePreview("loop", (volume) =>
+      postToEngine({ type: "setLoopVolume", volume })
+    );
+    const stopClickPreview = onVolumePreview("metronome", (master) =>
+      postToEngine({
+        type: "setClick",
+        accentVolume: clickVoicesRef.current.accent * master,
+        beatVolume: clickVoicesRef.current.beat * master,
+      })
+    );
+    return () => {
+      stopLoopPreview();
+      stopClickPreview();
+    };
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Share the audio with other apps, or take it (Settings -> Audio). Re-sent
   // on "ready" above too, since a rebuilt engine starts with the default.

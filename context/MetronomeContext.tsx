@@ -16,6 +16,7 @@ import { loadAssetBase64 } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
 import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 
 export const MIN_BPM = 20;
 export const MAX_BPM = 320;
@@ -516,6 +517,21 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accentVolume, beatVolume, masterVolume]);
+
+  // The master level live, while its Settings slider is still moving (see
+  // utils/volumePreview.ts). A stopped metronome picks up the saved level at
+  // its next start, so only a playing one needs telling.
+  useEffect(
+    () =>
+      onVolumePreview("metronome", (master) => {
+        if (isPlayingRef.current) {
+          postToEngine({ type: "setVolumes", masterVolume: master });
+        }
+      }),
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   useEffect(() => {
     return () => {
