@@ -1,12 +1,5 @@
 import React, { useMemo, useState } from "react";
-import {
-  Keyboard,
-  Pressable,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
+import { Keyboard, Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ScreenHeader from "../../components/ui/screenHeader";
@@ -17,6 +10,7 @@ import NavButton from "../../components/ui/navButton";
 import FilterDrawer, {
   type FilterSection,
 } from "../../components/ui/filterDrawer";
+import FilterBar, { type ActiveFilterPill } from "../../components/ui/filterBar";
 import {
   LOOP_CATEGORIES,
   getAllLoops,
@@ -25,8 +19,7 @@ import {
   type Loop,
 } from "../../constants/loops";
 import { useUserLoops } from "../../context/UserLoopsContext";
-import { Add, Close, Download, MusicFilter } from "../../components/icons";
-import { COLORS, SIZES } from "../../constants/theme";
+import { Add, Download } from "../../components/icons";
 
 // The three axes a loop can be narrowed by. Within an axis, checking more than
 // one value is an OR -- "Worship" and "Afro" together get you either. Across
@@ -148,7 +141,25 @@ const LoopBrowserScreen = () => {
     filters[axis].map((value) => ({ axis, value }))
   );
 
-  const activeCount = active.length + (query.trim().length > 0 ? 1 : 0);
+  // The search counts as a filter here: it narrows the same list.
+  const pills: ActiveFilterPill[] = [
+    ...(query.trim().length > 0
+      ? [
+          {
+            key: "query",
+            label: `"${query.trim()}"`,
+            onRemove: () => setQuery(""),
+            accessibilityLabel: `Remove "${query.trim()}" search`,
+          },
+        ]
+      : []),
+    ...active.map(({ axis, value }) => ({
+      key: `${axis}:${value}`,
+      label: value,
+      onRemove: () => toggle(axis, value),
+      accessibilityLabel: `Remove ${value} filter`,
+    })),
+  ];
 
   // Category and Artist can run long, so each is a row that opens its list.
   // Meter is a handful of values at most, so it's chips you tap in place.
@@ -191,69 +202,19 @@ const LoopBrowserScreen = () => {
           and Metronome screens. The controls inside still get their own taps
           first. */}
       <Pressable onPress={Keyboard.dismiss} accessible={false} className="flex-1">
-      <View className="px-screen mb-3">
-        <SearchField
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search loops"
-          accessibilityLabel="Search loops by name, artist or category"
-        />
-      </View>
-      <View className="flex-row items-center mb-3 px-screen gap-2">
-        {/* The same pill as the search field above it -- height, glass fill,
-            muted icon -- so the two read as one control bar. */}
-        <TouchableOpacity
-          onPress={openFilters}
-          accessibilityLabel={
-            activeCount > 0 ? `Filters, ${activeCount} active` : "Filters"
+      <View className="mb-3 px-screen">
+        <FilterBar
+          search={
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search loops"
+              accessibilityLabel="Search loops by name, artist or category"
+            />
           }
-          activeOpacity={0.8}
-          className="flex-row items-center gap-2 px-4 rounded-full bg-white/5"
-          style={{ height: SIZES.control }}
-        >
-          <MusicFilter
-            size={SIZES.rowIcon}
-            color={activeCount > 0 ? COLORS.brand : COLORS.textMuted}
-          />
-          <Text className="text-white text-label font-satoshiMedium">
-            Filter
-          </Text>
-          {activeCount > 0 && (
-            <View
-              className="items-center justify-center rounded-full bg-brand"
-              style={{ minWidth: 20, height: 20, paddingHorizontal: 5 }}
-            >
-              <Text className="text-white text-micro font-spaceBold">
-                {activeCount}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {activeCount > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, alignItems: "center" }}
-            style={{ flexShrink: 1 }}
-          >
-            {query.trim().length > 0 && (
-              <ActivePill
-                label={`"${query.trim()}"`}
-                onRemove={() => setQuery("")}
-                accessibilityLabel={`Remove "${query.trim()}" search`}
-              />
-            )}
-            {active.map(({ axis, value }) => (
-              <ActivePill
-                key={`${axis}:${value}`}
-                label={value}
-                onRemove={() => toggle(axis, value)}
-                accessibilityLabel={`Remove ${value} filter`}
-              />
-            ))}
-          </ScrollView>
-        )}
+          onOpen={openFilters}
+          pills={pills}
+        />
       </View>
 
       <SelectLoopView
@@ -279,41 +240,5 @@ const LoopBrowserScreen = () => {
     </Screen>
   );
 };
-
-// One applied filter (or the search text), removable on its own. Styled like
-// the search field -- glass pill, the same small round clear button -- so
-// everything narrowing the list looks like it belongs to the search.
-function ActivePill({
-  label,
-  onRemove,
-  accessibilityLabel,
-}: {
-  label: string;
-  onRemove: () => void;
-  accessibilityLabel: string;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onRemove}
-      accessibilityLabel={accessibilityLabel}
-      activeOpacity={0.8}
-      className="flex-row items-center gap-2 pl-4 pr-2 rounded-full bg-white/5"
-      style={{ height: SIZES.control }}
-    >
-      <Text
-        className="text-white text-label font-satoshiMedium"
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      <View
-        className="items-center justify-center rounded-full bg-white/15"
-        style={{ width: 22, height: 22 }}
-      >
-        <Close size={12} color={COLORS.white} />
-      </View>
-    </TouchableOpacity>
-  );
-}
 
 export default LoopBrowserScreen;

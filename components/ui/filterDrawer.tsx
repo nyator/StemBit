@@ -14,6 +14,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, SIZES } from "../../constants/theme";
 import { ArrowLeft, ArrowRight, Close, TickCircle } from "../icons";
+import { BrandButton } from "./brandButton";
+import GlassSurface from "./glassSurface";
+import NavButton, { NAV_BUTTON_FOOTPRINT } from "./navButton";
 
 // A filter panel that slides in from the right over a dimmed screen, the way
 // eBay's does: one row per filter showing what it's currently set to, a tap
@@ -36,6 +39,12 @@ export type FilterSection = {
   label: string;
   /** "list" drills into its values; "chips" shows them inline. */
   kind: "list" | "chips";
+  /**
+   * One value, always set -- a sort rather than a filter. Picking it returns to
+   * the list of rows, the way eBay's Sort does, since there's nothing else to
+   * do in there; and there's no "All" chip, because there's no unset.
+   */
+  single?: boolean;
   options: FilterOption[];
   selected: string[];
   onToggle: (value: string) => void;
@@ -54,7 +63,9 @@ type FilterDrawerProps = {
 };
 
 const summaryOf = (section: FilterSection) =>
-  section.selected.length === 0
+  section.single
+    ? (section.selected[0] ?? "")
+    : section.selected.length === 0
     ? "All"
     : section.selected.length <= 2
       ? section.selected.join(", ")
@@ -142,16 +153,12 @@ export default function FilterDrawer({
       >
         {/* Header: close (or back, inside a section), the title, Reset. */}
         <View className="flex-row items-center px-5 pb-4 gap-3">
-          <CircleButton
+          {/* The header's own back button, glass and all. */}
+          <NavButton
+            icon={openSection ? ArrowLeft : Close}
             onPress={openSection ? () => setOpenKey(null) : onClose}
             accessibilityLabel={openSection ? "Back to all filters" : "Close filters"}
-          >
-            {openSection ? (
-              <ArrowLeft size={20} color={COLORS.white} />
-            ) : (
-              <Close size={18} color={COLORS.white} />
-            )}
-          </CircleButton>
+          />
           <Text
             className="flex-1 text-white font-satoshiBold text-title"
             numberOfLines={1}
@@ -159,13 +166,17 @@ export default function FilterDrawer({
             {openSection ? openSection.label : "Filter"}
           </Text>
           {openSection ? (
-            <OutlinePill
-              label="Clear"
-              onPress={openSection.onClear}
-              disabled={openSection.selected.length === 0}
-            />
+            // A sort has no "nothing"; its Clear would only be a second way to
+            // pick the default, so it has none.
+            !openSection.single && (
+              <GlassPill
+                label="Clear"
+                onPress={openSection.onClear}
+                disabled={openSection.selected.length === 0}
+              />
+            )
           ) : (
-            <OutlinePill label="Reset" onPress={onReset} disabled={resetDisabled} />
+            <GlassPill label="Reset" onPress={onReset} disabled={resetDisabled} />
           )}
         </View>
 
@@ -179,8 +190,12 @@ export default function FilterDrawer({
                 <OptionRow
                   key={option.value}
                   option={option}
+                  single={openSection.single}
                   selected={openSection.selected.includes(option.value)}
-                  onPress={() => openSection.onToggle(option.value)}
+                  onPress={() => {
+                    openSection.onToggle(option.value);
+                    if (openSection.single) setOpenKey(null);
+                  }}
                 />
               ))
             : sections.map((section) =>
@@ -217,17 +232,7 @@ export default function FilterDrawer({
         </ScrollView>
 
         <View className="px-5 pt-3 border-t border-white/10">
-          <TouchableOpacity
-            onPress={onClose}
-            accessibilityRole="button"
-            activeOpacity={0.85}
-            className="items-center justify-center rounded-full bg-brand"
-            style={{ height: 56 }}
-          >
-            <Text className="text-white text-body font-spaceBold">
-              {resultLabel}
-            </Text>
-          </TouchableOpacity>
+          <BrandButton label={resultLabel} onPress={onClose} />
         </View>
       </Animated.View>
     </Modal>
@@ -246,11 +251,13 @@ function ChipSection({ section }: { section: FilterSection }) {
         contentContainerStyle={{ gap: 8 }}
       >
         {/* "All" is the axis left un-narrowed, as on eBay's All Listings. */}
-        <Chip
-          label="All"
-          selected={section.selected.length === 0}
-          onPress={section.onClear}
-        />
+        {!section.single && (
+          <Chip
+            label="All"
+            selected={section.selected.length === 0}
+            onPress={section.onClear}
+          />
+        )}
         {section.options.map((option) => (
           <Chip
             key={option.value}
@@ -298,24 +305,26 @@ function Chip({
 
 function OptionRow({
   option,
+  single,
   selected,
   onPress,
 }: {
   option: FilterOption;
+  single?: boolean;
   selected: boolean;
   onPress: () => void;
 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      accessibilityRole="checkbox"
+      accessibilityRole={single ? "radio" : "checkbox"}
       accessibilityState={{ checked: selected }}
       activeOpacity={0.7}
       className="flex-row items-center py-4 border-b border-white/10 gap-3"
     >
       <Text
         className="flex-1 text-body font-satoshiMedium"
-        style={{ color: selected ? COLORS.brand : COLORS.white }}
+        style={{ color: selected ? COLORS.brand : COLORS.white,  }}
         numberOfLines={1}
       >
         {option.value}
@@ -325,49 +334,24 @@ function OptionRow({
           {option.count}
         </Text>
       )}
-      <View
+      {/* <View
         className="items-center justify-center rounded-full"
         style={{
-          width: 22,
-          height: 22,
+          width: 18,
+          height: 18,
           backgroundColor: selected ? COLORS.brand : "transparent",
           borderWidth: selected ? 0 : 1.5,
           borderColor: COLORS.borderGlass,
         }}
       >
         {selected && <TickCircle size={14} color={COLORS.white} />}
-      </View>
+      </View> */}
     </TouchableOpacity>
   );
 }
 
-function CircleButton({
-  onPress,
-  accessibilityLabel,
-  children,
-}: {
-  onPress: () => void;
-  accessibilityLabel: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      className="items-center justify-center border rounded-full"
-      style={{
-        width: SIZES.minTouch,
-        height: SIZES.minTouch,
-        borderColor: COLORS.borderGlass,
-      }}
-    >
-      {children}
-    </TouchableOpacity>
-  );
-}
-
-function OutlinePill({
+// Reset / Clear. A glass pill, as tall as the NavButton beside the title.
+function GlassPill({
   label,
   onPress,
   disabled,
@@ -381,14 +365,20 @@ function OutlinePill({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      className="justify-center px-5 border rounded-full"
-      style={{
-        height: SIZES.minTouch,
-        borderColor: COLORS.borderGlass,
-        opacity: disabled ? 0.4 : 1,
-      }}
+      accessibilityState={{ disabled: !!disabled }}
+      activeOpacity={0.7}
+      style={{ opacity: disabled ? 0.4 : 1 }}
     >
-      <Text className="text-white text-label font-satoshiBold">{label}</Text>
+      <GlassSurface
+        style={{
+          height: NAV_BUTTON_FOOTPRINT,
+          borderRadius: NAV_BUTTON_FOOTPRINT / 2,
+          paddingHorizontal: 20,
+          justifyContent: "center",
+        }}
+      >
+        <Text className="text-white text-label font-satoshiBold">{label}</Text>
+      </GlassSurface>
     </TouchableOpacity>
   );
 }
