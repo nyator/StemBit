@@ -188,6 +188,17 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           return bytes.buffer;
         }
 
+        // What decodeAudioData is handed for a piece of audio the app sent:
+        // base64, unpacked here, or -- hosted natively -- a file:// path, passed
+        // straight through. Native audio decodes a path in native code; base64
+        // would be unpacked byte by byte on the React Native JS thread, the one
+        // that also handles every touch, and a loop catalogue's worth of it is
+        // seconds of play and tap presses waiting their turn.
+        function audioDataOf(base64OrUri) {
+          if (base64OrUri.indexOf("file://") === 0) return base64OrUri;
+          return base64ToArrayBuffer(base64OrUri);
+        }
+
         function ensureContext() {
           if (!audioContext) {
             audioContext = new AudioContextClass();
@@ -617,7 +628,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             post({ type: "preloaded", key: key });
             return;
           }
-          encodedByKey[key] = base64ToArrayBuffer(base64);
+          encodedByKey[key] = audioDataOf(base64);
           decodeKey(
             key,
             nativeBpm,
@@ -721,7 +732,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
 
           if (base64 && !encodedByKey[key] && !pendingDecodes[key]) {
-            encodedByKey[key] = base64ToArrayBuffer(base64);
+            encodedByKey[key] = audioDataOf(base64);
           }
 
           decodeKey(
@@ -817,7 +828,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             !encodedByKey[key] &&
             !pendingDecodes[key]
           ) {
-            encodedByKey[key] = base64ToArrayBuffer(base64);
+            encodedByKey[key] = audioDataOf(base64);
           }
 
           // nativeBpm 0: there is no declared tempo yet -- finding it is what
@@ -1481,7 +1492,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (!id || clickBuffers[id]) return;
           var ctx = ensureContext();
           ctx.decodeAudioData(
-            base64ToArrayBuffer(base64),
+            audioDataOf(base64),
             function (buf) {
               clickBuffers[id] = buf;
             },
@@ -1574,20 +1585,20 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           switch (data.type) {
             case "preload":
-              preload(data.key, data.base64, data.nativeBpm);
+              preload(data.key, data.uri || data.base64, data.nativeBpm);
               break;
             case "select":
               select(
                 data.key,
                 data.nativeBpm,
-                data.base64,
+                data.uri || data.base64,
                 data.beatsPerBar,
                 data.trimStart,
                 data.trimEnd
               );
               break;
             case "analyze":
-              analyze(data.key, data.base64, data.buckets);
+              analyze(data.key, data.uri || data.base64, data.buckets);
               break;
             case "detect":
               detect(data.key, data.start, data.end);
@@ -1629,7 +1640,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               setLoopVolume(data.volume);
               break;
             case "loadClick":
-              loadClick(data.id, data.base64);
+              loadClick(data.id, data.uri || data.base64);
               break;
             case "setClick":
               setClick(data);

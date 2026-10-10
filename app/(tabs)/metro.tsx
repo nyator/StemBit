@@ -272,9 +272,10 @@ export default function MetroScreen() {
           playLabel="Start metronome"
           stopLabel="Stop metronome"
           onToggle={() => {
-            hapticImpact(prefs.haptics, "medium");
+            // The engine first, the haptic after -- see the Loop screen.
             if (isPlaying) stopMetronome();
             else startMetronome();
+            hapticImpact(prefs.haptics, "medium");
           }}
         />
 

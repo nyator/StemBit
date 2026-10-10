@@ -16,7 +16,7 @@ const ACTIVE_COLOR = COLORS.white;
 const INACTIVE_COLOR = "rgba(255,255,255,0.55)";
 
 /** Fixed, so the pill has a stable rect to measure and labels never shift it. */
-const TAB_WIDTH = 60;
+export const TAB_WIDTH = 60;
 
 // Quick in, springy out: the press should feel like it gives under the finger
 // and then pushes back.

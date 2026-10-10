@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { GestureResponderEvent } from "react-native";
 
 import { usePreferences } from "../context/PreferencesContext";
+import { parseBpmDraft, roundBpm, sanitizeBpmDraft } from "../utils/bpm";
 import { hapticImpact } from "../utils/haptics";
 
 type UseBpmControlOptions = {
@@ -37,8 +39,10 @@ export function useBpmControl({
   maxBpm,
 }: UseBpmControlOptions) {
   const { prefs } = usePreferences();
+  // Rounded to a tenth as well as clamped: every tempo leaving these controls
+  // is a one-decimal tempo (see utils/bpm.ts).
   const clampBpm = useCallback(
-    (value: number) => Math.max(minBpm, Math.min(maxBpm, value)),
+    (value: number) => roundBpm(Math.max(minBpm, Math.min(maxBpm, value))),
     [minBpm, maxBpm]
   );
 
@@ -51,7 +55,7 @@ export function useBpmControl({
   const bpmText = bpmDraft ?? String(bpm);
 
   const handleBpmTextChange = (text: string) => {
-    setBpmDraft(text.replace(/[^0-9]/g, ""));
+    setBpmDraft(sanitizeBpmDraft(text));
   };
 
   // Reads the draft from render rather than from a setBpmDraft updater:
@@ -60,10 +64,8 @@ export function useBpmControl({
   // mid-render.
   const commitBpmText = () => {
     if (bpmDraft !== null) {
-      const parsed = parseInt(bpmDraft, 10);
-      if (!Number.isNaN(parsed)) {
-        setBpm(clampBpm(parsed));
-      }
+      const parsed = parseBpmDraft(bpmDraft);
+      if (parsed !== null) setBpm(clampBpm(parsed));
     }
     setBpmDraft(null); // fall back to showing the (clamped) bpm value
   };
@@ -105,10 +107,16 @@ export function useBpmControl({
   // --- Tap tempo ----------------------------------------------------------
   const tapTimesRef = useRef<number[]>([]);
 
-  const handleTapTempo = () => {
+  // Timed by the touch, not by the handler. The event's timestamp is when the
+  // finger landed, stamped natively; Date.now() here is when the JS thread got
+  // round to it -- and with a loop playing that thread is busy (the playhead,
+  // the catalog preload, a native engine's scheduler, the re-render each tap's
+  // new BPM causes), so taps arrived late by uneven amounts and a steady 500ms
+  // pulse read as 430, 580... The fallback is only for a caller with no event.
+  const handleTapTempo = (event?: GestureResponderEvent) => {
     hapticImpact(prefs.haptics);
 
-    const now = Date.now();
+    const now = event?.nativeEvent?.timestamp ?? Date.now();
     const taps = tapTimesRef.current;
 
     // A long pause means a fresh attempt: start over instead of averaging
@@ -139,6 +147,9 @@ export function useBpmControl({
     const usable = steady.length > 0 ? steady : intervals;
     const avgInterval = usable.reduce((a, b) => a + b, 0) / usable.length;
 
+    // Whole numbers only, unlike a typed tempo: tapping is for landing near
+    // the tempo fast, and a tenth that wanders with every tap reads as the
+    // control being unsure. A decimal is a deliberate choice, so it's typed.
     setBpm(clampBpm(Math.round(60000 / avgInterval)));
   };
 

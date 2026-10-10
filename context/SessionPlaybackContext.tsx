@@ -12,7 +12,7 @@ import EngineView, { type EngineViewHandle } from "../components/engineView";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
-import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
+import { loadAudioForEngine } from "../utils/loadAssetBase64";
 import { resolveStemUri } from "../utils/importStems";
 import {
   ACCENT_SOUND_ID,
@@ -269,8 +269,8 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     const asset = soundAsset(id);
     if (asset == null) return;
     clickLoadedRef.current.add(id);
-    loadAssetBase64(asset)
-      .then((base64) => postToEngine({ type: "loadClick", id, base64 }))
+    loadAudioForEngine(asset, useNativeRef.current)
+      .then((audio) => postToEngine({ type: "loadClick", id, ...audio }))
       .catch((error) => {
         clickLoadedRef.current.delete(id);
         console.error("Failed to load stem click sound", id, error);
@@ -361,15 +361,19 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Sequential rather than Promise.all: each file is read into a base64
-    // string, and a song's stems read at once would hold several copies of the
-    // whole song in JS memory at the same moment.
+    // Sequential rather than Promise.all: in a WebView each file is read into
+    // a base64 string, and a song's stems read at once would hold several
+    // copies of the whole song in JS memory at the same moment. (Natively it's
+    // a path, decoded in native code -- see loadAudioForEngine.)
     for (const track of tracks) {
       if (loadTokenRef.current !== token) return;
       try {
-        const base64 = await loadAudioBase64(resolveStemUri(track.uri));
+        const audio = await loadAudioForEngine(
+          resolveStemUri(track.uri),
+          useNativeRef.current
+        );
         if (loadTokenRef.current !== token) return;
-        postToEngine({ type: "loadTrack", id: track.id, base64 });
+        postToEngine({ type: "loadTrack", id: track.id, ...audio });
       } catch (error) {
         console.error("Failed to read stem", track.name, error);
         pendingRef.current.delete(track.id);
@@ -591,6 +595,9 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   // Native audio (Settings) swaps the engine underneath: rebuild it the way a
   // dead one is rebuilt, which also resets everything the old one had loaded.
   const useNative = useNativeAudio();
+  // Read by the loaders above at call time: which form of audio to send.
+  const useNativeRef = useRef(useNative);
+  useNativeRef.current = useNative;
   const previousUseNativeRef = useRef(useNative);
   useEffect(() => {
     if (previousUseNativeRef.current === useNative) return;
