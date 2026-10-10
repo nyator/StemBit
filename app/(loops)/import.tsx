@@ -35,6 +35,7 @@ import { usePlaybackLock } from "../../context/PlaybackLockContext";
 import { usePreferences } from "../../context/PreferencesContext";
 import { useUserLoops } from "../../context/UserLoopsContext";
 import { useBpmControl } from "../../hooks/useBpmControl";
+import { roundBpm } from "../../utils/bpm";
 import { hapticImpact } from "../../utils/haptics";
 
 import ScreenHeader from "../../components/ui/screenHeader";
@@ -130,8 +131,10 @@ const STRONG_TEMPO_CONFIDENCE = 0.4;
 /** Where the tempo on screen came from. Shown, because it changes how much to trust it. */
 type TempoSource = "detected" | "estimated" | "manual" | "saved";
 
+// To a tenth, not a whole number: a loop cut from a song at 92.5 is a 92.5
+// loop (utils/bpm.ts).
 const clampBpm = (value: number) =>
-  Math.max(LOOP_MIN_BPM, Math.min(LOOP_MAX_BPM, Math.round(value)));
+  Math.max(LOOP_MIN_BPM, Math.min(LOOP_MAX_BPM, roundBpm(value)));
 
 const formatSeconds = (value: number) => `${value.toFixed(2)}s`;
 
@@ -1120,7 +1123,7 @@ export default function ImportLoopScreen() {
                 <TouchableOpacity
                   accessibilityLabel="Warp preview slower"
                   onPress={() =>
-                    setTargetBpm((value) => Math.max(LOOP_MIN_BPM, value - 1))
+                    setTargetBpm((value) => Math.max(LOOP_MIN_BPM, roundBpm(value - 1)))
                   }
                   className="p-2 rounded-lg bg-white/10"
                 >
@@ -1142,7 +1145,7 @@ export default function ImportLoopScreen() {
                 <TouchableOpacity
                   accessibilityLabel="Warp preview faster"
                   onPress={() =>
-                    setTargetBpm((value) => Math.min(LOOP_MAX_BPM, value + 1))
+                    setTargetBpm((value) => Math.min(LOOP_MAX_BPM, roundBpm(value + 1)))
                   }
                   className="p-2 rounded-lg bg-white/10"
                 >

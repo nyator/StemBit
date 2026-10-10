@@ -21,6 +21,13 @@ const {
   packBytes,
   localKeyFor,
   fileNameFor,
+  coverUrlFor,
+  fileFormatOf,
+  formatSpecOf,
+  tempoRangeOf,
+  keysOf,
+  barsOf,
+  genreOf,
 } = require("../../constants/loopStore");
 
 /** A loop entry with everything the parser insists on. */
@@ -181,6 +188,110 @@ describe("sizes", () => {
     expect(formatBytes(0)).toBe("");
     expect(formatBytes(512_000)).toBe("500 KB");
     expect(formatBytes(2_202_010)).toBe("2.1 MB");
+  });
+});
+
+describe("product details", () => {
+  it("reads cover art, genre, tags and licence, dropping blanks", () => {
+    const [parsed] = parseCatalog({
+      packs: [
+        pack({
+          cover: "packs/kwame-afro-vol1/cover.jpg",
+          genre: "Afrobeats",
+          tags: ["Live drums", "", 7, " Dry "],
+          license: "Royalty-free",
+        }),
+      ],
+    });
+
+    expect(parsed.cover).toBe("packs/kwame-afro-vol1/cover.jpg");
+    expect(parsed.genre).toBe("Afrobeats");
+    expect(parsed.tags).toEqual(["Live drums", "Dry"]);
+    expect(parsed.license).toBe("Royalty-free");
+  });
+
+  it("carries a single's cover through to its one-loop pack", () => {
+    const [parsed] = parseCatalog({
+      loops: [loop({ artist: "Ama", cover: "https://cdn.example/ama.png" })],
+    });
+    // Absolute URLs pass through untouched, like audio paths do.
+    expect(coverUrlFor(parsed)).toBe("https://cdn.example/ama.png");
+  });
+
+  it("has no cover URL rather than a broken one when the manifest names none", () => {
+    const [parsed] = parseCatalog({ packs: [pack()] });
+    expect(coverUrlFor(parsed)).toBeUndefined();
+  });
+
+  it("states a format spec only where every loop agrees", () => {
+    const [same] = parseCatalog({
+      packs: [
+        pack({
+          loops: [
+            loop({ key: "a", sampleRate: 48000, bitDepth: 24 }),
+            loop({ key: "b", sampleRate: 48000, bitDepth: 24 }),
+          ],
+        }),
+      ],
+    });
+    expect(formatSpecOf(same)).toBe("WAV · 24-bit · 48 kHz");
+
+    // Mixed sample rates: say the format, and nothing it can't stand by.
+    const [mixed] = parseCatalog({
+      packs: [
+        pack({
+          loops: [
+            loop({ key: "a", sampleRate: 44100, bitDepth: 24 }),
+            loop({ key: "b", sampleRate: 48000, bitDepth: 24 }),
+          ],
+        }),
+      ],
+    });
+    expect(formatSpecOf(mixed)).toBe("WAV · 24-bit");
+  });
+
+  it("knows a paid loop's format without a file path", () => {
+    const [parsed] = parseCatalog({
+      packs: [pack({ price: 4.99, loops: [loop({ file: undefined, format: ".WAV" })] })],
+    });
+    expect(fileFormatOf(parsed.loops[0])).toBe("WAV");
+  });
+
+  it("gives a tempo range, keys and whole bars", () => {
+    const [parsed] = parseCatalog({
+      packs: [
+        pack({
+          loops: [
+            loop({ key: "a", bpm: 92, trimEnd: (60 / 92) * 16, musicalKey: "A minor" }),
+            loop({ key: "b", bpm: 104, musicalKey: "A minor" }),
+            loop({ key: "c", bpm: 128, musicalKey: "F#" }),
+          ],
+        }),
+      ],
+    });
+
+    expect(tempoRangeOf(parsed)).toBe("92–128 BPM");
+    expect(keysOf(parsed)).toBe("A minor, F#");
+    expect(barsOf(parsed.loops[0])).toBe(4);
+    // 4.615385 s at 104 bpm is exactly two bars of 4 / 4.
+    expect(barsOf(parsed.loops[1])).toBe(2);
+    expect(barsOf({ ...parsed.loops[1], trimEnd: 3 })).toBeUndefined();
+  });
+
+  it("files a pack with no genre under its most common loop category", () => {
+    const [parsed] = parseCatalog({
+      packs: [
+        pack({
+          loops: [
+            loop({ key: "a", category: "Funk" }),
+            loop({ key: "b", category: "Afro" }),
+            loop({ key: "c", category: "Afro" }),
+          ],
+        }),
+      ],
+    });
+    expect(genreOf(parsed)).toBe("Afro");
+    expect(genreOf({ ...parsed, genre: "Afrobeats" })).toBe("Afrobeats");
   });
 });
 

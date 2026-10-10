@@ -19,7 +19,7 @@ import {
   type Loop,
 } from "../constants/loops";
 import { buildLoopEngineHtml } from "../constants/loopEngine";
-import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
+import { loadAudioForEngine, type EngineAudio } from "../utils/loadAssetBase64";
 import { usePlaybackLock } from "./PlaybackLockContext";
 import { usePreferences } from "./PreferencesContext";
 import { useNativeAudio } from "../utils/nativeAudio";
@@ -309,12 +309,12 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     const loop = findLoopByKey(key);
     if (!loop) return Promise.resolve();
 
-    return loadAudioBase64(loop.source)
-      .then((base64) => {
+    return loadAudioForEngine(loop.source, useNativeRef.current)
+      .then((audio) => {
         postToEngine({
           type: "preload",
           key: loop.key,
-          base64,
+          ...audio,
           nativeBpm: loop.bpm,
         });
       })
@@ -362,14 +362,14 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
   // What the engine needs to make a loop active. An imported loop carries the
   // trim the user set on the import screen; a bundled one leaves those off and
   // lets the engine find its own loop points.
-  const selectMessage = (loop: Loop, base64?: string) => ({
+  const selectMessage = (loop: Loop, audio?: EngineAudio) => ({
     type: "select",
     key: loop.key,
     nativeBpm: loop.bpm,
     beatsPerBar: getBeatsPerBar(loop),
     trimStart: loop.trimStart,
     trimEnd: loop.trimEnd,
-    base64,
+    ...audio,
   });
 
   // Hand a click sample (by metronome sound id) to the engine to decode, once.
@@ -378,9 +378,9 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     const asset = soundAsset(id);
     if (asset == null) return;
     clickLoadedRef.current.add(id);
-    loadAssetBase64(asset)
-      .then((base64) => {
-        postToEngine({ type: "loadClick", id, base64 });
+    loadAudioForEngine(asset, useNativeRef.current)
+      .then((audio) => {
+        postToEngine({ type: "loadClick", id, ...audio });
       })
       .catch((error) => {
         clickLoadedRef.current.delete(id);
@@ -413,10 +413,10 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     const key = currentKeyRef.current;
     const loop = key ? findLoopByKey(key) : null;
     if (!loop) return;
-    loadAudioBase64(loop.source)
-      .then((base64) => {
+    loadAudioForEngine(loop.source, useNativeRef.current)
+      .then((audio) => {
         if (currentKeyRef.current !== loop.key) return; // selection moved on
-        postToEngine(selectMessage(loop, base64));
+        postToEngine(selectMessage(loop, audio));
       })
       .catch((error) => {
         console.error("Loop reload failed", error);

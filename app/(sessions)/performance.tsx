@@ -1397,7 +1397,7 @@ export default function PerformanceScreen() {
           >
             {/* Play / Stop Toggle Zone */}
             <TouchableOpacity
-              onPress={togglePad}
+              onPressIn={togglePad}
               disabled={!padPack}
               accessibilityRole="button"
               accessibilityLabel={padIsLive ? "Stop pad" : "Start pad"}
@@ -1496,7 +1496,7 @@ export default function PerformanceScreen() {
       <View className="px-screen pb-4">
         {!isStemCue ? (
           <TouchableOpacity
-            onPress={toggleCueTransport}
+            onPressIn={toggleCueTransport}
             disabled={cueIsEmpty}
             accessibilityLabel={cueIsLive ? "Stop this cue" : "Play this cue"}
             activeOpacity={0.85}
@@ -1517,7 +1517,7 @@ export default function PerformanceScreen() {
           <View className="flex-row items-center w-full gap-2" style={{ height: 60 }}>
             {/* Return to Zero (RTZ) Button */}
             <TouchableOpacity
-              onPress={returnToZero}
+              onPressIn={returnToZero}
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel="Return to start"
@@ -1535,7 +1535,7 @@ export default function PerformanceScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={toggleStudioTransport}
+              onPressIn={toggleStudioTransport}
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel={session.isPlaying ? "Stop" : "Play"}
@@ -1557,7 +1557,7 @@ export default function PerformanceScreen() {
         ) : (
           <View className="flex-row" style={{ height: 60 }}>
             <TouchableOpacity
-              onPress={togglePerformTransport}
+              onPressIn={togglePerformTransport}
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel={

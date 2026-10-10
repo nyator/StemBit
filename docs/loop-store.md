@@ -33,6 +33,7 @@ in the app changes.
 
 ```
 catalog.json                      <- the only file the app looks for by name
+packs/<pack-id>/cover.jpg         <- cover art, for every pack, free or paid
 packs/<pack-id>/<loop>.wav        <- free audio
 ```
 
@@ -55,6 +56,11 @@ browser, add a CORS rule on the bucket allowing `GET` from your web origin.
       "title": "Afro Vol. 1",
       "artist": "Kwame Mensah",
       "description": "Twelve bars cut from the Sunday sets.",
+      "cover": "packs/kwame-afro-vol1/cover.jpg",
+      "genre": "Afrobeats",
+      "tags": ["Live drums", "Percussion"],
+      "license": "Royalty-free",
+      "addedAt": "2026-10-01",
       "loops": [
         {
           "key": "kwame-afro-vol1/deep-groove",
@@ -62,10 +68,14 @@ browser, add a CORS rule on the bucket allowing `GET` from your web origin.
           "category": "Afro",
           "bpm": 104,
           "timeSignature": "4 / 4",
+          "musicalKey": "A minor",
           "trimStart": 0,
           "trimEnd": 4.615385,
           "file": "packs/kwame-afro-vol1/deep-groove.wav",
-          "bytes": 812000
+          "bytes": 812000,
+          "format": "wav",
+          "sampleRate": 48000,
+          "bitDepth": 24
         }
       ]
     }
@@ -85,7 +95,21 @@ browser, add a CORS rule on the bucket allowing `GET` from your web origin.
   but that's for a file of unknown provenance. A loop sold as a loop should
   already know where its bars are, and a region a hair short of a whole bar
   drifts against the click a little further on every pass.
-- **`bytes`** is optional and only drives the size shown on the row.
+- **`bytes`** is optional and drives the sizes on the row and the product page.
+- **`cover`** is the pack's artwork: a square JPEG or PNG (1000×1000 or more
+  is plenty), as a bucket path or absolute URL. It's public even on a paid pack
+  — it's the shop window. Without one, or if it fails to load, the store draws
+  a coloured cover from the pack's id. The script picks up `cover.jpg` (or
+  `.png` / `.webp`) from the pack folder.
+- **`genre`**, **`tags`** and **`license`** are optional storefront details.
+  `genre` is free text and drives the filter row; a pack without one is filed
+  under its loops' most common `category`. `tags` show on the product page.
+  `license` is one line, e.g. `"Royalty-free"`.
+- **`musicalKey`**, **`format`**, **`sampleRate`**, **`bitDepth`** are per loop
+  and fill in the product page's "What's included" sheet and each file's spec
+  line. The script writes all but `musicalKey` from `ffprobe`; set that in
+  `pack.json`. A pack-level spec (e.g. "WAV · 24-bit · 48 kHz") only shows the
+  parts every loop in the pack shares.
 - **`loops`** at the root is for singles: same shape, plus its own `artist`, and
   each one lists on its own row instead of behind a pack holding one thing.
 - **`featured`** (`true`) and **`addedAt`** (an ISO date, `"2026-09-20"`) are
@@ -109,8 +133,9 @@ npm run loops:catalog -- ./loops-to-upload
 
 It measures each file's exact duration with `ffprobe`, checks it's a whole
 number of bars at its stated tempo, fills in sizes, and writes `catalog.json`
-into the folder. Upload the audio under `packs/<id>/` and the manifest at the
-root.
+into the folder. Upload the audio and cover art under `packs/<id>/` and the
+manifest at the root. It reads sample rate and bit depth while it's there, and
+warns about any pack without cover art.
 
 The app caches the manifest to disk, so a publish reaches a device on its next
 launch, or immediately on pull-to-refresh.

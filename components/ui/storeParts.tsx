@@ -1,11 +1,14 @@
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { ArrowRight, Musicnote } from "../icons";
-import { COLORS, TRACK_PALETTE } from "../../constants/theme";
+import { COLORS } from "../../constants/theme";
 import {
+  coverUrlFor,
   formatPrice,
+  formatSpecOf,
   isPackUnlocked,
   localKeyFor,
   type RemoteLoop,
@@ -15,41 +18,69 @@ import { useLoopStore } from "../../context/LoopStoreContext";
 import { useLoopPlayback } from "../../context/LoopPlaybackContext";
 
 // The pieces the Loop Store and a pack's own screen are both built from, so
-// a cover, a price button and a loop row look the same wherever they appear.
-// Apple Music for the layout, a shop for the buying: every row says what it
-// costs and has the button to get it.
+// a cover, a price tag, a product card and a loop row look the same wherever
+// they appear. A digital shop throughout: artwork first, the price on every
+// product, and the button to get it on every row.
 
 /* -------------------------------------------------------------------------- */
 /* Covers                                                                      */
 /* -------------------------------------------------------------------------- */
 
-// The catalogue carries no artwork, so every pack gets a cover built from one
-// of the track colours -- picked from its id, so a pack keeps the same colour
-// every time the store loads and two packs side by side usually differ.
-const coverColorFor = (id: string) => {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return TRACK_PALETTE[Math.abs(hash) % TRACK_PALETTE.length];
-};
-
-/** The same colour pushed toward black, for the far end of the cover's gradient. */
-const shade = (hex: string, amount: number) => {
-  const channel = (i: number) =>
-    Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount))
-      .toString(16)
-      .padStart(2, "0");
-  return `#${channel(1)}${channel(3)}${channel(5)}`;
-};
+// A pack's cover is its artwork from the bucket. Without one -- an older
+// manifest, or an image that fails to load -- it gets a placeholder in the
+// app's own blues, so a missing cover reads as part of StemBits rather than as
+// somebody else's artwork. The pair is picked from the pack's id, so a pack
+// keeps the same placeholder every time the store loads and two side by side
+// usually differ.
+const COVER_GRADIENTS: [string, string][] = [
+  [COLORS.brandFrom, COLORS.brandTo],
+  [COLORS.brand, COLORS.glow],
+  [COLORS.brandTo, COLORS.surfaceSheet],
+  [COLORS.glow, COLORS.canvas],
+];
 
 export const coverColors = (id: string): [string, string] => {
-  const color = coverColorFor(id);
-  return [color, shade(color, 0.55)];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return COVER_GRADIENTS[Math.abs(hash) % COVER_GRADIENTS.length];
 };
 
-export function PackCover({ id, size, radius }: { id: string; size: number; radius: number }) {
+export function PackCover({
+  pack,
+  size,
+  radius,
+}: {
+  pack: RemotePack;
+  size: number;
+  radius: number;
+}) {
+  const uri = coverUrlFor(pack);
+  // Remembered per URL rather than as a flag, so a refreshed manifest that
+  // fixes a broken cover path gets a fresh attempt instead of the old failure.
+  const [failedUri, setFailedUri] = useState<string>();
+
+  if (uri && failedUri !== uri) {
+    return (
+      <Image
+        source={{ uri }}
+        onError={() => setFailedUri(uri)}
+        accessibilityIgnoresInvertColors
+        resizeMode="cover"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          // The colour the generated cover would have, while the art loads, so
+          // a slow connection shows tinted squares rather than holes.
+          backgroundColor: coverColors(pack.id)[1],
+        }}
+      />
+    );
+  }
+
   return (
     <LinearGradient
-      colors={coverColors(id)}
+      colors={coverColors(pack.id)}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{
@@ -99,13 +130,27 @@ export function usePackStatus(pack: RemotePack) {
  * An Apple Music section heading: bold title, and a chevron when the section
  * leads somewhere.
  */
-export function SectionTitle({ title, onPress }: { title: string; onPress?: () => void }) {
+export function SectionTitle({
+  title,
+  caption,
+  onPress,
+}: {
+  title: string;
+  /** One muted line under the title: what the shelf is, or how many. */
+  caption?: string;
+  onPress?: () => void;
+}) {
   const content = (
-    <View className="flex-row items-center gap-1">
-      <Text className="text-white font-satoshiBold" style={{ fontSize: 22 }}>
-        {title}
-      </Text>
-      {onPress && <ArrowRight size={18} color={COLORS.textMuted} />}
+    <View>
+      <View className="flex-row items-center gap-1">
+        <Text className="text-white font-satoshiBold" style={{ fontSize: 18 }}>
+          {title}
+        </Text>
+        {onPress && <ArrowRight size={18} color={COLORS.textMuted} />}
+      </View>
+      {caption && (
+        <Text className="text-overline text-ink-muted font-satoshiRegular">{caption}</Text>
+      )}
     </View>
   );
   return onPress ? (
@@ -114,6 +159,83 @@ export function SectionTitle({ title, onPress }: { title: string; onPress?: () =
     </TouchableOpacity>
   ) : (
     content
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Product card                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The price, or the download state, as a tag sitting on a cover -- where a
+ * digital shop puts it, so it reads at a glance across a grid of artwork. Dark
+ * glass behind it so it holds up on any cover, light or dark.
+ */
+export function PriceTag({ pack }: { pack: RemotePack }) {
+  const status = usePackStatus(pack);
+  return (
+    <View
+      className="px-2.5 py-1 rounded-full"
+      style={{ backgroundColor: "rgba(0,0,0,0.62)", borderWidth: 1, borderColor: COLORS.borderGlass }}
+    >
+      <Text
+        className="uppercase text-micro font-spaceBold"
+        style={{ color: status.color === COLORS.textMuted ? COLORS.white : status.color }}
+        numberOfLines={1}
+      >
+        {status.text}
+      </Text>
+    </View>
+  );
+}
+
+/** "12 loops · WAV" -- the count, then the format when the pack states one. */
+export const productMetaOf = (pack: RemotePack) => {
+  const format = formatSpecOf(pack).split(" · ")[0];
+  return format ? `${countOf(pack)} · ${format}` : countOf(pack);
+};
+
+/**
+ * One product in a grid or on a shelf: artwork with the price on it, then
+ * title, artist and what's in the box. The whole card opens the pack.
+ */
+export function ProductCard({
+  pack,
+  width,
+  onPress,
+}: {
+  pack: RemotePack;
+  width: number;
+  onPress: () => void;
+}) {
+  const status = usePackStatus(pack);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`${pack.title} by ${pack.artist}, ${productMetaOf(pack)}, ${status.text}`}
+      style={{ width }}
+      className="gap-2"
+    >
+      <View>
+        <PackCover pack={pack} size={width} radius={22} />
+        <View style={{ position: "absolute", left: 8, bottom: 8 }}>
+          <PriceTag pack={pack} />
+        </View>
+      </View>
+      <View>
+        <Text className="text-white text-label font-satoshiBold" numberOfLines={1}>
+          {pack.title}
+        </Text>
+        <Text className="text-ink-muted text-label font-satoshiRegular" numberOfLines={1}>
+          {pack.artist}
+        </Text>
+        <Text className="mt-0.5 text-overline text-white/50 font-satoshiRegular" numberOfLines={1}>
+          {productMetaOf(pack)}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -197,8 +319,8 @@ const ROW_COVER = 48;
  * One loop with its price button.
  *
  * `leading` is the pack's cover in lists that mix packs (the store's Singles
- * and search results), or the loop's number in a pack's own track list, the
- * way Apple Music numbers an album's songs.
+ * and search results), the loop's number in a pack's own track list, or
+ * nothing at all, when the row starts flush with its title.
  */
 export function LoopRow({
   loop,
@@ -209,7 +331,7 @@ export function LoopRow({
 }: {
   loop: RemoteLoop;
   pack: RemotePack;
-  leading: "cover" | number;
+  leading?: "cover" | number;
   subtitle: string;
   last: boolean;
 }) {
@@ -266,9 +388,8 @@ export function LoopRow({
 
   return (
     <View className="flex-row items-center gap-3">
-      {withCover ? (
-        <PackCover id={pack.id} size={ROW_COVER} radius={6} />
-      ) : (
+      {withCover && <PackCover pack={pack} size={ROW_COVER} radius={6} />}
+      {typeof leading === "number" && (
         <Text
           className="text-center text-label text-ink-muted font-satoshiMedium"
           style={{ width: 20 }}

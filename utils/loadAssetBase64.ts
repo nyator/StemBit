@@ -43,6 +43,29 @@ export async function resolveAudioUri(
 }
 
 /**
+ * A piece of audio as an engine message wants it, for whichever engine is
+ * running: `{ uri }` for a native one, `{ base64 }` for a WebView.
+ *
+ * A native engine decodes a file:// path in native code, so nothing is read
+ * into JS at all. Base64 is for the WebView, which can't reach the app's files
+ * -- and costs the React Native JS thread a full read and copy of the file,
+ * the thread every touch waits on, which is why native never takes it when a
+ * path will do. A source with no file:// path falls back to base64 either way.
+ */
+export type EngineAudio = { uri: string } | { base64: string };
+
+export async function loadAudioForEngine(
+  source: number | string,
+  native: boolean
+): Promise<EngineAudio> {
+  if (native) {
+    const { uri } = await resolveAudioUri(source);
+    if (uri.startsWith("file://")) return { uri };
+  }
+  return { base64: await loadAudioBase64(source) };
+}
+
+/**
  *  Base64 for either kind of audio a loop can come from: a bundled asset module
  * id, or a file URI for one the user imported. Imported files are already on
  * disk, so they skip the asset system entirely.d

@@ -216,9 +216,11 @@ export default function LoopScreen() {
           playLabel="Start loop"
           stopLabel="Stop loop"
           onToggle={() => {
-            hapticImpact(prefs.haptics, "medium");
+            // The engine first, the haptic after: the press is about sound,
+            // and nothing should stand between the touch and the message.
             if (isPlaying) stopLoop();
             else startLoop();
+            hapticImpact(prefs.haptics, "medium");
           }}
         />
 

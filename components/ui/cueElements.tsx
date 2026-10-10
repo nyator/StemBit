@@ -9,12 +9,13 @@ import { Folder, Musicnote, type IconComponent } from "../icons";
 import CuePicker, { type CuePickerHandle, type PickerOption } from "./cuePicker";
 import { BpmDial, StepperButton } from "./instrument";
 import { useBpmControl } from "../../hooks/useBpmControl";
+import { roundBpm } from "../../utils/bpm";
 
 const MIN_BPM = 20;
 const MAX_BPM = 320;
 
 export const clampBpm = (bpm: number) =>
-  Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
+  Math.max(MIN_BPM, Math.min(MAX_BPM, roundBpm(bpm)));
 
 type CueElementsProps = {
   loopKey?: string;

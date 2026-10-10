@@ -469,6 +469,26 @@ export function MusicFilter({ size = 24, color = DEFAULT_COLOR, style }: IconPro
   );
 }
 
+/**
+ * Three sliders, knobs staggered left, right, middle: the Filter button in Bits
+ * and the Loop Store. Redrawn from the supplied 1000-unit artwork onto this
+ * set's 24 grid and 1.5 stroke -- at its own 22/1000 stroke it rendered as a
+ * hairline at button size -- with the gap either side of each knob kept.
+ */
+export function Filter({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
+  const line = { stroke: color, strokeWidth: 1.5, strokeLinecap: "round" as const };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <Path d="M3 6.1H5.4M14.4 6.1H21" {...line} />
+      <Circle cx={9.9} cy={6.1} r={2} stroke={color} strokeWidth={1.5} />
+      <Path d="M21 12H18.6M9.6 12H3" {...line} />
+      <Circle cx={14.1} cy={12} r={2} stroke={color} strokeWidth={1.5} />
+      <Path d="M21 17.9H16M7 17.9H3" {...line} />
+      <Circle cx={11.5} cy={17.9} r={2} stroke={color} strokeWidth={1.5} />
+    </Svg>
+  );
+}
+
 export function Clipboard({ size = 24, color = DEFAULT_COLOR, style }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>

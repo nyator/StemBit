@@ -168,6 +168,13 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           return bytes.buffer;
         }
 
+        // base64 unpacked here, or a file:// path passed straight through when
+        // hosted natively -- see audioDataOf in loopEngine.ts for why.
+        function audioDataOf(base64OrUri) {
+          if (base64OrUri.indexOf("file://") === 0) return base64OrUri;
+          return base64ToArrayBuffer(base64OrUri);
+        }
+
         function ensureContext() {
           if (!audioContext) {
             audioContext = new AudioContextClass();
@@ -668,7 +675,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           if (!id || clickBuffers[id]) return;
           var ctx = ensureContext();
           ctx.decodeAudioData(
-            base64ToArrayBuffer(base64),
+            audioDataOf(base64),
             function (buf) {
               clickBuffers[id] = buf;
             },
@@ -1070,7 +1077,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         function loadTrack(id, base64) {
           var ctx = ensureContext();
           ctx.decodeAudioData(
-            base64ToArrayBuffer(base64),
+            audioDataOf(base64),
             function (buf) {
               buffers[id] = buf;
               post({ type: "loaded", id: id });
@@ -1130,7 +1137,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 
           switch (data.type) {
             case "loadTrack":
-              loadTrack(data.id, data.base64);
+              loadTrack(data.id, data.uri || data.base64);
               break;
             case "clearTracks":
               clearTracks(data.keep);
@@ -1165,7 +1172,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               }
               break;
             case "loadClick":
-              loadClickSound(data.id, data.base64);
+              loadClickSound(data.id, data.uri || data.base64);
               break;
             case "detectTempo":
               detectTrackTempo(data.id);
