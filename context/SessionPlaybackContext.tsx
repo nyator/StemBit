@@ -277,13 +277,6 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       });
   };
 
-  // Share the audio with other apps, or take it (Settings -> Audio). Queued
-  // until the engine is ready, and re-sent on every "ready" below.
-  useEffect(() => {
-    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefs.mixWithOthers]);
-
   // Everything about the click except whether it is on comes from the same
   // place the loop click reads -- the same two samples, how loud each voice is,
   // where it sits in the stereo field, and the metronome's own master. Only the
@@ -517,8 +510,9 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         queued.forEach((message) =>
           webViewRef.current?.postMessage(JSON.stringify(message))
         );
-        // Re-sent on every ready: a rebuilt engine starts with the default.
-        postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+        // Always shares the audio with other apps; re-sent on every ready,
+        // since a rebuilt engine starts with the default.
+        postToEngine({ type: "setMixWithOthers", enabled: true });
       } else if (data.type === "loaded") {
         pendingRef.current.delete(data.id);
         if (pendingRef.current.size === 0) markReady();

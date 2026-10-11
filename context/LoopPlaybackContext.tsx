@@ -697,7 +697,8 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
         loadClickSound(BEAT_SOUND_ID);
         postClickConfig();
         postToEngine({ type: "setLoopVolume", volume: prefs.loopVolume });
-        postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+        // Always shares the audio with other apps.
+        postToEngine({ type: "setMixWithOthers", enabled: true });
       } else if (data.type === "swapped") {
         // The boundary arrived and the new loop is sounding. Only the engine
         // could say when, so this is the moment the rest of the app learns it.
@@ -907,13 +908,6 @@ export function LoopPlaybackProvider({ children }: { children: ReactNode }) {
     // postToEngine reads only refs, so the first render's copy stays good.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Share the audio with other apps, or take it (Settings -> Audio). Re-sent
-  // on "ready" above too, since a rebuilt engine starts with the default.
-  useEffect(() => {
-    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefs.mixWithOthers]);
 
   // Return the tempo control to the selected loop's recorded BPM (1x rate).
   // No-op when nothing is selected.

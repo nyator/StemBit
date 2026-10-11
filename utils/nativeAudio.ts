@@ -3,12 +3,10 @@
 // The library installs its native module the moment it's imported, and throws
 // if the app binary doesn't contain it -- a dev client built before the
 // dependency was added, say. Imported at the top of a file that the root
-// layout reaches, that one throw took down every route in the app, for a
-// feature that's off by default. So nothing imports it directly: the native
-// engines ask for it here, at the point they're built, and the rest of the app
-// asks whether it's there before choosing them.
-import { usePreferences } from "../context/PreferencesContext";
-
+// layout reaches, that one throw took down every route in the app. So nothing
+// imports it directly: the native engines ask for it here, at the point
+// they're built, and the rest of the app asks whether it's there before
+// choosing them.
 type AudioApi = typeof import("react-native-audio-api");
 
 // undefined = not tried yet; null = tried, and this binary doesn't have it.
@@ -43,11 +41,10 @@ export const getAudioApi = (): AudioApi => {
 };
 
 /**
- * Run the engines on native audio: the user turned it on, and this build can.
- * With the setting on but the module missing, the WebView engines carry on as
- * if it were off rather than failing.
+ * Run the engines on native audio. Always, when this build has it; a build
+ * without the module (an older dev client) falls back to the WebView engines
+ * rather than failing.
  */
 export function useNativeAudio() {
-  const { prefs } = usePreferences();
-  return prefs.nativeAudio && isNativeAudioAvailable();
+  return isNativeAudioAvailable();
 }

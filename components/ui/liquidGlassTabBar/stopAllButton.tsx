@@ -96,7 +96,9 @@ export default function StopAllButton({
 
   // The stop square, drawn rather than taken from the icon set: the Stop icon
   // there is gradient artwork for the transport, not a glyph for a button.
-  const square = size * 0.5;
+  // A touch over half the button: big enough to read as "stop" from a glance
+  // at arm's length, with enough glass left around it to stay a button.
+  const square = size * 0.52;
   const content = (
     <TouchableOpacity
       onPressIn={onPress}

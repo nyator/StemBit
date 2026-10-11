@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -122,7 +123,6 @@ export default function LiquidGlassTabBar({ state, navigation }: TabBarProps) {
         canPreventDefault: true,
       });
       if (!isFocused && !event.defaultPrevented) {
-        hapticImpact(prefs.haptics, "light");
         navigation.navigate(route.name);
       }
     };
@@ -180,6 +180,16 @@ export default function LiquidGlassTabBar({ state, navigation }: TabBarProps) {
   const progress = useSharedValue(showStop ? 1 : 0);
   const [stopMounted, setStopMounted] = useState(showStop);
   const reduceMotion = useReducedMotion();
+  // Read when the hide animation finishes, which reaches JS a moment later.
+  // Something can start playing in that moment -- switching loops or cues
+  // stops one thing and starts the next -- and a stale "unmount" arriving
+  // after the button was asked back would leave it gone while audio plays,
+  // with nothing to bring it back until playback changed again.
+  const showStopRef = useRef(showStop);
+  showStopRef.current = showStop;
+  const unmountIfStillHidden = () => {
+    if (!showStopRef.current) setStopMounted(false);
+  };
   useEffect(() => {
     if (showStop) {
       setStopMounted(true);
@@ -187,7 +197,7 @@ export default function LiquidGlassTabBar({ state, navigation }: TabBarProps) {
     } else {
       const done = (finished?: boolean) => {
         "worklet";
-        if (finished) runOnJS(setStopMounted)(false);
+        if (finished) runOnJS(unmountIfStillHidden)();
       };
       if (reduceMotion) {
         progress.value = 0;
@@ -238,8 +248,11 @@ export default function LiquidGlassTabBar({ state, navigation }: TabBarProps) {
     stopAll();
   };
 
+  // Whenever anything plays, the button is there -- whatever the animation's
+  // bookkeeping says. The animation decides how it moves, never whether a
+  // stop is reachable.
   const stopButton = (part: "glass" | "face" | "whole") =>
-    stopMounted && (
+    (stopMounted || showStop) && (
       <StopAllButton
         part={part}
         progress={progress}

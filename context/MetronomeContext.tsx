@@ -375,15 +375,6 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engineReady]);
 
-  // Share the audio with other apps, or take it (Settings -> Audio). This
-  // engine's messages aren't queued, so it waits for "ready" -- and re-sends on
-  // every one, since a rebuilt engine starts with the default.
-  useEffect(() => {
-    if (!engineReady) return;
-    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engineReady, prefs.mixWithOthers]);
-
   const handleWebViewMessage = (event: WebViewMessageEvent) => {
     try {
       handleEngineReply(JSON.parse(event.nativeEvent.data));
@@ -396,7 +387,9 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   const handleEngineReply = (data: { type: string; [key: string]: any }) => {
     if (data.type === "ready") {
       setEngineReady(true);
-      postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+      // Always shares the audio with other apps; re-sent on every ready, since
+      // a rebuilt engine starts with the default.
+      postToEngine({ type: "setMixWithOthers", enabled: true });
     } else if (data.type === "pong") {
       if (pongTimerRef.current) {
         clearTimeout(pongTimerRef.current);
