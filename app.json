@@ -11,7 +11,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.builtelo.stembits",
       "appleTeamId": "2TB72JR5D3",
-      "runtimeVersion": "1.0.0",
+      "runtimeVersion": "1.1.0",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -24,7 +24,7 @@
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": "1.0.0",
+      "runtimeVersion": "1.1.0",
       "package": "com.builtelo.stembits"
     },
     "web": {
