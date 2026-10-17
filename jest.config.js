@@ -10,6 +10,12 @@ const config = {
   // steers it to the web implementation instead, since the native one reaches for
   // a real native module that doesn't exist under Jest and crashes on import.
   resolver: "react-native-worklets/jest/resolver",
+  // react-native-audio-api installs a native module on import, which doesn't
+  // exist under Jest. The package ships its own mock of the whole API.
+  moduleNameMapper: {
+    "^react-native-audio-api$":
+      "<rootDir>/node_modules/react-native-audio-api/lib/commonjs/mock/index.js",
+  },
 };
 
 module.exports = config;

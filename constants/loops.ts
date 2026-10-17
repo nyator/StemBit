@@ -567,6 +567,9 @@ export const suggestLoopTempo = (
   beatsPerBar: number,
   { minBpm, maxBpm }: { minBpm: number; maxBpm: number }
 ) => {
+  // Whole numbers on purpose, unlike a tempo the user sets: this is a guess
+  // from the file's length, and a guess claiming a tenth would be claiming a
+  // precision it doesn't have. The user can still type 92.5 over it.
   const clamp = (bpm: number) =>
     Math.max(minBpm, Math.min(maxBpm, Math.round(bpm)));
 

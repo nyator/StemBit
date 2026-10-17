@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   RefreshControl,
   ScrollView,
   Text,
@@ -8,7 +9,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { BottomSheetModal, BottomSheetScrollView, BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 
 import Screen from "../../components/ui/screen";
@@ -17,12 +17,8 @@ import EmptyState from "../../components/ui/emptyState";
 import SearchField from "../../components/ui/searchField";
 import Chip from "../../components/ui/chip";
 import { BrandButton } from "../../components/ui/brandButton";
-import {
-  SHEET_BACKGROUND,
-  SHEET_CONTENT,
-  SHEET_HANDLE_INDICATOR,
-  useSheetBackdrop,
-} from "../../components/ui/sheet";
+import FilterDrawer, { type FilterSection } from "../../components/ui/filterDrawer";
+import FilterBar, { type ActiveFilterPill } from "../../components/ui/filterBar";
 import {
   LoopRow,
   PackCover,
@@ -32,13 +28,8 @@ import {
   usePackStatus,
 } from "../../components/ui/storeParts";
 import StoreBanner, { pickBannerSlides } from "../../components/ui/storeBanner";
-import {
-  ArrowRight,
-  ChevronDown,
-  Musicnote,
-  Filter,
-} from "../../components/icons";
-import { COLORS, LAYOUT, SIZES } from "../../constants/theme";
+import { ArrowRight, Musicnote } from "../../components/icons";
+import { COLORS, LAYOUT } from "../../constants/theme";
 import { genreOf, type RemoteLoop, type RemotePack } from "../../constants/loopStore";
 import {
   DEFAULT_SORT,
@@ -69,7 +60,7 @@ import { useLoopStore } from "../../context/LoopStoreContext";
 // search swaps all of it for results.
 //
 // Filter & sort (constants/storeFilters.ts) narrow and order the grid and the
-// singles. While either is in use the banner and the New releases shelf step
+// singles, from the same eBay-style drawer as Bits (components/ui/filterDrawer). While either is in use the banner and the New releases shelf step
 // aside: they show picks from the whole store, and a screen that has been
 // asked for "slow Gospel packs, newest first" should show exactly that.
 
@@ -79,122 +70,6 @@ const GRID_GAP = 14;
 const SHELF_CARD = 150;
 /** Most a shelf shows; the grid below has everything. */
 const SHELF_MAX = 8;
-/* -------------------------------------------------------------------------- */
-/* Filter & sort sheet                                                         */
-/* -------------------------------------------------------------------------- */
-
-/**
- * One choice in a sheet; its circle fills brand blue when selected. `kind` tells a
- * screen reader whether it's one of several (a filter) or one of one (a sort).
- * A plain row with a rule above every one but the first, drawn like the rows
- * in Bits' filter sheet so the sheets read as one control.
- */
-const OptionRow = ({
-  label,
-  selected,
-  onPress,
-  kind,
-  count,
-  first,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  kind: "checkbox" | "radio";
-  count?: number;
-  first?: boolean;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    accessibilityRole={kind}
-    accessibilityState={{ checked: selected }}
-    activeOpacity={0.75}
-    className={`flex-row items-center gap-3 py-3 pl-2 ${first ? "" : "border-t border-white/5"}`}
-  >
-    {/* Just the circle: outlined when off, filled brand blue when on. */}
-    <View
-      className="rounded-full"
-      style={{
-        width: 16,
-        height: 16,
-        backgroundColor: selected ? COLORS.brand : "transparent",
-        borderWidth: selected ? 0 : 1,
-        borderColor: "rgba(255,255,255,0.2)",
-      }}
-    />
-    <Text className="flex-1 text-white text-body font-satoshiMedium">{label}</Text>
-    {count !== undefined && (
-      <Text className="text-ink-muted text-overline font-satoshiRegular">{count}</Text>
-    )}
-  </TouchableOpacity>
-);
-
-/**
- * A folding section of the filter sheet, the same as Bits': one ruled row
- * that names what's picked inside, and unfolds to its options.
- */
-const SheetSection = ({
-  title,
-  selected,
-  open,
-  onToggle,
-  onClear,
-  first,
-  children,
-}: {
-  title: string;
-  selected: string[];
-  open: boolean;
-  onToggle: () => void;
-  onClear: () => void;
-  first: boolean;
-  children: ReactNode;
-}) => (
-  // Ruled above and below like a settings list: the first section draws the
-  // top rule, every section its bottom one.
-  <View className={`w-full border-b border-white/10 ${first ? "border-t" : ""}`}>
-    <TouchableOpacity
-      onPress={onToggle}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
-      accessibilityLabel={`${title}${selected.length ? `, ${selected.join(", ")}` : ""}`}
-      className="flex-row items-center gap-2 py-3"
-      style={{ minHeight: 52 }}
-    >
-      <Text className="flex-1 text-white text-body font-satoshiMedium">{title}</Text>
-      {/* What's picked, by name -- readable without unfolding. */}
-      {selected.length > 0 && (
-        <Text
-          className="text-brand-from text-overline font-satoshiMedium"
-          style={{ maxWidth: "55%" }}
-          numberOfLines={1}
-        >
-          {selected.join(", ")}
-        </Text>
-      )}
-      <ChevronDown
-        size={16}
-        color={COLORS.textMuted}
-        style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}
-      />
-    </TouchableOpacity>
-    {open && (
-      <View className="pb-2">
-        {selected.length > 0 && (
-          <TouchableOpacity
-            onPress={onClear}
-            accessibilityLabel={`Clear ${title}`}
-            className="self-end pb-1"
-          >
-            <Text className="text-brand-from text-overline font-satoshiMedium">Clear</Text>
-          </TouchableOpacity>
-        )}
-        {children}
-      </View>
-    )}
-  </View>
-);
-
 /* -------------------------------------------------------------------------- */
 /* Search                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -305,11 +180,13 @@ const LoopStoreScreen = () => {
   const [filters, setFilters] = useState<StoreFilters>(NO_STORE_FILTERS);
   const [sort, setSort] = useState<StoreSort>(DEFAULT_SORT);
 
-  // Two sheets, because they are two questions: filters decide what's in the
-  // list, sort decides what order it's in.
-  const filterSheetRef = useRef<BottomSheetModal>(null);
-  const sortSheetRef = useRef<BottomSheetModal>(null);
-  const renderBackdrop = useSheetBackdrop();
+  // The same drawer as Bits'. Sort is its first row, the way eBay puts Sort at
+  // the top of its filter panel: one place to shape the list, not two sheets.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const openFilters = () => {
+    Keyboard.dismiss();
+    setFiltersOpen(true);
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -356,25 +233,13 @@ const LoopStoreScreen = () => {
     }));
   const clearAxis = (axis: StoreAxis) => setFilters((current) => ({ ...current, [axis]: [] }));
   const clearFilters = () => setFilters(NO_STORE_FILTERS);
-
-  // Which filter sections are unfolded. All start folded, so every heading
-  // fits on screen at once; the headings name what's picked inside them.
-  const [openAxes, setOpenAxes] = useState<Record<StoreAxis, boolean>>({
-    types: false,
-    genres: false,
-    tempos: false,
-    keys: false,
-    artists: false,
-  });
-  const toggleAxisOpen = (axis: StoreAxis) =>
-    setOpenAxes((current) => ({ ...current, [axis]: !current[axis] }));
-
-  // A sort is one choice, so picking it is the whole job: the sheet closes.
-  const pickSort = (next: StoreSort) => {
-    setSort(next);
-    sortSheetRef.current?.dismiss();
+  // The drawer's Reset puts back everything it shapes, the sort included.
+  const resetAll = () => {
+    clearFilters();
+    setSort(DEFAULT_SORT);
   };
-  const sortLabel = STORE_SORTS.find((option) => option.id === sort)?.label;
+
+  const sortLabel = STORE_SORTS.find((option) => option.id === sort)?.label ?? "";
 
   // Filtered, then sorted. Search runs over the filtered list too, so
   // "A minor" typed into the box while Gospel is ticked finds Gospel loops.
@@ -391,6 +256,58 @@ const LoopStoreScreen = () => {
   // ticking a second genre doesn't shrink the first one's number.
   const countFor = (axis: StoreAxis, value: string) =>
     packs.filter((pack) => matchesFilters(pack, { ...liveFilters, [axis]: [value] })).length;
+
+  // The drawer's rows, by Bits' rule: an axis that can run long (genre, key,
+  // artist) is a row that opens its list; a handful of values (type, tempo)
+  // is chips tapped in place. One with fewer than two options filters
+  // nothing, so it isn't offered.
+  const CHIP_AXES: StoreAxis[] = ["types", "tempos"];
+  const sections: FilterSection[] = [
+    {
+      key: "sort",
+      label: "Sort",
+      kind: "list",
+      single: true,
+      options: STORE_SORTS.map((option) => ({ value: option.label })),
+      selected: [sortLabel],
+      onToggle: (label) => {
+        const next = STORE_SORTS.find((option) => option.label === label);
+        if (next) setSort(next.id);
+      },
+      onClear: () => setSort(DEFAULT_SORT),
+    },
+    ...STORE_AXES.filter(({ axis }) => options[axis].length > 1).map(
+      ({ axis, label }): FilterSection => ({
+        key: axis,
+        label,
+        kind: CHIP_AXES.includes(axis) ? "chips" : "list",
+        options: options[axis].map((value) => ({ value, count: countFor(axis, value) })),
+        selected: liveFilters[axis],
+        onToggle: (value) => toggle(axis, value),
+        onClear: () => clearAxis(axis),
+      })
+    ),
+  ];
+
+  // As in Bits, the search counts as a filter: it narrows the same list.
+  const pills: ActiveFilterPill[] = [
+    ...(query.trim().length > 0
+      ? [
+          {
+            key: "query",
+            label: `"${query.trim()}"`,
+            onRemove: () => setQuery(""),
+            accessibilityLabel: `Remove "${query.trim()}" search`,
+          },
+        ]
+      : []),
+    ...active.map(({ axis, value }) => ({
+      key: `${axis}:${value}`,
+      label: value,
+      onRemove: () => toggle(axis, value),
+      accessibilityLabel: `Remove ${value} filter`,
+    })),
+  ];
 
   // A shelf of the newest packs, but only once the grid is long enough that
   // the newest aren't already on screen. Four packs in a grid don't need a
@@ -636,69 +553,20 @@ const LoopStoreScreen = () => {
       >
         {/* Only once there's a catalogue to search. */}
         {packs.length > 0 && (
-          <View className="gap-3 mb-6">
-            {/* Search and the filter button share a row: the search takes
-                what's left, the button sits at its end at the same height. */}
-            <View className="flex-row items-center gap-2">
-              <View className="flex-1">
+          // The same bar as Bits: search and Filter on one row, pills below.
+          <View className="mb-6">
+            <FilterBar
+              search={
                 <SearchField
                   value={query}
                   onChangeText={setQuery}
                   placeholder="Packs, loops, artists"
                   accessibilityLabel="Search the loop store"
                 />
-              </View>
-
-              <TouchableOpacity
-                onPress={() => sortSheetRef.current?.present()}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  active.length > 0 ? `Filters, ${active.length} active` : "Filters"
-                }
-                className="items-center justify-center rounded-full bg-white/5"
-                style={{ width: SIZES.control, height: SIZES.control }}
-              >
-                <Filter size={SIZES.rowIcon} color={COLORS.white} />
-                {/* The count on the corner, where an icon button carries one. */}
-                {active.length > 0 && (
-                  <View
-                    className="absolute items-center justify-center rounded-full bg-brand"
-                    style={{ top: -2, right: -2, minWidth: 18, height: 18, paddingHorizontal: 4 }}
-                  >
-                    <Text className="text-white text-micro font-spaceBold">{active.length}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Each active filter is a pill that removes itself, as in Bits --
-                on its own row, so it never squeezes the search. */}
-            {active.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: -LAYOUT.screenPaddingX }}
-                contentContainerStyle={{
-                  paddingHorizontal: LAYOUT.screenPaddingX,
-                  gap: 6,
-                  alignItems: "center",
-                }}
-              >
-                {active.map(({ axis, value }) => (
-                  <TouchableOpacity
-                    key={`${axis}:${value}`}
-                    onPress={() => toggle(axis, value)}
-                    accessibilityLabel={`Remove ${value} filter`}
-                    className="flex-row items-center px-3 py-2 rounded-full gap-1.5 bg-brand/20 border border-brand/40"
-                  >
-                    <Text className="text-brand-from text-overline font-satoshiMedium">
-                      {value}
-                    </Text>
-                    <Text className="text-brand-from text-overline">✕</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
+              }
+              onOpen={openFilters}
+              pills={pills}
+            />
           </View>
         )}
 
@@ -719,93 +587,14 @@ const LoopStoreScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Every filter at once, as in Bits: seeing the sections together is
-          what makes combining them an obvious thing to do. */}
-      <BottomSheetModal
-        ref={filterSheetRef}
-        snapPoints={["80%"]}
-        enableDynamicSizing={false}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={SHEET_BACKGROUND}
-        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
-      >
-        <View className="flex-row items-center justify-between px-screen pt-1 pb-3">
-          <Text className="text-white font-satoshiBold text-title">Filters</Text>
-          {active.length > 0 && (
-            <TouchableOpacity onPress={clearFilters} accessibilityLabel="Clear all filters">
-              <Text className="text-ink-faint text-overline font-satoshiMedium underline">
-                Clear all
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <BottomSheetScrollView
-          showsVerticalScrollIndicator={false}
-          // No gap: each section rules its own edges, and the rows meet.
-          contentContainerStyle={{ ...SHEET_CONTENT, paddingTop: 0 }}
-        >
-          {STORE_AXES.filter(({ axis }) => options[axis].length > 1).map(
-            ({ axis, label }, index) => (
-              <SheetSection
-                key={axis}
-                title={label}
-                selected={liveFilters[axis]}
-                open={openAxes[axis]}
-                onToggle={() => toggleAxisOpen(axis)}
-                onClear={() => clearAxis(axis)}
-                first={index === 0}
-              >
-                {options[axis].map((value, i) => (
-                  <OptionRow
-                    key={value}
-                    kind="checkbox"
-                    label={value}
-                    selected={liveFilters[axis].includes(value)}
-                    onPress={() => toggle(axis, value)}
-                    count={countFor(axis, value)}
-                    first={i === 0}
-                  />
-                ))}
-              </SheetSection>
-            )
-          )}
-        </BottomSheetScrollView>
-
-        <View
-          className="pt-3 border-t px-screen border-hairline"
-          style={{ paddingBottom: SHEET_CONTENT.paddingBottom }}
-        >
-          <BrandButton
-            label={`Show ${visible.length} ${visible.length === 1 ? "result" : "results"}`}
-            onPress={() => filterSheetRef.current?.dismiss()}
-          />
-        </View>
-      </BottomSheetModal>
-
-      <BottomSheetModal
-        ref={sortSheetRef}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={SHEET_BACKGROUND}
-        handleIndicatorStyle={SHEET_HANDLE_INDICATOR}
-      >
-        <BottomSheetView style={{ ...SHEET_CONTENT, gap: 12 }}>
-          <Text className="text-white font-satoshiBold text-title">Filter by</Text>
-          {/* Ruled rows, top and bottom, like the filter sheet's. */}
-          <View className="border-t border-b border-white/10">
-            {STORE_SORTS.map((option, i) => (
-              <OptionRow
-                key={option.id}
-                kind="radio"
-                label={option.label}
-                selected={sort === option.id}
-                onPress={() => pickSort(option.id)}
-                first={i === 0}
-              />
-            ))}
-          </View>
-        </BottomSheetView>
-      </BottomSheetModal>
+      <FilterDrawer
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onReset={resetAll}
+        resetDisabled={!refining}
+        sections={sections}
+        resultLabel={`Show ${visible.length} ${visible.length === 1 ? "result" : "results"}`}
+      />
     </Screen>
   );
 };

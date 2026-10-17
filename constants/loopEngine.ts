@@ -154,7 +154,17 @@ export const buildLoopEngineHtml = () => `<!DOCTYPE html>
         // Loop click scheduler cadence (same lookahead approach the metronome
         // engine uses): wake every ~25ms, schedule clicks up to 100ms ahead.
         var CLICK_LOOKAHEAD_MS = 25;
-        var CLICK_SCHEDULE_AHEAD = 0.1;
+        // Hosted natively (utils/nativeEngineHost.ts) this page runs on the
+        // React Native JS thread, which a heavy render can hold up for longer
+        // than a WebView timer ever is -- so the horizon is wider there, and
+        // wider still in the background, where iOS can stretch timers out.
+        // Clicks are still placed on the audio clock either way; a wider
+        // horizon only means a tempo change takes that long to be heard.
+        function clickScheduleAhead() {
+          if (!window.__nativeHost) return 0.1;
+          return document.hidden ? 1.0 : 0.15;
+        }
+        var CLICK_SCHEDULE_AHEAD = clickScheduleAhead();
         // How often the playhead is reported while it's wanted. ~16 a second:
         // smooth enough to read as movement, and far cheaper than a message per
         // frame across the bridge.
@@ -176,6 +186,17 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var bytes = new Uint8Array(len);
           for (var i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
           return bytes.buffer;
+        }
+
+        // What decodeAudioData is handed for a piece of audio the app sent:
+        // base64, unpacked here, or -- hosted natively -- a file:// path, passed
+        // straight through. Native audio decodes a path in native code; base64
+        // would be unpacked byte by byte on the React Native JS thread, the one
+        // that also handles every touch, and a loop catalogue's worth of it is
+        // seconds of play and tap presses waiting their turn.
+        function audioDataOf(base64OrUri) {
+          if (base64OrUri.indexOf("file://") === 0) return base64OrUri;
+          return base64ToArrayBuffer(base64OrUri);
         }
 
         function ensureContext() {
@@ -607,7 +628,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             post({ type: "preloaded", key: key });
             return;
           }
-          encodedByKey[key] = base64ToArrayBuffer(base64);
+          encodedByKey[key] = audioDataOf(base64);
           decodeKey(
             key,
             nativeBpm,
@@ -711,7 +732,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
 
           if (base64 && !encodedByKey[key] && !pendingDecodes[key]) {
-            encodedByKey[key] = base64ToArrayBuffer(base64);
+            encodedByKey[key] = audioDataOf(base64);
           }
 
           decodeKey(
@@ -807,7 +828,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
             !encodedByKey[key] &&
             !pendingDecodes[key]
           ) {
-            encodedByKey[key] = base64ToArrayBuffer(base64);
+            encodedByKey[key] = audioDataOf(base64);
           }
 
           // nativeBpm 0: there is no declared tempo yet -- finding it is what
@@ -1471,7 +1492,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           if (!id || clickBuffers[id]) return;
           var ctx = ensureContext();
           ctx.decodeAudioData(
-            base64ToArrayBuffer(base64),
+            audioDataOf(base64),
             function (buf) {
               clickBuffers[id] = buf;
             },
@@ -1551,6 +1572,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // an offscreen WebView is never considered hidden in the first place,
         // and so never fires one.
         document.addEventListener("visibilitychange", function () {
+          CLICK_SCHEDULE_AHEAD = clickScheduleAhead();
           if (!document.hidden) resumeAudio();
         });
 
@@ -1563,20 +1585,20 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           switch (data.type) {
             case "preload":
-              preload(data.key, data.base64, data.nativeBpm);
+              preload(data.key, data.uri || data.base64, data.nativeBpm);
               break;
             case "select":
               select(
                 data.key,
                 data.nativeBpm,
-                data.base64,
+                data.uri || data.base64,
                 data.beatsPerBar,
                 data.trimStart,
                 data.trimEnd
               );
               break;
             case "analyze":
-              analyze(data.key, data.base64, data.buckets);
+              analyze(data.key, data.uri || data.base64, data.buckets);
               break;
             case "detect":
               detect(data.key, data.start, data.end);
@@ -1618,7 +1640,7 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
               setLoopVolume(data.volume);
               break;
             case "loadClick":
-              loadClick(data.id, data.base64);
+              loadClick(data.id, data.uri || data.base64);
               break;
             case "setClick":
               setClick(data);

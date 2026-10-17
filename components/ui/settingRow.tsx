@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { View, Text, TouchableOpacity, Switch } from "react-native";
 
 import Radio from "./radio";
@@ -51,7 +51,8 @@ type SegmentedRowProps<T extends string> = BaseProps & {
 // Same shape as a switch row but the value is continuous, 0 to max.
 type SliderRowProps = BaseProps & {
   value: number;
-  onValueChange: (value: number) => void;
+  /** Every tick of a drag. Optional: the row shows its own drag already. */
+  onValueChange?: (value: number) => void;
   /** Fires once when the drag ends -- persist here, not on every tick. */
   onComplete?: (value: number) => void;
   /** Where a double tap puts the slider. Omitted, a double tap does nothing. */
@@ -179,6 +180,12 @@ export function SettingSwitch({ value, onValueChange, ...base }: SwitchRowProps)
 // being self-explanatory the moment one of these runs past full scale: on a
 // control that reaches 200%, the thumb sitting halfway means "normal", and
 // there is nothing about a half-full track that says so.
+//
+// The drag lives in this row's own state, not the screen's. Ticks arrive at
+// frame rate, and lifting them into the screen re-rendered every row on it for
+// each one -- JS-thread work that, with native audio, the loop click's
+// scheduler shares, and that it was heard losing. Only onComplete leaves the
+// row; a new `value` from outside (a reset, a load) takes over again.
 export function SettingSlider({
   value,
   onValueChange,
@@ -187,15 +194,24 @@ export function SettingSlider({
   max = 1,
   ...base
 }: SliderRowProps) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
   return (
     <RowShell
       {...base}
       right={
         <View className="flex-row items-center">
           <Slider
-            value={value}
-            onChange={onValueChange}
-            onComplete={onComplete}
+            value={draft}
+            onChange={(next) => {
+              setDraft(next);
+              onValueChange?.(next);
+            }}
+            onComplete={(next) => {
+              setDraft(next);
+              onComplete?.(next);
+            }}
             defaultValue={defaultValue}
             max={max}
             accessibilityLabel={base.label}
@@ -210,7 +226,7 @@ export function SettingSlider({
               fontVariant: ["tabular-nums"],
             }}
           >
-            {Math.round(value * 100)}%
+            {Math.round(draft * 100)}%
           </Text>
         </View>
       }

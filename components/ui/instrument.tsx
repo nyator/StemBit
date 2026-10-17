@@ -1,5 +1,12 @@
 import type { ComponentType, ReactNode } from "react";
-import { Text, TextInput, TouchableOpacity, View, type ViewStyle } from "react-native";
+import {
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  type GestureResponderEvent,
+  type ViewStyle,
+} from "react-native";
 
 import InfoButton from "./infoButton";
 import { DialGlowRings } from "./dialGlowRing";
@@ -7,7 +14,7 @@ import BeatGlow, { BEAT_GLOW_SIZE } from "./beatGlow";
 import { AddCircle, MinusCircle, PlayFilled, Stop } from "../icons";
 import type { InfoTopicKey } from "../../constants/infoCopy";
 import type { BpmControls } from "../../hooks/useBpmControl";
-import { COLORS, SHADOWS, SIZES } from "../../constants/theme";
+import { COLORS, SHADOWS, SIZES, TYPE } from "../../constants/theme";
 
 // The control surface the metronome, the loop player and the loop importer all
 // share.
@@ -156,15 +163,24 @@ export function BpmDial({
     >
       <TextInput
         className="p-0 text-center text-display font-spaceBold"
-        style={{ minWidth: 110, color: isPlaying ? COLORS.brand : COLORS.white }}
+        style={{
+          minWidth: 110,
+          color: isPlaying ? COLORS.brand : COLORS.white,
+          // "125.5" is five characters where "125" is three; stepped down so a
+          // decimal tempo still fits the dial instead of running off it.
+          ...(controls.bpmText.length > 3 && {
+            fontSize: Math.round(TYPE.display.fontSize * 0.8),
+          }),
+        }}
         value={controls.bpmText}
         onChangeText={controls.handleBpmTextChange}
         onEndEditing={controls.commitBpmText}
-        keyboardType="number-pad"
+        // With a point: tempos take one decimal place (utils/bpm.ts).
+        keyboardType="decimal-pad"
         // No Done key: the keyboard closes on a tap outside the field (see the
         // Loop and Metronome screens), which commits the typed BPM.
         keyboardAppearance="dark"
-        maxLength={3}
+        maxLength={5}
         selectTextOnFocus
         underlineColorAndroid="transparent"
         onFocus={onFocus}
@@ -280,7 +296,8 @@ export function TapTempoButton({
   onPress,
   className = "",
 }: {
-  onPress: () => void;
+  /** Gets the touch event: its timestamp is what the tap is timed by. */
+  onPress: (event: GestureResponderEvent) => void;
   className?: string;
 }) {
   return (

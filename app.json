@@ -34,6 +34,13 @@
     "plugins": [
       "expo-router",
       "expo-audio",
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": true,
+          "androidForegroundService": false
+        }
+      ],
       "expo-font",
       "expo-asset",
       "expo-status-bar",

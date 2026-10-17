@@ -86,6 +86,7 @@ import {
   Musicnote,
   PlayFilled,
   SortPad,
+  VolumeHigh,
   Stop,
 } from "../../components/icons";
 import NavButton from "../../components/ui/navButton";
@@ -1031,15 +1032,26 @@ export default function PerformanceScreen() {
       <ScreenHeader
         title={(setlist?.title ?? cue.title)}
         subTitle={cue?.title}
+        titleAlign="left"
         action={
-          (setlist?.items.length ?? 0) > 1 ? (
+          <View className="flex-row items-center gap-2">
+            {/* The same volume button as the tab screens' header, so the
+                output can be checked mid-set without leaving the cue. */}
             <NavButton
-              icon={SortPad}
-              onPress={openSetlist}
+              icon={VolumeHigh}
+              onPress={() => router.push("/(settings)/audiovolume")}
               tint="neutral"
-              accessibilityLabel="Open the setlist"
+              accessibilityLabel="Audio output and volume"
             />
-          ) : undefined
+            {(setlist?.items.length ?? 0) > 1 && (
+              <NavButton
+                icon={SortPad}
+                onPress={openSetlist}
+                tint="neutral"
+                accessibilityLabel="Open the setlist"
+              />
+            )}
+          </View>
         }
       />
 
@@ -1390,7 +1402,7 @@ export default function PerformanceScreen() {
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* <CueElements
+          <CueElements
             loopKey={cue.loopKey}
             bpm={cue.bpm}
             padPack={cue.padPack}
@@ -1401,7 +1413,7 @@ export default function PerformanceScreen() {
             onChangeBpm={setCueBpm}
             onChangePadPack={setCuePadPack}
             onEditKey={() => setEditingKey(true)}
-          /> */}
+          />
         </ScrollView>
       ) : (
         <>
@@ -1424,6 +1436,11 @@ export default function PerformanceScreen() {
             className="mx-5 mb-3"
             style={{ height: 1, backgroundColor: COLORS.border }}
           />
+
+          {/* Takes up the space the stem cue's section list would, so the
+              transport stays pinned to the bottom instead of riding up under
+              the readout. */}
+          <View className="flex-1" />
 
           {/* <ScrollView
             className="flex-1 px-screen"
@@ -1458,7 +1475,7 @@ export default function PerformanceScreen() {
           >
             {/* Play / Stop Toggle Zone */}
             <TouchableOpacity
-              onPress={togglePad}
+              onPressIn={togglePad}
               disabled={!padPack}
               accessibilityRole="button"
               accessibilityLabel={padIsLive ? "Stop pad" : "Start pad"}
@@ -1566,7 +1583,7 @@ export default function PerformanceScreen() {
       <View className="px-screen pb-4">
         {!isStemCue ? (
           <TouchableOpacity
-            onPress={toggleCueTransport}
+            onPressIn={toggleCueTransport}
             disabled={cueIsEmpty}
             accessibilityLabel={cueIsLive ? "Stop this cue" : "Play this cue"}
             activeOpacity={0.85}
@@ -1587,7 +1604,7 @@ export default function PerformanceScreen() {
           <View className="flex-row items-center w-full gap-2" style={{ height: 60 }}>
             {/* Return to Zero (RTZ) Button */}
             <TouchableOpacity
-              onPress={returnToZero}
+              onPressIn={returnToZero}
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel="Return to start"
@@ -1605,7 +1622,7 @@ export default function PerformanceScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={toggleStudioTransport}
+              onPressIn={toggleStudioTransport}
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel={session.isPlaying ? "Stop" : "Play"}
@@ -1627,7 +1644,7 @@ export default function PerformanceScreen() {
         ) : (
           <View className="flex-row" style={{ height: 60 }}>
             <TouchableOpacity
-              onPress={togglePerformTransport}
+              onPressIn={togglePerformTransport}
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel={

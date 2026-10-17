@@ -32,7 +32,11 @@ export default function NavButton({
       {HAS_LIQUID_GLASS ? (
         <GlassView
           glassEffectStyle="regular"
-          isInteractive
+          // The interactive glow takes the glass's tint, and with none set it
+          // falls back to the system's -- iOS blue -- so a neutral button (Back)
+          // flashed blue on press. Only a brand button, where blue is the
+          // point, keeps it; the TouchableOpacity dims the rest on press.
+          isInteractive={tint === "brand"}
           tintColor={tint === "brand" ? COLORS.brand : undefined}
           style={{
             width: NAV_BUTTON_FOOTPRINT,

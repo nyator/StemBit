@@ -140,7 +140,15 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 
         // Same lookahead constants the metronome uses, and for the same reason.
         var LOOKAHEAD_MS = 25;
-        var SCHEDULE_AHEAD = 0.1;
+        // Hosted natively (utils/nativeEngineHost.ts) this page runs on the
+        // React Native JS thread, which a heavy render can hold up for longer
+        // than a WebView timer ever is -- so the horizon is wider there, and
+        // wider still in the background, where iOS can stretch timers out.
+        function scheduleAhead() {
+          if (!window.__nativeHost) return 0.1;
+          return document.hidden ? 1.0 : 0.15;
+        }
+        var SCHEDULE_AHEAD = scheduleAhead();
         // Web Audio drops times already in the past, so a launch needs a little
         // headroom. Matches the other engines.
         var MIN_SCHEDULE_LEAD = 0.002;
@@ -158,6 +166,13 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           var bytes = new Uint8Array(len);
           for (var i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
           return bytes.buffer;
+        }
+
+        // base64 unpacked here, or a file:// path passed straight through when
+        // hosted natively -- see audioDataOf in loopEngine.ts for why.
+        function audioDataOf(base64OrUri) {
+          if (base64OrUri.indexOf("file://") === 0) return base64OrUri;
+          return base64ToArrayBuffer(base64OrUri);
         }
 
         function ensureContext() {
@@ -664,7 +679,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           if (!id || clickBuffers[id]) return;
           var ctx = ensureContext();
           ctx.decodeAudioData(
-            base64ToArrayBuffer(base64),
+            audioDataOf(base64),
             function (buf) {
               clickBuffers[id] = buf;
             },
@@ -1253,8 +1268,10 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           return placed;
         }
 
-        function loadTrack(id, base64, startSeconds) {
-          decodeTrack(id, base64ToArrayBuffer(base64), startSeconds);
+        // Base64 from a WebView host, or a file path the native host decodes
+        // itself -- see audioDataOf.
+        function loadTrack(id, base64OrUri, startSeconds) {
+          decodeTrack(id, audioDataOf(base64OrUri), startSeconds);
         }
 
         // A stem read straight off disk, by the page itself.
@@ -1343,6 +1360,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // an offscreen WebView is never considered hidden in the first place,
         // and so never fires one.
         document.addEventListener("visibilitychange", function () {
+          SCHEDULE_AHEAD = scheduleAhead();
           if (!document.hidden) resumeAudio();
         });
 
@@ -1356,7 +1374,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 
           switch (data.type) {
             case "loadTrack":
-              loadTrack(data.id, data.base64, data.startSeconds);
+              loadTrack(data.id, data.uri || data.base64, data.startSeconds);
               break;
             case "loadTrackFile":
               loadTrackFile(data.id, data.url, data.startSeconds);
@@ -1394,7 +1412,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               }
               break;
             case "loadClick":
-              loadClickSound(data.id, data.base64);
+              loadClickSound(data.id, data.uri || data.base64);
               break;
             case "detectTempo":
               detectTrackTempo(data.id);

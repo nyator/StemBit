@@ -41,7 +41,7 @@ function EnginePill({ onPress, onStop, accentColor, label, icon }: PillProps) {
       />
       <View className="mr-2">{icon}</View>
       <Text className="mr-3 text-white font-satoshiBold">{label}</Text>
-      <TouchableOpacity accessibilityLabel="Stop" onPress={onStop} hitSlop={8}>
+      <TouchableOpacity accessibilityLabel="Stop" onPressIn={onStop} hitSlop={8}>
         {HAS_LIQUID_GLASS ? (
           <GlassView
             glassEffectStyle="regular"

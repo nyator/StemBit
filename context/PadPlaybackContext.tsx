@@ -22,6 +22,7 @@ import {
   padBusScale,
   type PadPack,
 } from "../constants/pads";
+import { onVolumePreview } from "../utils/volumePreview";
 
 // Pad instrument engine. This used to live inside the pad screen, but a held
 // pad drone needs to keep sounding while the user navigates elsewhere (the same
@@ -541,6 +542,27 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     teardownPad,
     volumeForPack,
   ]);
+
+  // The master pad level live, while its Settings slider is still moving (see
+  // utils/volumePreview.ts). Through the ref the fades already read, so a
+  // voice that starts mid-drag starts at the dragged level; the release's
+  // setPref then runs the reconcile above and lands on the same value.
+  useEffect(
+    () =>
+      onVolumePreview("pad", (volume) => {
+        padVolumeRef.current = volume;
+        if (!isPlayingRef.current) return;
+        const voices = [...padPlayersRef.current.values()];
+        if (naturePlayerRef.current) voices.push(naturePlayerRef.current);
+        voices.forEach((player) => {
+          if (player.isLoopCrossfading) return;
+          const audioLayer = player.layers[player.activeLayer];
+          clearFade(audioLayer);
+          audioLayer.volume = volumeForPack(player.packKey);
+        });
+      }),
+    [clearFade, volumeForPack]
+  );
 
   // Run the nature bed whenever it's audible. Unlike a pad voice it isn't tied
   // to a particular key — switching keys leaves it running rather than

@@ -1,5 +1,12 @@
 import { useMemo, useState } from "react";
-import { View, Text } from "react-native";
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // Not @react-navigation/native directly: as of SDK 56, expo-router's require.context
 // scan rejects any direct react-navigation import from app code (it manages the
@@ -12,7 +19,7 @@ import Screen from "../../components/ui/screen";
 import ScreenHeader from "../../components/ui/screenHeader";
 import { BrandButton } from "../../components/ui/brandButton";
 import { BrandInput } from "../../components/ui/brandInput";
-import { BpmDial } from "../../components/ui/instrument";
+import { BpmDial, StepperButton } from "../../components/ui/instrument";
 import { useBpmControl } from "../../hooks/useBpmControl";
 import { findLoopByKey } from "../../constants/loops";
 import { useUserLoops } from "../../context/UserLoopsContext";
@@ -126,43 +133,71 @@ export default function EditLoopScreen() {
     <Screen glows={["topLeft"]}>
       <ScreenHeader title="Edit Loop" />
 
-      <View className="flex-1 px-screen">
-        <BrandInput
-          label="Name"
-          placeholder="Name this loop"
-          value={title}
-          onChangeText={setTitle}
-          maxLength={40}
-          returnKeyType="done"
-          error={
-            trimmedTitle.length === 0 && title.length > 0
-              ? "Give it a name."
-              : undefined
-          }
-        />
-
-        <Text className="mt-2 mb-3 text-ink font-spaceMedium text-label">
-          Plays at
-        </Text>
-
-        <View className="items-center">
-          <BpmDial controls={controls} isPlaying={false} variant="compact" />
-        </View>
-
-        <Text className="mt-3 text-center text-ink-muted text-overline font-satoshiRegular leading-5">
-          {bpm === loop.bpm
-            ? `Its own tempo. Recorded at ${loop.bpm} BPM.`
-            : `Opens at ${bpm} instead of the ${loop.bpm} BPM it was recorded at — the audio is stretched to fit, so the pitch doesn't move.`}
-        </Text>
-
-        <View className="mt-auto mb-4">
-          <BrandButton
-            label="Save"
-            onPress={save}
-            disabled={!canSave}
+      {/* Save sits at the bottom, so on iOS the view shrinks by the keyboard's
+          height to keep it reachable while typing. Android gets the same from
+          the window's own resize. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        {/* A tap on any empty space closes the keyboard, the way it does on the
+            Loop tab. The BPM field's number pad has no Done key, so without
+            this there was no way out of it. */}
+        <Pressable
+          onPress={Keyboard.dismiss}
+          accessible={false}
+          className="flex-1 px-screen"
+        >
+          <BrandInput
+            label="Name"
+            placeholder="Name this loop"
+            value={title}
+            onChangeText={setTitle}
+            maxLength={40}
+            returnKeyType="done"
+            keyboardAppearance="dark"
+            error={
+              trimmedTitle.length === 0 && title.length > 0
+                ? "Give it a name."
+                : undefined
+            }
           />
-        </View>
-      </View>
+
+          <Text className="mt-2 mb-3 text-center text-ink font-spaceMedium text-label">
+            Plays at
+          </Text>
+
+          {/* The steppers the import screen has, so nudging the tempo doesn't
+              mean opening the keyboard at all. */}
+          <View className="flex-row items-center self-center gap-3">
+            <StepperButton
+              direction="down"
+              controls={controls}
+              label="Decrease playback tempo"
+            />
+            <BpmDial controls={controls} isPlaying={false} variant="compact" />
+            <StepperButton
+              direction="up"
+              controls={controls}
+              label="Increase playback tempo"
+            />
+          </View>
+
+          <Text className="mt-3 text-center text-ink-muted text-overline font-satoshiRegular leading-5">
+            {bpm === loop.bpm
+              ? `Its own tempo. Recorded at ${loop.bpm} BPM.`
+              : `Opens at ${bpm} instead of the ${loop.bpm} BPM it was recorded at — the audio is stretched to fit, so the pitch doesn't move.`}
+          </Text>
+
+          <View className="mt-auto mb-4">
+            <BrandButton
+              label="Save"
+              onPress={save}
+              disabled={!canSave}
+            />
+          </View>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

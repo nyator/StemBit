@@ -7,13 +7,14 @@ import {
   type ReactNode,
 } from "react";
 import { AppState } from "react-native";
-import WebView, { type WebViewMessageEvent } from "react-native-webview";
+import { type WebViewMessageEvent } from "react-native-webview";
 // The legacy entrypoint -- see context/SessionsContext.tsx.
 import * as FileSystem from "expo-file-system/legacy";
+import EngineView, { type EngineViewHandle } from "../components/engineView";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
-import { loadAssetBase64, loadAudioBase64 } from "../utils/loadAssetBase64";
+import { loadAudioBase64, loadAudioForEngine } from "../utils/loadAssetBase64";
 import { resolveStemUri } from "../utils/importStems";
 import {
   ACCENT_SOUND_ID,
@@ -22,6 +23,8 @@ import {
   useMetronome,
 } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
+import { useNativeAudio } from "../utils/nativeAudio";
+import { onVolumePreview } from "../utils/volumePreview";
 import { useSessions, type CueTrack } from "./SessionsContext";
 
 // The session's own playback, in a hidden WebView of its own.
@@ -220,7 +223,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   const { isPlaying: metroPlaying, stopMetronome } = useMetronome();
   const metroPlayingRef = useRef(metroPlaying);
   metroPlayingRef.current = metroPlaying;
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<EngineViewHandle>(null);
   const [engineHtml] = useState(buildSessionEngineHtml);
   const [engineGeneration, setEngineGeneration] = useState(0);
 
@@ -332,20 +335,13 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     const asset = soundAsset(id);
     if (asset == null) return;
     clickLoadedRef.current.add(id);
-    loadAssetBase64(asset)
-      .then((base64) => postToEngine({ type: "loadClick", id, base64 }))
+    loadAudioForEngine(asset, useNativeRef.current)
+      .then((audio) => postToEngine({ type: "loadClick", id, ...audio }))
       .catch((error) => {
         clickLoadedRef.current.delete(id);
         console.error("Failed to load stem click sound", id, error);
       });
   };
-
-  // Share the audio with other apps, or take it (Settings -> Audio). Queued
-  // until the engine is ready, and re-sent on every "ready" below.
-  useEffect(() => {
-    postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefs.mixWithOthers]);
 
   // Everything about the click except whether it is on comes from the same
   // place the loop click reads -- the same two samples, how loud each voice is,
@@ -376,6 +372,24 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     prefs.metronomeVolume,
     engineGeneration,
   ]);
+
+  // The click's level live, while the metronome slider in Settings is still
+  // moving (see utils/volumePreview.ts). setClick takes a partial config.
+  const clickVoicesRef = useRef({ accent: prefs.accentVolume, beat: prefs.beatVolume });
+  clickVoicesRef.current = { accent: prefs.accentVolume, beat: prefs.beatVolume };
+  useEffect(
+    () =>
+      onVolumePreview("metronome", (master) =>
+        postToEngine({
+          type: "setClick",
+          accentVolume: clickVoicesRef.current.accent * master,
+          beatVolume: clickVoicesRef.current.beat * master,
+        })
+      ),
+    // postToEngine reads only refs, so the first render's copy stays good.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const loadCue = async (cueId: string, tracks: CueTrack[], force = false) => {
     if (cueId === loadedCueId && !force) return;
@@ -411,7 +425,8 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     // inside the engine at once -- raw bytes and decoded audio side by side,
     // four times over -- and a song of 100MB stems was enough for iOS to kill
     // the page outright. Waiting caps the peak at one stem being decoded.
-    const engineCanReadFiles = await enginePageWritten;
+    const native = useNativeRef.current;
+    const engineCanReadFiles = !native && (await enginePageWritten);
     const stemOffset = findCue(cueId)?.item.stemOffset ?? 0;
     engineOffsetRef.current = stemOffset;
 
@@ -422,7 +437,25 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       // just "where its first sample falls", so the engine places it once.
       const startSeconds = (track.startSeconds ?? 0) + stemOffset || undefined;
 
-      let result = engineCanReadFiles
+      let result: TrackLoadResult;
+      if (native) {
+        // Natively the page is handed a path and decodes it in native code --
+        // no text crossing anything, and no WebView process to run out of.
+        try {
+          const audio = await loadAudioForEngine(uri, true);
+          if (loadTokenRef.current !== token) return;
+          result = await sendToEngine(track.id, {
+            type: "loadTrack",
+            id: track.id,
+            ...audio,
+            startSeconds,
+          });
+        } catch (error) {
+          console.error("Failed to read stem", track.name, error);
+          result = "failed";
+        }
+      } else {
+        result = engineCanReadFiles
         ? await sendToEngine(track.id, {
             type: "loadTrackFile",
             id: track.id,
@@ -430,6 +463,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
             startSeconds,
           })
         : "read";
+      }
       if (loadTokenRef.current !== token) return;
 
       if (result === "read") {
@@ -679,8 +713,9 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         queued.forEach((message) =>
           webViewRef.current?.postMessage(JSON.stringify(message))
         );
-        // Re-sent on every ready: a rebuilt engine starts with the default.
-        postToEngine({ type: "setMixWithOthers", enabled: prefs.mixWithOthers });
+        // Always shares the audio with other apps; re-sent on every ready,
+        // since a rebuilt engine starts with the default.
+        postToEngine({ type: "setMixWithOthers", enabled: true });
       } else if (data.type === "loaded") {
         pendingRef.current.delete(data.id);
         if (pendingRef.current.size === 0) markReady();
@@ -771,6 +806,20 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     setEngineGeneration((generation) => generation + 1);
   };
 
+  // Native audio (Settings) swaps the engine underneath: rebuild it the way a
+  // dead one is rebuilt, which also resets everything the old one had loaded.
+  const useNative = useNativeAudio();
+  // Read by the loaders above at call time: which form of audio to send.
+  const useNativeRef = useRef(useNative);
+  useNativeRef.current = useNative;
+  const previousUseNativeRef = useRef(useNative);
+  useEffect(() => {
+    if (previousUseNativeRef.current === useNative) return;
+    previousUseNativeRef.current = useNative;
+    restartEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNative]);
+
   return (
     <SessionPlaybackContext.Provider
       value={{
@@ -788,13 +837,16 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      {engineSource && <WebView
+      {engineSource && <EngineView
         key={engineGeneration}
         ref={webViewRef}
-        source={engineSource}
-        // What lets the page open stems itself (loadTrackFile). iOS scopes a
-        // file page's reads to this directory, which holds both it and stems/;
-        // Android needs file access switched on at all.
+        html={engineHtml}
+        native={useNative}
+        // A file page may open the stems beside it (loadTrackFile); the native
+        // host ignores all of this and reads paths itself.
+        pageUri={engineSource && "uri" in engineSource ? engineSource.uri : undefined}
+        // iOS scopes a file page's reads to this directory, which holds both it
+        // and stems/; Android needs file access switched on at all.
         allowingReadAccessToURL={FileSystem.documentDirectory ?? undefined}
         allowFileAccess
         allowFileAccessFromFileURLs
@@ -807,10 +859,6 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
           console.warn("Session engine content process ended — restarting it");
           restartEngine();
         }}
-        originWhitelist={["*"]}
-        mediaPlaybackRequiresUserAction={false}
-        allowsInlineMediaPlayback
-        containerStyle={{ flex: 0, width: 0, height: 0 }}
       />}
     </SessionPlaybackContext.Provider>
   );
