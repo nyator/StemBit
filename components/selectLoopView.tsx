@@ -1,7 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
-import React, { useState, useRef } from "react";
+import React, { useEffect } from "react";
 
-import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { getAllLoops, isLoopOverridden, type Loop } from "../constants/loops";
 import { COLORS } from "../constants/theme";
@@ -11,6 +10,7 @@ import { useSaveLoopAsMine } from "../hooks/useSaveLoopAsMine";
 import { Musicnote } from "./icons";
 import EmptyState from "./ui/emptyState";
 import PreviewButton from "./ui/previewButton";
+import { usePreview } from "../hooks/usePreview";
 
 type SelectLoopViewProps = {
   // Which loops to show — defaults to everything (catalog + the user's
@@ -31,79 +31,22 @@ const SelectLoopView = ({
   loops = getAllLoops(),
   emptyMessage,
 }: SelectLoopViewProps) => {
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const soundRef = useRef<AudioPlayer | null>(null);
-  const playbackSubscriptionRef =
-    useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
+  const preview = usePreview();
   const router = useRouter();
   const { setSelectedLoopKey, selectedKey } = useLoopPlayback();
   const { removeUserLoop, clearLoopOverride, overriddenKeys } = useUserLoops();
   const { saveAsMine } = useSaveLoopAsMine();
 
-  const unloadCurrentSound = async () => {
-    if (!soundRef.current) return;
-
-    const sound = soundRef.current;
-    soundRef.current = null;
-    setPlayingIndex(null);
-    playbackSubscriptionRef.current?.remove();
-    playbackSubscriptionRef.current = null;
-    // Halt playback before releasing — remove() alone doesn't reliably stop
-    // audio that's already sounding, so the old preview would bleed into the
-    // new one (same reason loadLoop pauses before handing off).
-    sound.pause();
-    sound.remove();
-  };
-
-  const handlePlayPause = async (index: number) => {
-    if (playingIndex === index) {
-      if (soundRef.current) {
-        soundRef.current.pause();
-      }
-      setPlayingIndex(null);
-      return;
-    }
-
-    await unloadCurrentSound();
-
-    const sound = createAudioPlayer(loops[index].source);
-    soundRef.current = sound;
-    sound.play();
-    setPlayingIndex(index);
-    playbackSubscriptionRef.current = sound.addListener(
-      "playbackStatusUpdate",
-      (status) => {
-        if (!status.didJustFinish) return;
-        setPlayingIndex(null);
-        playbackSubscriptionRef.current?.remove();
-        playbackSubscriptionRef.current = null;
-      }
-    );
-  };
-
-  React.useEffect(() => {
-    return () => {
-      if (soundRef.current) {
-        playbackSubscriptionRef.current?.remove();
-        soundRef.current.remove();
-      }
-    };
-  }, []);
-
-  // Row indices shift when the filter changes, so stop any running preview
-  // rather than letting it point at the wrong row.
-  React.useEffect(() => {
-    unloadCurrentSound();
+  // Row order shifts when the filter changes, so a running preview stops
+  // rather than lighting up whatever row moved under it.
+  useEffect(() => {
+    preview.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loops]);
 
   const loadLoop = (loop: Loop) => {
     // Stop any preview that's still playing before handing off.
-    if (soundRef.current) {
-      soundRef.current.pause();
-      soundRef.current.seekTo(0).catch(console.error);
-    }
-    setPlayingIndex(null);
+    preview.stop();
 
     // Selection lives in LoopPlaybackContext (mirrors Pad's pattern), so the
     // Loop tab picks it up regardless of which screen instance is focused.
@@ -138,7 +81,7 @@ const SelectLoopView = ({
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await unloadCurrentSound();
+            preview.stop();
             // Clear the transport if this was the loaded loop, so the Loop tab
             // isn't left pointing at something the engine can no longer find.
             if (selectedKey === loop.key) setSelectedLoopKey(undefined);
@@ -166,7 +109,7 @@ const SelectLoopView = ({
         // where correcting the tempo it was recorded at is all there is to do.
         text: loop.userAdded ? "Rename & set tempo" : "Correct its tempo",
         onPress: async () => {
-          await unloadCurrentSound();
+          preview.stop();
           if (loop.userAdded) {
             saveAsMine(loop); // already theirs: opens the editor, copies nothing
             return;
@@ -186,7 +129,7 @@ const SelectLoopView = ({
       buttons.push({
         text: "Save as my loop",
         onPress: async () => {
-          await unloadCurrentSound();
+          preview.stop();
           saveAsMine(loop);
         },
       });
@@ -255,8 +198,9 @@ const SelectLoopView = ({
             delayLongPress={400}
           >
             <PreviewButton
-              isPlaying={playingIndex === i}
-              onPress={() => handlePlayPause(i)}
+              isPlaying={preview.activeKey === item.key && !preview.isLoading}
+              isLoading={preview.activeKey === item.key && preview.isLoading}
+              onPress={() => preview.toggle(item.key, item.source)}
               title={item.title}
             />
 

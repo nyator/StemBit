@@ -1,12 +1,12 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useEffect } from "react";
 
-import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { PAD_PACKS, type PadPack } from "../constants/pads";
 import { usePadLayers } from "../hooks/usePadLayers";
 import { COLORS } from "../constants/theme";
 import { Musicnote, TickCircle } from "./icons";
 import PreviewButton from "./ui/previewButton";
+import { usePreview } from "../hooks/usePreview";
 
 type SelectPadViewProps = {
   // Which packs to show -- defaults to the full catalog. The picker screen
@@ -30,61 +30,12 @@ const SelectPadView = ({
   emptyMessage,
 }: SelectPadViewProps) => {
   const { layerFor, addLayer, removeLayer, isFull } = usePadLayers();
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const soundRef = useRef<AudioPlayer | null>(null);
-  const playbackSubscriptionRef =
-    useRef<ReturnType<AudioPlayer["addListener"]> | null>(null);
+  const preview = usePreview();
 
-  const unloadCurrentSound = async () => {
-    if (!soundRef.current) return;
-
-    const sound = soundRef.current;
-    soundRef.current = null;
-    setPlayingIndex(null);
-    playbackSubscriptionRef.current?.remove();
-    playbackSubscriptionRef.current = null;
-    sound.remove();
-  };
-
-  const handlePlayPause = async (index: number) => {
-    if (playingIndex === index) {
-      if (soundRef.current) {
-        soundRef.current.pause();
-      }
-      setPlayingIndex(null);
-      return;
-    }
-
-    await unloadCurrentSound();
-
-    const sound = createAudioPlayer(packs[index].sources.C);
-    soundRef.current = sound;
-    sound.play();
-    setPlayingIndex(index);
-    playbackSubscriptionRef.current = sound.addListener(
-      "playbackStatusUpdate",
-      (status) => {
-        if (!status.didJustFinish) return;
-        setPlayingIndex(null);
-        playbackSubscriptionRef.current?.remove();
-        playbackSubscriptionRef.current = null;
-      }
-    );
-  };
-
+  // Row order shifts when the filter changes, so a running preview stops
+  // rather than lighting up whatever row moved under it.
   useEffect(() => {
-    return () => {
-      if (soundRef.current) {
-        playbackSubscriptionRef.current?.remove();
-        soundRef.current.remove();
-      }
-    };
-  }, []);
-
-  // Row indices shift when the filter changes, so stop any running preview
-  // rather than letting it point at the wrong row.
-  useEffect(() => {
-    unloadCurrentSound();
+    preview.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packs]);
 
@@ -109,11 +60,7 @@ const SelectPadView = ({
           onPress: () => {
             // The pack is about to be audible through the instrument, so the
             // preview has done its job.
-            if (soundRef.current) {
-              soundRef.current.pause();
-              soundRef.current.seekTo(0).catch(console.error);
-            }
-            setPlayingIndex(null);
+            preview.stop();
             addLayer(pack);
           },
         },
@@ -223,8 +170,9 @@ const SelectPadView = ({
                 )}
 
                 <PreviewButton
-                  isPlaying={playingIndex === i}
-                  onPress={() => handlePlayPause(i)}
+                  isPlaying={preview.activeKey === item.key && !preview.isLoading}
+                  isLoading={preview.activeKey === item.key && preview.isLoading}
+                  onPress={() => preview.toggle(item.key, item.sources.C)}
                   title={item.title}
                 />
               </TouchableOpacity>

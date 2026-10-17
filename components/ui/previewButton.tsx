@@ -1,4 +1,4 @@
-import { TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, TouchableOpacity, View } from "react-native";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { COLORS } from "../../constants/theme";
@@ -33,21 +33,32 @@ const ICON_SIZE = 24;
 
 export default function PreviewButton({
   isPlaying,
+  isLoading = false,
   onPress,
   title,
 }: {
   isPlaying: boolean;
+  /**
+   * Tapped, not yet sounding. Shown as its own state so a slow start reads as
+   * "coming" rather than as a pause button over silence.
+   */
+  isLoading?: boolean;
   onPress: () => void;
   /** What is being auditioned, for the screen-reader label. */
   title: string;
 }) {
   const Icon = isPlaying ? PauseCircle : PlayCircle;
+  const glyph = isLoading ? (
+    <ActivityIndicator size="small" color={COLORS.white} />
+  ) : (
+    <Icon size={ICON_SIZE} color={COLORS.white} />
+  );
 
   return (
     <TouchableOpacity
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${isPlaying ? "Stop preview of" : "Preview"} ${title}`}
+      accessibilityLabel={`${isPlaying || isLoading ? "Stop preview of" : "Preview"} ${title}`}
     >
       {HAS_LIQUID_GLASS ? (
         <GlassView
@@ -62,7 +73,7 @@ export default function PreviewButton({
             justifyContent: "center",
           }}
         >
-          <Icon size={ICON_SIZE} color={COLORS.white} />
+          {glyph}
         </GlassView>
       ) : (
         <View
@@ -73,7 +84,7 @@ export default function PreviewButton({
             backgroundColor: PREVIEW_WELL,
           }}
         >
-          <Icon size={ICON_SIZE} color={COLORS.white} />
+          {glyph}
         </View>
       )}
     </TouchableOpacity>
