@@ -14,6 +14,17 @@ const MAX_BPM = 320;
 export const clampBpm = (bpm: number) =>
   Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
 
+/**
+ * A tempo read from a set, kept to the hundredth Live shows it at.
+ *
+ * Not rounded to a whole number the way a typed tempo is: the stems were
+ * rendered at exactly this tempo, and the click is laid over them. A set at
+ * 92.5 clicked at 93 gains 14ms a bar on the music -- audibly off within a few
+ * bars and a full beat adrift before the song ends.
+ */
+export const clampSetBpm = (bpm: number) =>
+  Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm * 100) / 100));
+
 type CueElementsProps = {
   loopKey?: string;
   bpm?: number;
@@ -317,6 +328,60 @@ export function TempoStepper({
           </TouchableOpacity>
         </View>
       )}
+    </View>
+  );
+}
+
+/**
+ * Moves a stem song against the click, a few milliseconds at a time.
+ *
+ * Shown as what happens to the stems -- negative is earlier -- because the
+ * complaint it answers is "the music is late", and the fix for that reads as
+ * a minus. Usually already set by the measurement an MP3 song gets on its
+ * first load; this is for the ear to finish the job.
+ */
+export function SyncNudge({
+  offsetSeconds = 0,
+  onChange,
+}: {
+  offsetSeconds?: number;
+  onChange: (seconds: number) => void;
+}) {
+  const ms = Math.round(offsetSeconds * 1000);
+  // A quarter of a second is far past any padding; further is a mistake.
+  const nudge = (by: number) =>
+    onChange(Math.max(-250, Math.min(250, ms + by)) / 1000);
+
+  const button = (label: string, by: number, description: string) => (
+    <TouchableOpacity
+      onPress={() => nudge(by)}
+      activeOpacity={0.65}
+      accessibilityRole="button"
+      accessibilityLabel={description}
+      className="items-center justify-center rounded-lg border bg-canvas"
+      style={{ width: 40, height: 32, borderColor: COLORS.border }}
+    >
+      <Text className="text-xs text-white font-spaceBold">{label}</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View className="flex-row items-center justify-between">
+      <Text className="text-[10px] tracking-wider font-spaceBold text-ink-muted uppercase">
+        Stem sync
+      </Text>
+      <View className="flex-row items-center gap-1.5">
+        {button("−5", -5, "Move stems 5 milliseconds earlier")}
+        {button("−1", -1, "Move stems 1 millisecond earlier")}
+        <Text
+          className="text-sm text-white font-spaceBold text-center"
+          style={{ fontVariant: ["tabular-nums"], minWidth: 64 }}
+        >
+          {ms > 0 ? `+${ms}` : ms} ms
+        </Text>
+        {button("+1", 1, "Move stems 1 millisecond later")}
+        {button("+5", 5, "Move stems 5 milliseconds later")}
+      </View>
     </View>
   );
 }

@@ -17,7 +17,7 @@ import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useSessions } from "../../context/SessionsContext";
 import { importStems, readStemSections } from "../../utils/importStems";
 import { sectionsFromLocators } from "../../utils/abletonSet";
-import { clampBpm } from "../../components/ui/cueElements";
+import { clampSetBpm } from "../../components/ui/cueElements";
 import HeaderComponent from "../../components/headerComponent";
 import Screen from "../../components/ui/screen";
 import EmptyState from "../../components/ui/emptyState";
@@ -129,7 +129,7 @@ export default function SessionsScreen() {
         title: songTitle,
         tracks,
         ...(sections.length > 0 ? { sections } : {}),
-        ...(set ? { bpm: clampBpm(set.bpm) } : {}),
+        ...(set ? { bpm: clampSetBpm(set.bpm) } : {}),
       });
       router.push({ pathname: "/setlist", params: { id: session.id } });
     } catch (error) {

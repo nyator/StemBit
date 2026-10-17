@@ -236,7 +236,11 @@ describe("song position", () => {
 });
 
 describe("placing a stem on the song's timeline", () => {
-  const placeBuffer = extract("placeBuffer");
+  // placeBuffer trims through shiftInPlace, so the two come out together.
+  // eslint-disable-next-line no-eval
+  const placeBuffer = eval(
+    `(function () { ${sourceOf("shiftInPlace")}; return ${sourceOf("placeBuffer")}; })()`
+  );
 
   // Just enough of an AudioBuffer and its context for placeBuffer to work on.
   function buffer(channels, sampleRate) {
@@ -269,13 +273,98 @@ describe("placing a stem on the song's timeline", () => {
     expect(samples(placed, 1)).toEqual([0, 0, 0, 3, 4]);
   });
 
-  it("cuts the head off a stem trimmed before the song starts", () => {
+  it("cuts the head off a stem trimmed before the song starts, in place", () => {
     const decoded = buffer([new Float32Array([1, 2, 3, 4])], 10);
-    expect(samples(placeBuffer(ctx, decoded, -0.1))).toEqual([2, 3, 4]);
+    const placed = placeBuffer(ctx, decoded, -0.1);
+    // The same buffer, not a copy -- a second copy of a stem is what runs the
+    // page out of memory -- with the freed tail silent.
+    expect(placed).toBe(decoded);
+    expect(samples(placed)).toEqual([2, 3, 4, 0]);
   });
 
   it("refuses a shift that would leave nothing to play", () => {
     const decoded = buffer([new Float32Array([1, 2])], 10);
     expect(placeBuffer(ctx, decoded, -5)).toBe(decoded);
+  });
+});
+
+describe("nudging stems in place", () => {
+  const shiftInPlace = extract("shiftInPlace");
+  const buffer = (data) => ({
+    numberOfChannels: 1,
+    sampleRate: 10,
+    length: data.length,
+    getChannelData: () => data,
+  });
+
+  it("moves audio earlier, silencing the tail", () => {
+    const data = new Float32Array([1, 2, 3, 4]);
+    shiftInPlace(buffer(data), -0.2);
+    expect(Array.from(data)).toEqual([3, 4, 0, 0]);
+  });
+
+  it("moves audio later, silencing the head", () => {
+    const data = new Float32Array([1, 2, 3, 4]);
+    shiftInPlace(buffer(data), 0.1);
+    expect(Array.from(data)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("ignores a shift as long as the buffer", () => {
+    const data = new Float32Array([1, 2]);
+    shiftInPlace(buffer(data), -0.5);
+    expect(Array.from(data)).toEqual([1, 2]);
+  });
+});
+
+describe("measuring how far stems sit off the beat", () => {
+  const envelopeChunk = extract("envelopeChunk");
+  const gridOffset = extract("gridOffset");
+  const HOP = 0.001; // one envelope value per millisecond
+
+  // A quiet floor with a hit on every beat, each `lateBy` seconds late plus a
+  // little human wobble.
+  function hits(bpm, beats, lateBy, wobble = () => 0) {
+    const spb = 60 / bpm;
+    const env = new Float32Array(Math.ceil((beats * spb + 1) / HOP)).fill(0.01);
+    for (let b = 1; b < beats; b++) {
+      const at = Math.round((b * spb + lateBy + wobble(b)) / HOP);
+      for (let k = at; k < at + 40; k++) env[k] = 1;
+    }
+    return env;
+  }
+
+  it("reads a constant lag, as MP3 padding produces", () => {
+    const result = gridOffset(hits(84, 120, 0.039), HOP, 84);
+    expect(result.offset).toBeCloseTo(0.039, 3);
+  });
+
+  it("reads hits that are early as a negative offset", () => {
+    const result = gridOffset(hits(120, 120, -0.02), HOP, 120);
+    expect(result.offset).toBeCloseTo(-0.02, 3);
+  });
+
+  it("takes the median, so a few stray hits don't move it", () => {
+    const wobble = (b) => (b % 10 === 0 ? 0.03 : ((b * 7) % 5) * 0.002);
+    const result = gridOffset(hits(84, 120, 0.04, wobble), HOP, 84);
+    expect(Math.abs(result.offset - 0.044)).toBeLessThan(0.004);
+  });
+
+  it("refuses a song that isn't on the grid at all", () => {
+    // Hits scattered across the window: a live take nobody warped.
+    const scatter = (b) => (((b * 37) % 17) - 8) * 0.009;
+    expect(gridOffset(hits(84, 120, 0, scatter), HOP, 84)).toBeNull();
+  });
+
+  it("refuses too little to go on", () => {
+    expect(gridOffset(hits(84, 10, 0.04), HOP, 84)).toBeNull();
+    expect(gridOffset(hits(84, 120, 0.04), HOP, 0)).toBeNull();
+  });
+
+  it("builds the envelope as peak-to-peak per hop", () => {
+    const data = new Float32Array([0, 0.5, -0.5, 0, 0.1, 0.1]);
+    const env = new Float32Array(2);
+    envelopeChunk(data, 3, 0, 2, env);
+    expect(env[0]).toBeCloseTo(1);
+    expect(env[1]).toBeCloseTo(0.1);
   });
 });

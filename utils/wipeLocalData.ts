@@ -18,6 +18,7 @@ const USER_DATA_PATHS = [
   "loopCatalog.json", // cached copy of the store manifest
   "sessions.json", // setlists and cues
   "preferences.json", // settings, including the launch screen
+  "session-engine.html", // the stem engine's page, rewritten on every launch
 ] as const;
 
 /**

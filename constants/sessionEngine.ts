@@ -453,6 +453,10 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           launchGeneration += 1;
           var generation = launchGeneration;
           stopAll(atTime);
+          // A nudge made while the last launch was sounding. The old sources
+          // run on until atTime, a tenth of a second at most, over audio moved
+          // by a few milliseconds -- not a seam anyone hears.
+          applyPendingShift();
 
           // Where in the stems this section begins, and how far it runs. A
           // section is a span of the same files rather than a file of its own,
@@ -789,6 +793,160 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           });
         }
 
+        // --- Sync -----------------------------------------------------------
+        //
+        // How far the stems sit off the beat grid, so they can be put back on
+        // it. Measured because it can't be known in advance: an MP3 starts
+        // with a few dozen milliseconds of encoder padding, and the tag that
+        // tells a decoder to skip it is optional. Ableton doesn't write one,
+        // so every stem it exports as MP3 plays ~40ms behind the click -- on
+        // the beat in Live, audibly late here.
+        //
+        // The measure is where the hits land against the cue's tempo: find
+        // every sharp attack, see how far each is from its nearest beat, and
+        // take the median. A song on a grid gives a tight cluster; a live
+        // recording that never was gives a spread, and is left alone.
+
+        // Peak-to-peak level per hop, filled a chunk at a time so a whole song
+        // can be scanned without holding up the scheduler that keeps the click
+        // running.
+        function envelopeChunk(data, hop, fromHop, toHop, env) {
+          for (var k = fromHop; k < toHop; k++) {
+            var start = k * hop;
+            var hi = -2;
+            var lo = 2;
+            for (var i = start; i < start + hop; i++) {
+              var v = data[i];
+              if (v > hi) hi = v;
+              if (v < lo) lo = v;
+            }
+            env[k] = hi - lo;
+          }
+        }
+
+        // The median distance of the attacks from the beat grid, in seconds
+        // (positive is late), or null when there aren't enough of them close
+        // enough together to call it a grid.
+        function gridOffset(env, hopSeconds, bpm) {
+          if (!(bpm > 0) || env.length < 40) return null;
+          var spb = 60 / bpm;
+          var peak = 0;
+          for (var p = 0; p < env.length; p++) if (env[p] > peak) peak = env[p];
+          if (!(peak > 0)) return null;
+
+          var floor = peak * 0.1;
+          var gap = Math.round(0.15 / hopSeconds);
+          var lookback = Math.round(0.02 / hopSeconds);
+          // Further than this from a beat is an off-beat or a fill, not a
+          // beat played late.
+          var reach = Math.min(0.08, spb / 4);
+          var devs = [];
+          var last = -gap;
+
+          for (var k = lookback; k < env.length; k++) {
+            if (env[k] < floor || k - last < gap) continue;
+            var before = 0;
+            for (var j = k - lookback; j < k - 1; j++) {
+              if (env[j] > before) before = env[j];
+            }
+            if (env[k] <= 3 * before) continue;
+            last = k;
+            var t = k * hopSeconds;
+            var d = t - Math.round(t / spb) * spb;
+            if (Math.abs(d) < reach) devs.push(d);
+          }
+
+          if (devs.length < 32) return null;
+          devs.sort(function (a, b) { return a - b; });
+          var median = devs[Math.floor(devs.length / 2)];
+          var sum = 0;
+          for (var s = 0; s < devs.length; s++) {
+            sum += (devs[s] - median) * (devs[s] - median);
+          }
+          var spread = Math.sqrt(sum / devs.length);
+          // Measured on a grid-locked song: about 10ms. Attacks scattered at
+          // random across the window come out near 45.
+          if (spread > 0.02) return null;
+          return { offset: median, count: devs.length, spread: spread };
+        }
+
+        // Every track measured in turn, the tightest answer kept -- usually the
+        // drums. Answers once, with the offset or null.
+        function measureSync(ids, bpm) {
+          var best = null;
+          var index = 0;
+
+          function nextTrack() {
+            if (index >= ids.length) {
+              post({ type: "sync", offset: best ? best.offset : null });
+              return;
+            }
+            var buffer = buffers[ids[index++]];
+            if (!buffer) return nextTrack();
+
+            var data = buffer.getChannelData(0);
+            var hop = Math.max(1, Math.round(buffer.sampleRate / 1000));
+            var hops = Math.floor(data.length / hop);
+            var env = new Float32Array(hops);
+            var at = 0;
+            var CHUNK = 2000; // two seconds of audio a turn
+
+            function step() {
+              var to = Math.min(hops, at + CHUNK);
+              envelopeChunk(data, hop, at, to, env);
+              at = to;
+              if (at < hops) {
+                setTimeout(step, 0);
+                return;
+              }
+              var result = gridOffset(env, hop / buffer.sampleRate, bpm);
+              if (result && (!best || result.spread < best.spread)) best = result;
+              nextTrack();
+            }
+            step();
+          }
+          nextTrack();
+        }
+
+        // Moves audio within its own buffer: negative earlier, positive later.
+        // No second buffer, which matters at a hundred-odd megabytes a stem.
+        // What slides off the end is lost and what opens up is silence -- a
+        // nudge is milliseconds, and the edges of a song are where nothing is.
+        function shiftInPlace(buf, seconds) {
+          var shift = Math.round((seconds || 0) * buf.sampleRate);
+          if (!shift || Math.abs(shift) >= buf.length) return;
+          for (var c = 0; c < buf.numberOfChannels; c++) {
+            var d = buf.getChannelData(c);
+            if (shift < 0) {
+              d.copyWithin(0, -shift);
+              d.fill(0, d.length + shift);
+            } else {
+              d.copyWithin(shift, 0, d.length - shift);
+              d.fill(0, 0, shift);
+            }
+          }
+        }
+
+        // A sync nudge. Not applied under a playing source -- rewriting audio
+        // that is sounding is a glitch in front of a room -- so while the song
+        // runs it waits for the next launch or stop.
+        var pendingShift = 0;
+
+        function shiftTracks(seconds) {
+          pendingShift += seconds || 0;
+          if (!transportRunning) applyPendingShift();
+        }
+
+        function applyPendingShift() {
+          if (!pendingShift) return;
+          for (var id in buffers) {
+            if (Object.prototype.hasOwnProperty.call(buffers, id)) {
+              shiftInPlace(buffers[id], pendingShift);
+            }
+          }
+          pendingShift = 0;
+        }
+
         function setClick(cfg) {
           if (typeof cfg.pan === "number") {
             clickPan = Math.max(-1, Math.min(1, cfg.pan));
@@ -899,6 +1057,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           // transport that is already stopping.
           launchGeneration += 1;
           if (audioContext) stopAll(audioContext.currentTime);
+          applyPendingShift();
           live = null;
           armed = null;
           currentSectionId = null;
@@ -991,6 +1150,8 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // Anything still sounding is stopped first: releasing a buffer out from
         // under a live source is undefined behaviour, not a silence.
         function clearTracks(keepIds) {
+          // Whatever arrives next is placed with the sync it was sent with.
+          pendingShift = 0;
           var keep = {};
           if (keepIds) {
             for (var k = 0; k < keepIds.length; k++) keep[keepIds[k]] = true;
@@ -1074,6 +1235,13 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           if (shift > buf.sampleRate * 3600) return buf;
           var length = buf.length + shift;
           if (length <= 0) return buf;
+          // A trim is done where the audio already is. A copy would hold two
+          // of the stem at once, and a stem is the thing there's no room for
+          // two of. The buffer keeps its length, with silence at the tail.
+          if (shift < 0) {
+            shiftInPlace(buf, startSeconds);
+            return buf;
+          }
 
           var placed = ctx.createBuffer(buf.numberOfChannels, length, buf.sampleRate);
           for (var c = 0; c < buf.numberOfChannels; c++) {
@@ -1086,9 +1254,50 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         }
 
         function loadTrack(id, base64, startSeconds) {
+          decodeTrack(id, base64ToArrayBuffer(base64), startSeconds);
+        }
+
+        // A stem read straight off disk, by the page itself.
+        //
+        // The base64 path above is how stems used to arrive, and for a song it
+        // is ruinous: a 100MB file crosses the bridge as a 133MB string, is
+        // copied by JSON on both sides, copied again by atob, and only then
+        // becomes bytes -- several copies of every stem alive at once inside
+        // a process iOS kills for using too much. Here the bytes come straight
+        // from the file into one ArrayBuffer.
+        //
+        // XHR rather than fetch: WebKit's fetch refuses file URLs outright.
+        // A file that can't be read this way reports "read", which is the
+        // app's cue to fall back to sending it the old way -- so a platform
+        // that blocks file access is slower, not broken.
+        function loadTrackFile(id, url, startSeconds) {
+          var xhr = new XMLHttpRequest();
+          try {
+            xhr.open("GET", url, true);
+            xhr.responseType = "arraybuffer";
+          } catch (e) {
+            post({ type: "error", code: "read", id: id });
+            return;
+          }
+          xhr.onload = function () {
+            // A file URL answers 0 rather than 200 when it works.
+            var ok = xhr.status === 0 || xhr.status === 200;
+            if (ok && xhr.response && xhr.response.byteLength > 0) {
+              decodeTrack(id, xhr.response, startSeconds);
+            } else {
+              post({ type: "error", code: "read", id: id });
+            }
+          };
+          xhr.onerror = function () {
+            post({ type: "error", code: "read", id: id });
+          };
+          xhr.send();
+        }
+
+        function decodeTrack(id, bytes, startSeconds) {
           var ctx = ensureContext();
           ctx.decodeAudioData(
-            base64ToArrayBuffer(base64),
+            bytes,
             function (buf) {
               buffers[id] = placeBuffer(ctx, buf, startSeconds);
               post({ type: "loaded", id: id });
@@ -1149,6 +1358,9 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             case "loadTrack":
               loadTrack(data.id, data.base64, data.startSeconds);
               break;
+            case "loadTrackFile":
+              loadTrackFile(data.id, data.url, data.startSeconds);
+              break;
             case "clearTracks":
               clearTracks(data.keep);
               break;
@@ -1186,6 +1398,12 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               break;
             case "detectTempo":
               detectTrackTempo(data.id);
+              break;
+            case "measureSync":
+              measureSync(data.ids || [], data.bpm);
+              break;
+            case "shiftTracks":
+              shiftTracks(data.seconds);
               break;
             case "setClick":
               setClick(data);

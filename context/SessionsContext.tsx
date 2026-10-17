@@ -12,6 +12,8 @@ import {
 // from the root leaves EncodingType undefined and makes every read throw.
 import * as FileSystem from "expo-file-system/legacy";
 
+import { removeStems, sweepOrphanStems } from "../utils/importStems";
+
 // What you set up before a gig so you don't go hunting for a loop on stage.
 //
 // Two levels:
@@ -150,6 +152,16 @@ export type SessionItem = {
    * means the song is played from the top as one piece.
    */
   sections?: CueSection[];
+  /**
+   * Seconds every stem is moved by to sit on the beat; negative is earlier.
+   *
+   * Exists for MP3 stems, which start with encoder padding the decoder may not
+   * know to skip -- Ableton's export leaves them ~40ms behind the click. Set
+   * by measuring the stems against the grid the first time an MP3 song loads,
+   * and nudged by ear from there. Absent means never measured; 0 means
+   * measured and needed nothing, so it isn't measured again.
+   */
+  stemOffset?: number;
 };
 
 /**
@@ -267,6 +279,14 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
             const loaded = normalize(parsed);
             sessionsRef.current = loaded;
             setSessions(loaded);
+            // Here and only here: the one moment the complete list of cues is
+            // known to have been read. A failed load never reaches this line,
+            // so it can't be mistaken for "no cue needs any stem".
+            sweepOrphanStems(
+              loaded.flatMap((session) =>
+                session.items.flatMap((item) => item.tracks ?? [])
+              )
+            ).catch((error) => console.error("Failed to sweep stems", error));
           }
         }
       } catch (error) {
@@ -309,8 +329,14 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
       title: title.trim() || session.title,
     }));
 
-  const removeSession = (id: string) =>
+  const removeSession = (id: string) => {
+    const removed = sessionsRef.current.find((session) => session.id === id);
     commit(sessionsRef.current.filter((session) => session.id !== id));
+    // A session's stems are its cues' stems -- nothing else points at them.
+    // Left behind, they were hundreds of megabytes nothing could reach.
+    const tracks = removed?.items.flatMap((item) => item.tracks ?? []) ?? [];
+    if (tracks.length) removeStems(tracks);
+  };
 
   const addItem = (sessionId: string, item: Omit<SessionItem, "id">) => {
     // Minted here rather than inside the update, so the caller gets it back.

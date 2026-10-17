@@ -8,6 +8,8 @@ import {
 } from "react";
 import { AppState } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
+// The legacy entrypoint -- see context/SessionsContext.tsx.
+import * as FileSystem from "expo-file-system/legacy";
 
 import { buildSessionEngineHtml } from "../constants/sessionEngine";
 import type { ArrangementSpan } from "../constants/arrangement";
@@ -20,7 +22,7 @@ import {
   useMetronome,
 } from "./MetronomeContext";
 import { usePreferences } from "./PreferencesContext";
-import type { CueTrack } from "./SessionsContext";
+import { useSessions, type CueTrack } from "./SessionsContext";
 
 // The session's own playback, in a hidden WebView of its own.
 //
@@ -177,13 +179,42 @@ type SessionPlaybackContextValue = {
    * moment a whole multitrack song is already in memory.
    */
   detectTempo: (trackId: string) => Promise<DetectedTempo | null>;
+  /**
+   * Move a cue's stems against the click, in seconds -- the whole song at
+   * once, since they are one export and are off by the same amount. Saved on
+   * the cue; heard from the next start if the song is playing now.
+   */
+  setStemOffset: (cueId: string, seconds: number) => void;
 };
 
 const SessionPlaybackContext =
   createContext<SessionPlaybackContextValue | null>(null);
 
+/**
+ * How one stem's load ended. "read" means the engine couldn't open the file
+ * itself and the stem should be sent the old way; "failed" means it won't
+ * play at all.
+ */
+type TrackLoadResult = "loaded" | "read" | "failed";
+
+// The engine page, written out so it can be loaded as a file. See
+// engineSource.
+const ENGINE_PAGE = `${FileSystem.documentDirectory}session-engine.html`;
+
 export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
   const { prefs } = usePreferences();
+  // For a cue's stem offset. Through a ref: loadCue runs from handlers that
+  // captured an older render, and the offset it applies must be the saved one.
+  const { sessions, updateItem } = useSessions();
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const findCue = (cueId: string) => {
+    for (const session of sessionsRef.current) {
+      const item = session.items.find((each) => each.id === cueId);
+      if (item) return { sessionId: session.id, item };
+    }
+    return undefined;
+  };
   // Only to get out of the way -- see play(). Read through a ref because play()
   // is called from handlers that captured an older render.
   const { isPlaying: metroPlaying, stopMetronome } = useMetronome();
@@ -231,6 +262,41 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     quantum: Quantum;
     section?: PlaySpan;
   } | null>(null);
+  // The stem offset baked into the buffers the engine holds right now.
+  const engineOffsetRef = useRef(0);
+  // A measureSync waiting on the engine's answer.
+  const syncWaiterRef = useRef<((offset: number | null) => void) | null>(null);
+  // The stem load currently waiting on the engine's answer, by track id.
+  const trackWaitersRef = useRef<Map<string, (result: TrackLoadResult) => void>>(
+    new Map()
+  );
+
+  // Where the engine page is loaded from. A page served from a file in the
+  // documents directory may read the other files in it -- the stems -- which a
+  // page handed over as a string may not. Null until it has been written.
+  const [engineSource, setEngineSource] = useState<
+    { uri: string } | { html: string } | null
+  >(null);
+  // Whether the page made it to disk, as a promise loadCue can wait on: a cue
+  // loaded in the moment before the write lands must not decide the engine
+  // can't read files when it is about to be able to.
+  const [enginePageWritten] = useState(() =>
+    FileSystem.writeAsStringAsync(ENGINE_PAGE, engineHtml).then(
+      () => true,
+      (error) => {
+        // Still plays -- every stem just takes the slow way in.
+        console.error("Failed to write session engine page", error);
+        return false;
+      }
+    )
+  );
+
+  useEffect(() => {
+    enginePageWritten.then((written) =>
+      setEngineSource(written ? { uri: ENGINE_PAGE } : { html: engineHtml })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const markReady = () => {
     readyRef.current = true;
@@ -340,24 +406,54 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Sequential rather than Promise.all: each file is read into a base64
-    // string, and a song's stems read at once would hold several copies of the
-    // whole song in JS memory at the same moment.
+    // One stem at a time, each waited on until it has DECODED, not merely been
+    // sent. Sending them back to back put every stem of the song in flight
+    // inside the engine at once -- raw bytes and decoded audio side by side,
+    // four times over -- and a song of 100MB stems was enough for iOS to kill
+    // the page outright. Waiting caps the peak at one stem being decoded.
+    const engineCanReadFiles = await enginePageWritten;
+    const stemOffset = findCue(cueId)?.item.stemOffset ?? 0;
+    engineOffsetRef.current = stemOffset;
+
     for (const track of tracks) {
       if (loadTokenRef.current !== token) return;
-      try {
-        const base64 = await loadAudioBase64(resolveStemUri(track.uri));
-        if (loadTokenRef.current !== token) return;
-        postToEngine({
-          type: "loadTrack",
-          id: track.id,
-          base64,
-          startSeconds: track.startSeconds,
-        });
-      } catch (error) {
-        console.error("Failed to read stem", track.name, error);
+      const uri = resolveStemUri(track.uri);
+      // Where the set put the stem, then the song's sync on top -- both are
+      // just "where its first sample falls", so the engine places it once.
+      const startSeconds = (track.startSeconds ?? 0) + stemOffset || undefined;
+
+      let result = engineCanReadFiles
+        ? await sendToEngine(track.id, {
+            type: "loadTrackFile",
+            id: track.id,
+            url: uri,
+            startSeconds,
+          })
+        : "read";
+      if (loadTokenRef.current !== token) return;
+
+      if (result === "read") {
+        // The engine couldn't open the file itself, so it goes the old way:
+        // read here, sent across as text. Slower and far hungrier, which is
+        // why it is only the fallback.
+        try {
+          const base64 = await loadAudioBase64(uri);
+          if (loadTokenRef.current !== token) return;
+          result = await sendToEngine(track.id, {
+            type: "loadTrack",
+            id: track.id,
+            base64,
+            startSeconds,
+          });
+        } catch (error) {
+          console.error("Failed to read stem", track.name, error);
+          result = "failed";
+        }
+      }
+
+      if (result !== "loaded") {
         pendingRef.current.delete(track.id);
-        // A file that can't be read produces no "loaded" message, so nothing
+        // A stem that never loads produces no "loaded" message, so nothing
         // else will ever empty the set on its behalf. Without this, one
         // unreadable stem -- or the last stem of a song failing -- leaves the
         // cue waiting on a track that is never coming: isReady stays false, and
@@ -365,6 +461,92 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         if (pendingRef.current.size === 0) markReady();
       }
     }
+
+    if (loadTokenRef.current !== token) return;
+    await measureStemOffset(cueId, tracks, token);
+  };
+
+  /**
+   * Puts an MP3 song's stems on the click, once.
+   *
+   * Only MP3: it is the format whose start padding a decoder can't always
+   * skip. WAV and AIFF start on their first sample, so where their hits sit
+   * against the grid is the performance, not a fault -- a laid-back drummer
+   * is not something to correct.
+   */
+  const measureStemOffset = async (
+    cueId: string,
+    tracks: CueTrack[],
+    token: number
+  ) => {
+    const cue = findCue(cueId);
+    if (!cue || cue.item.stemOffset !== undefined || !cue.item.bpm) return;
+    if (!tracks.some((track) => /\.mp3$/i.test(track.uri))) return;
+
+    const offset = await new Promise<number | null>((resolve) => {
+      syncWaiterRef.current = resolve;
+      postToEngine({
+        type: "measureSync",
+        ids: tracks.map((track) => track.id),
+        bpm: cue.item.bpm,
+      });
+      // A scan of every stem, done in slices; well under this on a phone.
+      setTimeout(() => {
+        if (syncWaiterRef.current !== resolve) return;
+        syncWaiterRef.current = null;
+        resolve(null);
+      }, 60000);
+    });
+    // Measured on stems that have since been swapped out: the answer is for
+    // audio that is no longer there.
+    if (loadTokenRef.current !== token) return;
+
+    // Under a few milliseconds is the detector's own error, not padding.
+    const correction = offset !== null && Math.abs(offset) >= 0.003 ? -offset : 0;
+    if (correction) {
+      postToEngine({ type: "shiftTracks", seconds: correction });
+      engineOffsetRef.current += correction;
+    }
+    updateItem(cue.sessionId, cueId, {
+      stemOffset: Math.round(correction * 1000) / 1000,
+    });
+  };
+
+  const setStemOffset = (cueId: string, seconds: number) => {
+    const cue = findCue(cueId);
+    if (!cue) return;
+    const next = Math.round(seconds * 1000) / 1000;
+    updateItem(cue.sessionId, cueId, { stemOffset: next });
+    // The engine moves what it holds by the difference from what it holds --
+    // not from the saved value, which can be a render behind a quick second
+    // tap. A cue that isn't loaded picks the whole offset up when it is.
+    if (loadedCueIdRef.current !== cueId) return;
+    const delta = next - engineOffsetRef.current;
+    if (Math.abs(delta) < 0.0005) return;
+    postToEngine({ type: "shiftTracks", seconds: delta });
+    engineOffsetRef.current = next;
+  };
+
+  /** Posts a load and resolves once the engine says how it went. */
+  const sendToEngine = (trackId: string, message: Record<string, unknown>) =>
+    new Promise<TrackLoadResult>((resolve) => {
+      trackWaitersRef.current.set(trackId, resolve);
+      postToEngine(message);
+      // Decoding a long stem takes seconds, not minutes. One that hasn't
+      // answered in two has gone wrong somewhere, and the rest of the song
+      // shouldn't wait behind it.
+      setTimeout(() => {
+        if (trackWaitersRef.current.get(trackId) !== resolve) return;
+        trackWaitersRef.current.delete(trackId);
+        resolve("failed");
+      }, 120000);
+    });
+
+  const settleTrack = (trackId: string, result: TrackLoadResult) => {
+    const waiter = trackWaitersRef.current.get(trackId);
+    if (!waiter) return;
+    trackWaitersRef.current.delete(trackId);
+    waiter(result);
   };
 
   function startPlayback(
@@ -502,6 +684,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       } else if (data.type === "loaded") {
         pendingRef.current.delete(data.id);
         if (pendingRef.current.size === 0) markReady();
+        settleTrack(data.id, "loaded");
       } else if (data.type === "peaks") {
         const waiter = peaksWaitersRef.current.get(data.id);
         if (waiter) {
@@ -514,6 +697,10 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
           tempoWaitersRef.current.delete(data.id);
           waiter(data.tempo ?? null);
         }
+      } else if (data.type === "sync") {
+        const waiter = syncWaiterRef.current;
+        syncWaiterRef.current = null;
+        waiter?.(typeof data.offset === "number" ? data.offset : null);
       } else if (data.type === "position") {
         positionListenersRef.current.forEach((listener) =>
           listener({
@@ -532,8 +719,14 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         // The engine is the authority on whether anything is running -- it
         // stops the transport itself in cases the app never hears about.
         setIsPlaying(data.running === true);
+      } else if (data.type === "error" && data.code === "read" && data.id) {
+        // Not a failure yet: loadCue falls back to sending the stem itself,
+        // so the track stays pending.
+        console.warn("Session engine couldn't open a stem; sending it instead");
+        settleTrack(data.id, "read");
       } else if (data.type === "error") {
         console.error("Session engine error:", data.code, data.id ?? "");
+        if (data.id) settleTrack(data.id, "failed");
         // A stem that won't decode must not leave the cue waiting forever on a
         // track that is never coming.
         if (data.id) {
@@ -560,6 +753,12 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     pendingRef.current = new Set();
     // Any load still walking a track list belongs to the engine that just died.
     loadTokenRef.current += 1;
+    // ...and whatever it was waiting on will never answer.
+    const waiters = [...trackWaitersRef.current.values()];
+    trackWaitersRef.current.clear();
+    waiters.forEach((waiter) => waiter("failed"));
+    syncWaiterRef.current?.(null);
+    syncWaiterRef.current = null;
     // The replacement has decoded nothing, click samples included; the effect
     // that pushes click config re-sends them on the new generation.
     clickLoadedRef.current.clear();
@@ -585,13 +784,20 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         subscribePosition,
         getPeaks,
         detectTempo,
+        setStemOffset,
       }}
     >
       {children}
-      <WebView
+      {engineSource && <WebView
         key={engineGeneration}
         ref={webViewRef}
-        source={{ html: engineHtml }}
+        source={engineSource}
+        // What lets the page open stems itself (loadTrackFile). iOS scopes a
+        // file page's reads to this directory, which holds both it and stems/;
+        // Android needs file access switched on at all.
+        allowingReadAccessToURL={FileSystem.documentDirectory ?? undefined}
+        allowFileAccess
+        allowFileAccessFromFileURLs
         onMessage={handleWebViewMessage}
         onRenderProcessGone={() => {
           console.warn("Session engine renderer was killed — restarting it");
@@ -605,7 +811,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
         containerStyle={{ flex: 0, width: 0, height: 0 }}
-      />
+      />}
     </SessionPlaybackContext.Provider>
   );
 }

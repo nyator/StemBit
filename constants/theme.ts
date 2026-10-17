@@ -180,7 +180,7 @@ export const SIZES = {
   dialGlowOuter: 240,
   switchWidth: 40,
   switchHeight: 22,
-  switchKnob: 18,
+  switchKnob: 18, 
   segmentWidth: 105,
   fab: 56,
 } as const;

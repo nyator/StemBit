@@ -105,6 +105,8 @@ function harness({ trackCount = 2 } = {}) {
       var launchGeneration = state.launchGeneration;
       var live = state.live;
       var currentSectionId = state.currentSectionId;
+      // Sync nudges are tested on their own; nothing here makes one.
+      function applyPendingShift() {}
       ${launchSource}
       launch(section, atTime);
       state.launchGeneration = launchGeneration;

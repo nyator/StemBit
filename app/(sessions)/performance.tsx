@@ -59,8 +59,10 @@ import RepeatPicker, {
 import CueReadout from "../../components/ui/cueReadout";
 import CueElements, {
   // CueSummary,
+  SyncNudge,
   TempoStepper,
   clampBpm,
+  clampSetBpm,
 } from "../../components/ui/cueElements";
 import SectionPad from "../../components/ui/sectionPad";
 import {
@@ -670,7 +672,7 @@ export default function PerformanceScreen() {
       }
 
       const setSections = set ? sectionsFromLocators(set.locators) : [];
-      const setBpm = set ? clampBpm(set.bpm) : undefined;
+      const setBpm = set ? clampSetBpm(set.bpm) : undefined;
 
       if (picked.length > 0) {
         const displacedLoop = cue.loopKey ? findLoopByKey(cue.loopKey) : undefined;
@@ -1549,6 +1551,15 @@ export default function PerformanceScreen() {
               </View>
             </TouchableOpacity>
           )}
+        </View>
+      )}
+
+      {view === "studio" && isStemCue && (
+        <View className="px-screen mb-3">
+          <SyncNudge
+            offsetSeconds={cue.stemOffset}
+            onChange={(seconds) => session.setStemOffset(cue.id, seconds)}
+          />
         </View>
       )}
 

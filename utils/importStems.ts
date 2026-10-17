@@ -53,6 +53,24 @@ export function resolveStemUri(uri: string): string {
   return filename ? `${STEMS_DIRECTORY}${filename}` : uri;
 }
 
+/**
+ * Puts a picked file in app storage.
+ *
+ * Moved rather than copied: the source is the picker's own copy in our cache,
+ * already a duplicate of the file in Files, and a copy would make it a third.
+ * For stems at a hundred-odd megabytes each that is the difference between an
+ * import that finishes and a phone that fills up. Cache and documents are on
+ * the same volume, so the move is a rename -- no bytes are written at all.
+ */
+async function takeFile(from: string, to: string) {
+  try {
+    await FileSystem.moveAsync({ from, to });
+  } catch {
+    await FileSystem.copyAsync({ from, to });
+    await FileSystem.deleteAsync(from, { idempotent: true }).catch(() => {});
+  }
+}
+
 async function ensureStemsDirectory() {
   const info = await FileSystem.getInfoAsync(STEMS_DIRECTORY);
   if (!info.exists) {
@@ -153,7 +171,7 @@ export async function importStems(): Promise<StemImport> {
     const target = `${STEMS_DIRECTORY}${id}${extensionOf(asset.name)}`;
 
     try {
-      await FileSystem.copyAsync({ from: asset.uri, to: target });
+      await takeFile(asset.uri, target);
       const startSeconds = set ? placementFor(set, asset.name) : undefined;
       tracks.push({
         id,
@@ -172,6 +190,15 @@ export async function importStems(): Promise<StemImport> {
       console.error("Failed to copy stem", asset.name, error);
     }
   }
+
+  // The picker's copies of everything that wasn't moved -- the set, skipped
+  // files, a stem that failed. The OS clears the cache eventually, but
+  // "eventually" is a phone that reads full in the meantime.
+  await Promise.all(
+    result.assets.map((asset) =>
+      FileSystem.deleteAsync(asset.uri, { idempotent: true }).catch(() => {})
+    )
+  );
 
   // Alphabetical, so the mixer's running order matches the file names the user
   // chose -- which is usually already the order they think of the parts in.
@@ -204,6 +231,65 @@ export function placeTracks(tracks: CueTrack[], set: AbletonSet): CueTrack[] {
   return moved ? placed : tracks;
 }
 
+// Chunks readWavMarkers looks at. Everything else -- above all "data", which
+// is the whole of the audio -- is stepped over without being read.
+const MARKER_CHUNKS = new Set(["fmt ", "cue ", "LIST"]);
+// No marker chunk is anywhere near this; one claiming to be is damage.
+const MAX_MARKER_CHUNK = 1024 * 1024;
+
+async function readBytes(uri: string, position: number, length: number) {
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+    position,
+    length,
+  });
+  return new Uint8Array(base64ToArrayBuffer(base64));
+}
+
+const tagAt = (bytes: Uint8Array, offset: number) =>
+  String.fromCharCode(...bytes.subarray(offset, offset + 4));
+
+/**
+ * A WAV's header and marker chunks, without its audio, as a WAV
+ * readWavMarkers can parse.
+ *
+ * Reading the whole file is what this used to do, and for a stem it meant a
+ * hundred-megabyte string decoded a byte at a time on the JS thread -- the
+ * screen froze for as long as that took, or the app died of it. The markers
+ * are a few hundred bytes, so the chunk headers are walked with positioned
+ * reads and only the chunks that matter are fetched.
+ */
+async function readWavMetadata(uri: string): Promise<ArrayBuffer> {
+  const info = await FileSystem.getInfoAsync(uri);
+  const fileSize = info.exists ? info.size : 0;
+
+  const header = await readBytes(uri, 0, 12);
+  const parts: Uint8Array[] = [header];
+
+  let offset = 12;
+  // Bounded, so a file of garbage chunk sizes can't keep this going.
+  for (let i = 0; i < 256 && offset + 8 <= fileSize; i++) {
+    const chunkHeader = await readBytes(uri, offset, 8);
+    if (chunkHeader.length < 8) break;
+    const tag = tagAt(chunkHeader, 0);
+    const size = new DataView(chunkHeader.buffer).getUint32(4, true);
+
+    if (MARKER_CHUNKS.has(tag) && size <= MAX_MARKER_CHUNK) {
+      parts.push(chunkHeader, await readBytes(uri, offset + 8, size + (size % 2)));
+    }
+    offset += 8 + size + (size % 2);
+  }
+
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    joined.set(part, at);
+    at += part.length;
+  }
+  return joined.buffer;
+}
+
 /**
  * Sections a stem carries in its own metadata, if any.
  *
@@ -222,11 +308,9 @@ export async function readStemSections(
     if (!/\.wav$/i.test(track.uri)) continue;
 
     try {
-      const base64 = await FileSystem.readAsStringAsync(
-        resolveStemUri(track.uri),
-        { encoding: FileSystem.EncodingType.Base64 }
+      const markers = readWavMarkers(
+        await readWavMetadata(resolveStemUri(track.uri))
       );
-      const markers = readWavMarkers(base64ToArrayBuffer(base64));
       if (markers.length === 0) continue;
 
       return markers.map((marker, index) => ({
@@ -245,6 +329,35 @@ export async function readStemSections(
   }
 
   return [];
+}
+
+/**
+ * Deletes every file in the stems directory that no cue points at.
+ *
+ * Stems used to outlive the session they came in with -- deleting a session
+ * dropped its cues and left their audio on disk with nothing able to reach it.
+ * This takes that space back, and keeps it back if anything else ever leaks.
+ *
+ * Only safe with the complete list of cues in hand: call it with what was read
+ * from disk, never with a list that failed to load, or it deletes everything.
+ */
+export async function sweepOrphanStems(tracks: CueTrack[]): Promise<void> {
+  const info = await FileSystem.getInfoAsync(STEMS_DIRECTORY);
+  if (!info.exists) return;
+
+  const referenced = new Set(
+    tracks.map((track) => resolveStemUri(track.uri).split("/stems/").pop())
+  );
+  const files = await FileSystem.readDirectoryAsync(STEMS_DIRECTORY);
+  await Promise.all(
+    files
+      .filter((name) => !referenced.has(name))
+      .map((name) =>
+        FileSystem.deleteAsync(`${STEMS_DIRECTORY}${name}`, {
+          idempotent: true,
+        }).catch(() => {})
+      )
+  );
 }
 
 /** Deletes a cue's copied stems. Called when the cue itself goes. */
