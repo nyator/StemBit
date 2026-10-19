@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#101116"
+        "backgroundColor": "#030406"
       },
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS"
@@ -50,7 +50,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 129,
           "resizeMode": "contain",
-          "backgroundColor": "#101116"
+          "backgroundColor": "#030406"
         }
       ],
       "@clerk/expo",

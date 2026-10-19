@@ -2,16 +2,17 @@ import { Alert } from "react-native";
 
 import {
   MAX_PAD_LAYERS,
-  NATURE_CHANNEL,
   findPadPackByKey,
+  type PadKind,
   type PadPack,
 } from "../constants/pads";
 import { usePreferences } from "../context/PreferencesContext";
 
-/** A strip on the mixer: a loaded pad pack, or the nature bed. */
+/** A strip on the mixer: one loaded pack, a pad or an ambience. */
 export type MixerChannel = {
-  /** PadPack.key, or NATURE_CHANNEL.key. */
+  /** PadPack.key. */
   id: string;
+  kind: PadKind;
   title: string;
   subtitle: string;
   /**
@@ -23,8 +24,6 @@ export type MixerChannel = {
    */
   level: number;
   muted: boolean;
-  /** The nature bed is permanent; pad packs can be unloaded. */
-  removable: boolean;
 };
 
 // The pad stack and the mixer's rules in one place: what can be loaded, what
@@ -34,7 +33,6 @@ export type MixerChannel = {
 export function usePadLayers() {
   const { prefs, setPref } = usePreferences();
   const layers = prefs.padLayers;
-  const nature = prefs.natureNoise;
 
   const layerFor = (packKey: string) =>
     layers.find((layer) => layer.pack === packKey);
@@ -47,25 +45,14 @@ export function usePadLayers() {
     return pack ? [{ pack, layer }] : [];
   });
 
-  const padChannels: MixerChannel[] = loaded.map(({ pack, layer }) => ({
+  const channels: MixerChannel[] = loaded.map(({ pack, layer }) => ({
     id: pack.key,
+    kind: pack.kind,
     title: pack.title,
     subtitle: pack.artist,
     level: layer.level,
     muted: layer.muted,
-    removable: true,
   }));
-
-  const natureChannel: MixerChannel = {
-    id: NATURE_CHANNEL.key,
-    title: NATURE_CHANNEL.title,
-    subtitle: NATURE_CHANNEL.subtitle,
-    level: nature.level,
-    muted: nature.muted,
-    removable: false,
-  };
-
-  const channels = [...padChannels, natureChannel];
 
   const addLayer = (pack: PadPack) => {
     if (layerFor(pack.key)) return;
@@ -126,11 +113,6 @@ export function usePadLayers() {
   const setLevel = (channelId: string, level: number) => {
     const clamped = Math.max(0, Math.min(1, level));
 
-    if (channelId === NATURE_CHANNEL.key) {
-      setPref("natureNoise", { ...nature, level: clamped });
-      return;
-    }
-
     setPref(
       "padLayers",
       layers.map((layer) =>
@@ -140,11 +122,6 @@ export function usePadLayers() {
   };
 
   const toggleMute = (channelId: string) => {
-    if (channelId === NATURE_CHANNEL.key) {
-      setPref("natureNoise", { ...nature, muted: !nature.muted });
-      return;
-    }
-
     setPref(
       "padLayers",
       layers.map((layer) =>

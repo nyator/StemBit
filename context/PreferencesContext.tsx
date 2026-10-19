@@ -23,10 +23,9 @@ import * as FileSystem from "expo-file-system/legacy";
 //   loopVolume    -> master gain for the loop's backing track, 0–1
 //   loopClick     -> play a metronome click alongside a loop (off by default)
 //   loopClickPan  -> stereo placement of that loop click
-//   padLayers     -> the pad packs stacked into the instrument, each with its
-//                    own mix level. One key press sounds all of them.
-//   natureNoise   -> the ambience bed layered over every pad. A mixer channel
-//                    of its own, muted until the user brings it in.
+//   padLayers     -> the packs stacked into the instrument -- tonal pads and
+//                    ambience alike -- each with its own mix level. One key
+//                    press sounds all of them.
 //   launchScreen  -> which tab opens after signing in
 /**
  * How far the metronome's master gain can be pushed, where 1 is the click as
@@ -61,7 +60,6 @@ export type Preferences = {
   stemClick: boolean;
   loopClickPan: "left" | "center" | "right";
   padLayers: PadLayer[];
-  natureNoise: MixSettings;
   seenOnboarding: boolean;
   seenFeatureTour: boolean;
   /**
@@ -94,7 +92,6 @@ export type PadLayer = MixSettings & {
 // numbers DEFAULTS does, and a reset that put a fader somewhere it never
 // started would be a worse lie than no reset at all.
 export const DEFAULT_PAD_LEVEL = 1;
-export const DEFAULT_NATURE_LEVEL = 0.4;
 export const DEFAULT_METRONOME_VOLUME = 1.5;
 export const DEFAULT_PAD_VOLUME = 0.8;
 export const DEFAULT_LOOP_VOLUME = 1;
@@ -137,9 +134,6 @@ const DEFAULTS: Preferences = {
   // pulling the catalog in here would make this module depend on the audio
   // assets it indexes.
   padLayers: [{ pack: "drone-pad", level: DEFAULT_PAD_LEVEL, muted: false }],
-  // Present in the mixer from the start but muted: ambience under every key
-  // press is a deliberate choice, not something to discover already running.
-  natureNoise: { level: DEFAULT_NATURE_LEVEL, muted: true },
   seenOnboarding: false,
   // Distinct from seenOnboarding, which gates the pre-login carousel. This one
   // covers the tour over the tab bar, which can only run once the user is
@@ -188,19 +182,26 @@ const normalizePadLayers = (value: unknown): PadLayer[] => {
   return layers.length > 0 ? layers : DEFAULTS.padLayers;
 };
 
-const normalizeMixSettings = (
-  value: unknown,
-  fallback: MixSettings
-): MixSettings => {
-  if (!value || typeof value !== "object") return fallback;
-  const settings = value as Partial<MixSettings>;
-  if (typeof settings.level !== "number" || !Number.isFinite(settings.level)) {
-    return fallback;
-  }
-  return {
-    level: Math.max(0, Math.min(1, settings.level)),
-    muted: settings.muted === true,
-  };
+// Matches MAX_PAD_LAYERS in constants/pads.ts; not imported, for the same
+// reason the default stack isn't.
+const MAX_LAYERS = 4;
+
+/**
+ * The old fixed Nature channel, carried over as the pack that replaced it.
+ *
+ * Ambience used to be a strip of its own (`natureNoise`) and is now a pack in
+ * the stack like any pad, keyed "nature". Someone who had it unmuted would
+ * otherwise update and find it gone from their mix -- so it comes back as a
+ * loaded pack at the level it was at, if the stack has room for it. A muted
+ * one is left out: it was never part of what they heard.
+ */
+const carryOverNature = (layers: PadLayer[], nature: unknown): PadLayer[] => {
+  if (!nature || typeof nature !== "object") return layers;
+  const { level, muted } = nature as Partial<MixSettings>;
+  if (muted !== false || typeof level !== "number" || !(level > 0)) return layers;
+  if (layers.some((layer) => layer.pack === "nature")) return layers;
+  if (layers.length >= MAX_LAYERS) return layers;
+  return [...layers, { pack: "nature", level: Math.min(1, level), muted: false }];
 };
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
@@ -219,13 +220,15 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
             await FileSystem.readAsStringAsync(PREFS_FILE)
           );
           if (isMounted && parsed && typeof parsed === "object") {
+            // Not spread: a key the app no longer has would ride along in the
+            // file forever.
+            const { natureNoise, ...rest } = parsed;
             setPrefs({
               ...DEFAULTS,
-              ...parsed,
-              padLayers: normalizePadLayers(parsed.padLayers),
-              natureNoise: normalizeMixSettings(
-                parsed.natureNoise,
-                DEFAULTS.natureNoise
+              ...rest,
+              padLayers: carryOverNature(
+                normalizePadLayers(parsed.padLayers),
+                natureNoise
               ),
             });
           }

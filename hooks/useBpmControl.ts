@@ -93,14 +93,10 @@ export function useBpmControl({
     [stepBy]
   );
 
-  const increase = () => {
-    hapticImpact(prefs.haptics);
-    stepBy(1);
-  };
-  const decrease = () => {
-    hapticImpact(prefs.haptics);
-    stepBy(-1);
-  };
+  // No haptic on the steppers: they're tapped in quick runs to walk a tempo,
+  // and a buzz on every step got in the way. Tap tempo keeps its tick.
+  const increase = () => stepBy(1);
+  const decrease = () => stepBy(-1);
   const startHoldIncrease = () => startHold(1);
   const startHoldDecrease = () => startHold(-1);
 

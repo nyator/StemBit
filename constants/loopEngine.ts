@@ -1080,15 +1080,18 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
         // with, and doing anything to it is how the two came apart.
         function emitBeat(beatIndex, time) {
           if (!audioContext) return;
-          var timer = setTimeout(
+          var entry = { at: time, id: null };
+          entry.id = setTimeout(
             function () {
-              var idx = beatTimers.indexOf(timer);
+              var idx = beatTimers.indexOf(entry);
               if (idx !== -1) beatTimers.splice(idx, 1);
               post({ type: "beat", beat: beatIndex, accent: beatIndex === 0 });
             },
             Math.max(0, (time - audioContext.currentTime) * 1000)
           );
-          beatTimers.push(timer);
+          // Kept with its time, so a rate change can cancel only the beats
+          // that fall after the swap -- see cutGridFrom.
+          beatTimers.push(entry);
         }
 
         // Route a click's gain node to the destination at the current pan.
@@ -1151,6 +1154,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           source.connect(gain);
           connectClickOutput(gain, ctx);
           source.start(time);
+          // When it sounds, for cutGridFrom.
+          source.__at = time;
           clickSources.push(source);
           source.onended = function () {
             var idx = clickSources.indexOf(source);
@@ -1237,10 +1242,63 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           }
           // Beats already queued for a moment that is no longer coming: without
           // this, stopping leaves a dot lighting up on a silent loop.
-          for (var t = 0; t < beatTimers.length; t++) clearTimeout(beatTimers[t]);
+          for (var t = 0; t < beatTimers.length; t++) clearTimeout(beatTimers[t].id);
           beatTimers = [];
           stopClickSources();
         }
+
+        // Schedule the grid ahead to untilTime at the spacing it has now.
+        //
+        // For the moment before a tempo render. Rendering the stretched loop
+        // blocks this page's thread for tens of milliseconds -- far longer when
+        // hosted natively -- and while it does, nothing wakes beatScheduler, so
+        // a click horizon of 100ms simply ran out: tapping the tempo up fast
+        // rendered on every tap and the click kept dropping out under it. The
+        // old loop is still what's playing until the swap, so clicks at the old
+        // spacing are the right ones to have queued. Never past a queued cue
+        // swap, which restarts the grid itself.
+        function primeGrid(untilTime) {
+          if (!playing || !active) return;
+          var beatSec = beatSeconds();
+          if (beatSec <= 0) return;
+          var until = pendingSwap ? Math.min(untilTime, pendingSwap.at) : untilTime;
+          while (gridNextTime < until) {
+            emitBeat(gridBeatIndex, gridNextTime);
+            if (clickEnabled) scheduleClick(gridBeatIndex, gridNextTime);
+            advanceGrid(beatSec);
+          }
+        }
+
+        // Cancel the grid from atTime on, keeping what lands before it.
+        //
+        // A rate change swaps the audio at one moment; clicks before it are on
+        // the old loop and correct, clicks after it are on the wrong spacing.
+        // Stopping all of them (stopBeatGrid) silenced the beat or two still
+        // due under the old tempo -- another hole every time the tempo moved.
+        function cutGridFrom(atTime) {
+          if (beatTimer) {
+            clearTimeout(beatTimer);
+            beatTimer = null;
+          }
+          beatTimers = beatTimers.filter(function (entry) {
+            if (entry.at < atTime) return true;
+            clearTimeout(entry.id);
+            return false;
+          });
+          clickSources = clickSources.filter(function (source) {
+            if (source.__at < atTime) return true;
+            try {
+              source.stop();
+            } catch (e) {
+              // never started; stop() before its time cancels it
+            }
+            return false;
+          });
+        }
+
+        // How far ahead primeGrid covers a render: longer than one takes on a
+        // slow phone, natively hosted.
+        var RENDER_PRIME_SECONDS = 1.5;
 
         // (Re)start the grid from the loop's position at atTime. Cancels
         // anything pending first so a rate change can't double it up.
@@ -1261,6 +1319,8 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           var ctx = ensureContext();
 
           if (Math.abs(currentRate - 1) > UNITY_RATE_EPSILON) {
+            // Queue the click past the render first -- see primeGrid.
+            primeGrid(ctx.currentTime + RENDER_PRIME_SECONDS);
             if (!getStretchedBuffer(currentRate)) return;
           }
 
@@ -1272,8 +1332,10 @@ ${SILENT_MODE_KEEP_ALIVE_SOURCE}
           stopSource(old, SWAP_FADE_SECONDS, swapTime);
           // Re-lock the grid to the loop at its new warp, so the click and the
           // dots both follow the tempo change instead of carrying on at the old
-          // spacing.
-          startBeatGrid(swapTime);
+          // spacing -- from the swap on, keeping the beats still due before it.
+          cutGridFrom(swapTime);
+          seedBeatGrid(swapTime);
+          beatScheduler();
         }
 
         // --- Quantised cue swap -------------------------------------------

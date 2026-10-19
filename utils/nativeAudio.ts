@@ -7,6 +7,8 @@
 // imports it directly: the native engines ask for it here, at the point
 // they're built, and the rest of the app asks whether it's there before
 // choosing them.
+import { TurboModuleRegistry } from "react-native";
+
 type AudioApi = typeof import("react-native-audio-api");
 
 // undefined = not tried yet; null = tried, and this binary doesn't have it.
@@ -14,9 +16,25 @@ let audioApi: AudioApi | null | undefined;
 
 const load = (): AudioApi | null => {
   if (audioApi !== undefined) return audioApi;
+
+  // Asked of React Native before the library is touched. The try/catch below
+  // is not enough on its own: in development, Metro's require reports a throw
+  // from a module's first evaluation to LogBox and hands back undefined
+  // instead of rethrowing it. So in Expo Go -- which has no such module --
+  // the catch never ran, `undefined` read as "not tried yet", every engine
+  // decided native audio was there, and each one re-required the library and
+  // put the same red error on screen again.
+  if (!TurboModuleRegistry.get("AudioAPIModule")) {
+    console.warn(
+      "Native audio isn't in this build (Expo Go, or a dev client built before it was added) — using the WebView engines."
+    );
+    audioApi = null;
+    return audioApi;
+  }
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    audioApi = require("react-native-audio-api") as AudioApi;
+    audioApi = (require("react-native-audio-api") as AudioApi | undefined) ?? null;
   } catch (error) {
     console.warn(
       "Native audio isn't available in this build — using the WebView engines.",

@@ -26,7 +26,6 @@ const TRACK_WIDTH = 5;
 // to be a scale.
 const TICKS = [0, 0.25, 0.5, 0.75, 1];
 
-const TRAVEL = FADER_HEIGHT - CAP_HEIGHT;
 
 // A screen reader can't drag, so the fader publishes the two actions that let
 // one be set without a drag. Without these the control is readable but not
@@ -47,6 +46,12 @@ type VerticalFaderProps = {
   onComplete?: (value: number) => void;
   accessibilityLabel?: string;
   defaultValue?: number;
+  /**
+   * Overall height, cap included. 132 by default, the pad mixer's; the
+   * session's stem strips run shorter so a song's worth of them doesn't fill
+   * the screen.
+   */
+  height?: number;
 };
 
 export default function VerticalFader({
@@ -55,7 +60,12 @@ export default function VerticalFader({
   onComplete,
   defaultValue,
   accessibilityLabel,
+  height = FADER_HEIGHT,
 }: VerticalFaderProps) {
+  const TRAVEL = height - CAP_HEIGHT;
+  // The responder below is built once; it reads the travel through this.
+  const travelRef = useRef(TRAVEL);
+  travelRef.current = TRAVEL;
   // The responder is built once, so it reads the live callbacks and the latest
   // dragged value through refs rather than closing over a stale render.
   const onChangeRef = useRef(onChange);
@@ -116,8 +126,9 @@ export default function VerticalFader({
   // Touch y is measured to the middle of the cap, so the grip lands under the
   // finger instead of jumping by half its height on the first touch.
   const handleTouch = (locationY: number) => {
-    const offset = Math.max(0, Math.min(TRAVEL, locationY - CAP_HEIGHT / 2));
-    const next = 1 - offset / TRAVEL;
+    const travel = travelRef.current;
+    const offset = Math.max(0, Math.min(travel, locationY - CAP_HEIGHT / 2));
+    const next = 1 - offset / travel;
     latestRef.current = next;
     onChangeRef.current(next);
   };
@@ -137,7 +148,7 @@ export default function VerticalFader({
         if (nativeEvent.actionName === "decrement") nudge(-NUDGE);
       }}
       style={{
-        height: FADER_HEIGHT,
+        height,
         width: CAP_WIDTH + 10,
         alignItems: "center",
         justifyContent: "center",

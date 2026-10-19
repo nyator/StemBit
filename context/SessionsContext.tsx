@@ -59,6 +59,11 @@ export type CueTrack = {
    * stems are and what every cue before this assumed.
    */
   startSeconds?: number;
+  /**
+   * A cue (guide) track -- a voice calling the sections, a count-in -- that
+   * stays audible when another track is soloed. See utils/soloRules.ts.
+   */
+  guide?: boolean;
 };
 
 /**
@@ -162,6 +167,14 @@ export type SessionItem = {
    * measured and needed nothing, so it isn't measured again.
    */
   stemOffset?: number;
+  /**
+   * Warp: the tempo to PLAY the stems at, time-stretched with their pitch
+   * kept. `bpm` stays the song's own tempo -- what its bars, sections and click
+   * grid are measured in -- and this is how fast it's played; the two are a
+   * ratio, not a replacement. Absent means warp is off and the song plays as
+   * recorded. Native audio only (react-native-audio-api's stretcher).
+   */
+  warpBpm?: number;
 };
 
 /**

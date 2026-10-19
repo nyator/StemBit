@@ -124,6 +124,12 @@ export type PlaySpan = {
    * span and has no opinion about what follows.
    */
   arrangement?: ArrangementSpan[];
+  /**
+   * Land on the next bar of the SONG, not of the transport -- for a jump
+   * made mid-song. The transport's bars stop matching the song's after any
+   * seek, so quantising to them would land off the beat.
+   */
+  alignToSongBar?: boolean;
 };
 
 type SessionPlaybackContextValue = {
@@ -188,6 +194,14 @@ type SessionPlaybackContextValue = {
    * the cue; heard from the next start if the song is playing now.
    */
   setStemOffset: (cueId: string, seconds: number) => void;
+  /**
+   * Play the loaded song at this rate -- its warp tempo over its own -- with
+   * its pitch kept. Takes effect at once if it's playing (the engine picks the
+   * song up again where it is), else on the next play.
+   */
+  setWarp: (rate: number) => void;
+  /** Whether this build can warp at all: native audio only. */
+  warpAvailable: boolean;
 };
 
 const SessionPlaybackContext =
@@ -583,12 +597,21 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
     waiter(result);
   };
 
+  // The loaded song's warp rate, from what's saved on it.
+  const warpRateOf = (cueId: string | null) => {
+    const item = cueId ? findCue(cueId)?.item : undefined;
+    if (!item?.warpBpm || !item.bpm) return 1;
+    return item.warpBpm / item.bpm;
+  };
+
   function startPlayback(
     tracks: CueTrack[],
     bpm: number,
     quantum: Quantum,
     section?: PlaySpan
   ) {
+    // Before anything is armed: the launch builds its sources at this rate.
+    postToEngine({ type: "setWarp", rate: warpRateOf(loadedCueIdRef.current) });
     postToEngine({ type: "setTempo", bpm });
     postToEngine({
       type: "arm",
@@ -604,6 +627,7 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
       // seek into a counted launch.
       repeats: section?.repeats,
       arrangement: section?.arrangement,
+      songAligned: section?.alignToSongBar === true,
     });
     setIsPlaying(true);
   }
@@ -834,6 +858,8 @@ export function SessionPlaybackProvider({ children }: { children: ReactNode }) {
         getPeaks,
         detectTempo,
         setStemOffset,
+        setWarp: (rate: number) => postToEngine({ type: "setWarp", rate }),
+        warpAvailable: useNative,
       }}
     >
       {children}

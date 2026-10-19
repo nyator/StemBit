@@ -7,15 +7,27 @@ import { COLORS } from "../../constants/theme";
 import { BAR_STEPS, secondsPerBar, snapSeconds } from "../../constants/barGrid";
 import type { CueSection } from "../../context/SessionsContext";
 import type { TrackMix } from "../../context/SessionPlaybackContext";
+import { ChevronDown } from "../icons";
+import { isTrackSilent } from "../../utils/soloRules";
 
 // Minimum duration in seconds allowed for any section so its start and end cannot invert.
 const MIN_SECTION_DURATION = 0.1;
 
-const HEADER_WIDTH = 92;
+// The track head: name, level, mute / solo / cue. Wide and tall enough that
+// each stem is one row here and nowhere else -- the separate mixer strip it
+// used to need below the timeline is now optional.
+const HEADER_WIDTH = 150;
 const RULER_HEIGHT = 20;
 const MARKER_HEIGHT = 22;
-const LANE_HEIGHT = 52;
-const LANE_GAP = 4;
+// A track row: the head's name over M / S / CUE, the waveform beside it.
+// Compact on purpose -- a song can bring fourteen of these. Level isn't in
+// the row: the native slider can't be drawn under 30px, and with it every
+// row was 88 tall. It lives in the MIXER section's faders instead.
+const LANE_HEIGHT = 56;
+const LANE_GAP = 6;
+// The waveform's half-height in its lane: 60% of the room it has, so a loud
+// stem reads as a shape inside the lane rather than a block filling it.
+const WAVE_HALF_HEIGHT = (LANE_HEIGHT / 2 - 3) * 0.6;
 const MARKER_TOUCH_WIDTH = 34;
 
 const ZOOM_STOPS = [1, 2, 4, 8, 16, 32];
@@ -144,6 +156,14 @@ export function getNewSectionBounds({
 export type TimelineTrack = {
   id: string;
   name: string;
+  /** A cue track: heard under another track's solo (utils/soloRules.ts). */
+  guide?: boolean;
+  /**
+   * What the row shows, when it differs from the name -- the name less the
+   * project prefix every stem shares (utils/stemNames.ts). Screen readers
+   * still hear `name`.
+   */
+  label?: string;
 };
 
 type TrackTimelineProps = {
@@ -157,6 +177,12 @@ type TrackTimelineProps = {
   masterMuted?: boolean;
   onToggleMute: (trackId: string) => void;
   onToggleSolo: (trackId: string) => void;
+  /** Level from the row's slider, live while dragging. */
+  onLevel?: (trackId: string, level: number) => void;
+  /** Level when the drag ends -- persist here. */
+  onLevelCommit?: (trackId: string, level: number) => void;
+  /** Mark a stem as a cue track (utils/soloRules.ts). */
+  onToggleGuide?: (trackId: string) => void;
   playheadSeconds: Animated.Value;
   isPlaying: boolean;
   cursorSeconds: number;
@@ -183,6 +209,9 @@ export default function TrackTimeline({
   masterMuted = false,
   onToggleMute,
   onToggleSolo,
+  onLevel,
+  onLevelCommit,
+  onToggleGuide,
   playheadSeconds,
   isPlaying,
   cursorSeconds,
@@ -194,7 +223,14 @@ export default function TrackTimeline({
   width,
 }: TrackTimelineProps) {
   const laneWidth = Math.max(1, width - HEADER_WIDTH);
-  const lanesHeight = tracks.length * (LANE_HEIGHT + LANE_GAP);
+  // Collapsed, the stems share one lane, drawn over each other -- the song's
+  // shape in a single row. Only the lanes fold: the ruler and the section
+  // markers above them have gestures of their own and stay as they are, so
+  // sections are placed and dragged the same either way.
+  const [collapsed, setCollapsed] = useState(false);
+  const lanesHeight = collapsed
+    ? LANE_HEIGHT + LANE_GAP
+    : tracks.length * (LANE_HEIGHT + LANE_GAP);
 
   const [viewport, setViewport] = useState({ zoom: MIN_ZOOM, scrollX: 0 });
   const contentWidth = laneWidth * viewport.zoom;
@@ -585,30 +621,92 @@ export default function TrackTimeline({
     <View style={{ width }}>
       <View style={{ flexDirection: "row" }}>
         <View style={{ width: HEADER_WIDTH }}>
-          <View style={{ height: RULER_HEIGHT + MARKER_HEIGHT }} />
-          {tracks.map((track) => {
+          <TouchableOpacity
+            onPress={() => setCollapsed((current) => !current)}
+            accessibilityRole="button"
+            accessibilityLabel={collapsed ? "Show each stem" : "Collapse the stems"}
+            accessibilityState={{ expanded: !collapsed }}
+            hitSlop={6}
+            activeOpacity={0.7}
+            style={{
+              height: RULER_HEIGHT + MARKER_HEIGHT,
+              flexDirection: "row",
+              alignItems: "flex-end",
+              paddingBottom: 6,
+              gap: 3,
+            }}
+          >
+            <ChevronDown
+              size={14}
+              color={COLORS.textMuted}
+              style={{ transform: [{ rotate: collapsed ? "-90deg" : "0deg" }] }}
+            />
+            <Text className="text-micro text-ink-muted font-spaceBold">
+              {tracks.length} {tracks.length === 1 ? "STEM" : "STEMS"}
+            </Text>
+          </TouchableOpacity>
+          {collapsed ? (
+            <TouchableOpacity
+              onPress={() => setCollapsed(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Show each stem"
+              activeOpacity={0.7}
+              style={{
+                height: LANE_HEIGHT,
+                marginBottom: LANE_GAP,
+                justifyContent: "center",
+                paddingRight: 6,
+              }}
+            >
+              <Text className="text-micro text-white font-satoshiBold">All stems</Text>
+              <Text className="text-nav text-ink-muted font-satoshiRegular">
+                Tap to show each
+              </Text>
+            </TouchableOpacity>
+          ) : tracks.map((track) => {
             const isSolo = soloed === track.id;
-            const isSilent =
-              masterMuted || (soloed ? !isSolo : mix[track.id]?.muted === true);
+            const isSilent = isTrackSilent({
+              trackId: track.id,
+              solo: soloed,
+              master: masterMuted,
+              muted: mix[track.id]?.muted === true,
+              guide: track.guide === true,
+            });
             return (
               <View
                 key={track.id}
                 style={{
                   height: LANE_HEIGHT,
                   marginBottom: LANE_GAP,
-                  justifyContent: "center",
-                  paddingRight: 6,
+                  marginRight: 4,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  justifyContent: "space-between",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  // Soloed: outlined amber. Silent (muted, or under someone
+                  // else's solo): the whole head dims, not just a button --
+                  // the state has to read from arm's length.
+                  borderColor: isSolo ? COLORS.warning : "transparent",
+                  backgroundColor: isSolo
+                    ? "rgba(245,158,11,0.10)"
+                    : COLORS.surface,
+                  opacity: isSilent ? 0.45 : 1,
                 }}
               >
                 <Text
                   numberOfLines={1}
-                  className="text-micro text-white font-satoshiBold"
-                  style={{ opacity: isSilent ? 0.4 : 1 }}
+                  className="text-body text-white font-satoshiMedium"
+                  style={{ fontSize: 14 }}
                 >
-                  {track.name}
+                  {track.guide && (
+                    <Text style={{ color: COLORS.brandFrom, fontSize: 11 }}>CUE · </Text>
+                  )}
+                  {track.label ?? track.name}
                 </Text>
 
-                <View style={{ flexDirection: "row", marginTop: 5 }}>
+
+                <View style={{ flexDirection: "row", gap: 6 }}>
                   <LaneButton
                     label="M"
                     active={mix[track.id]?.muted === true}
@@ -625,6 +723,16 @@ export default function TrackTimeline({
                     accessibilityLabel={`${isSolo ? "Clear solo on" : "Solo"} ${track.name
                       }`}
                   />
+                  {onToggleGuide && (
+                    <LaneButton
+                      label="CUE"
+                      width={46}
+                      active={track.guide === true}
+                      activeColor={COLORS.brandFrom}
+                      onPress={() => onToggleGuide(track.id)}
+                      accessibilityLabel={`${track.name} is a cue track`}
+                    />
+                  )}
                 </View>
               </View>
             );
@@ -690,7 +798,7 @@ export default function TrackTimeline({
                       borderRightColor: accent,
                       backgroundColor: isSelected
                         ? "rgba(245,158,11,0.22)"
-                        : "rgba(88,190,236,0.14)",
+                        : "rgba(79,171,212,0.14)",
                     }}
                   >
                     <Text
@@ -721,6 +829,7 @@ export default function TrackTimeline({
                 contentWidth={contentWidth}
                 scrollX={viewport.scrollX}
                 height={lanesHeight}
+                overlay={collapsed}
               />
 
               <View pointerEvents="none" style={FILL}>
@@ -877,6 +986,7 @@ const Waveforms = memo(function Waveforms({
   contentWidth,
   scrollX,
   height,
+  overlay = false,
 }: {
   tracks: TimelineTrack[];
   peaks: Record<string, number[]>;
@@ -887,6 +997,8 @@ const Waveforms = memo(function Waveforms({
   contentWidth: number;
   scrollX: number;
   height: number;
+  /** Every stem in the first lane, over each other -- the collapsed view. */
+  overlay?: boolean;
 }) {
   const paths = useMemo(
     () =>
@@ -909,7 +1021,7 @@ const Waveforms = memo(function Waveforms({
         let bottom = "";
         for (let index = first; index < last; index++) {
           const x = index * step - scrollX;
-          const half = Math.max(0.5, values[index] * (LANE_HEIGHT / 2 - 3));
+          const half = Math.max(0.5, values[index] * WAVE_HALF_HEIGHT);
           top += `${top ? " L" : "M"} ${x.toFixed(1)} ${(middle - half).toFixed(1)}`;
           bottom = ` L ${x.toFixed(1)} ${(middle + half).toFixed(1)}${bottom}`;
         }
@@ -921,25 +1033,36 @@ const Waveforms = memo(function Waveforms({
 
   return (
     <Svg width={laneWidth} height={height}>
+      {overlay && (
+        <Rect x={0} y={0} width={laneWidth} height={LANE_HEIGHT} rx={4} fill={COLORS.surface} />
+      )}
       {paths.map((path, index) => {
         const isSolo = soloed === path.id;
-        const isSilent =
-          masterMuted || (soloed ? !isSolo : mix[path.id]?.muted === true);
+        const isSilent = isTrackSilent({
+          trackId: path.id,
+          solo: soloed,
+          master: masterMuted,
+          muted: mix[path.id]?.muted === true,
+          guide: tracks.find((track) => track.id === path.id)?.guide === true,
+        });
         return (
-          <G key={path.id} y={index * (LANE_HEIGHT + LANE_GAP)}>
-            <Rect
-              x={0}
-              y={0}
-              width={laneWidth}
-              height={LANE_HEIGHT}
-              rx={4}
-              fill={COLORS.surface}
-            />
+          <G key={path.id} y={overlay ? 0 : index * (LANE_HEIGHT + LANE_GAP)}>
+            {!overlay && (
+              <Rect
+                x={0}
+                y={0}
+                width={laneWidth}
+                height={LANE_HEIGHT}
+                rx={4}
+                fill={COLORS.surface}
+              />
+            )}
             {path.d ? (
               <Path
                 d={path.d}
                 fill={isSolo ? COLORS.warning : COLORS.brandFrom}
-                opacity={isSilent ? 0.18 : 0.6}
+                // Fainter stacked, so the stems read through each other.
+                opacity={isSilent ? 0.12 : overlay ? 0.35 : 0.6}
               />
             ) : null}
           </G>
@@ -989,32 +1112,35 @@ function LaneButton({
   activeColor,
   onPress,
   accessibilityLabel,
+  width = 36,
 }: {
   label: string;
   active: boolean;
   activeColor: string;
   onPress: () => void;
   accessibilityLabel: string;
+  width?: number;
 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       accessibilityLabel={accessibilityLabel}
-      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      accessibilityState={{ selected: active }}
+      // 24 drawn, about 44 to the touch: stage fingers miss small targets.
+      hitSlop={{ top: 10, bottom: 10, left: 3, right: 3 }}
       activeOpacity={0.7}
       style={{
-        width: 22,
-        height: 18,
-        marginRight: 4,
-        borderRadius: 3,
+        width,
+        height: 24,
+        borderRadius: 5,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: active ? activeColor : "rgba(255,255,255,0.08)",
       }}
     >
       <Text
-        className="text-nav font-spaceBold"
-        style={{ color: active ? COLORS.black : COLORS.textMuted }}
+        className="font-spaceBold"
+        style={{ fontSize: 12, color: active ? COLORS.black : COLORS.textSoft }}
       >
         {label}
       </Text>

@@ -107,6 +107,9 @@ function harness({ trackCount = 2 } = {}) {
       var currentSectionId = state.currentSectionId;
       // Sync nudges are tested on their own; nothing here makes one.
       function applyPendingShift() {}
+      // Warp: 1 unless a test sets it. lastLaunch is the engine's own record.
+      var warp = state.warp || 1;
+      var lastLaunch = null;
       ${launchSource}
       launch(section, atTime);
       state.launchGeneration = launchGeneration;
@@ -221,6 +224,26 @@ describe("a real count — N passes, then the song carries on", () => {
 
     // Pass 4 runs from 3*SPAN to 4*SPAN. The midpoint is 3.5*SPAN.
     expect(h.timers[0].delay).toBeCloseTo(3.5 * SPAN * 1000, 6);
+  });
+
+  it("times the release in real seconds when the song is warped", () => {
+    const h = harness();
+    h.state.warp = 1.25; // played 25% faster than recorded
+    h.run(spanSection({ repeats: 4 }), 0);
+
+    // 3.5 passes of song time, which a warped song covers in 3.5 / 1.25.
+    expect(h.timers[0].delay).toBeCloseTo((3.5 * SPAN * 1000) / 1.25, 6);
+  });
+
+  it("re-entered mid-loop, releases in the last pass from where it began", () => {
+    const h = harness();
+    // Picked up a quarter of the way into the first pass (what a tempo change
+    // mid-song does): the loop window is still the section's own.
+    const section = spanSection({ repeats: 2 });
+    h.run({ ...section, offset: section.offset + SPAN / 4, loopFrom: section.offset }, 0);
+
+    // Three quarters of a pass to finish the first, then half of the last.
+    expect(h.timers[0].delay).toBeCloseTo((0.75 + 0.5) * SPAN * 1000, 6);
   });
 
   it("leaves at least half a pass of slack on either side", () => {

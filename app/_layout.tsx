@@ -1,5 +1,22 @@
 import {SplashScreen, Stack, type ErrorBoundaryProps} from "expo-router";
 import {useFonts} from "expo-font";
+import {
+    IBMPlexSans_400Regular,
+    IBMPlexSans_500Medium,
+    IBMPlexSans_600SemiBold,
+} from "@expo-google-fonts/ibm-plex-sans";
+import {
+    ZalandoSans_200ExtraLight,
+    ZalandoSans_200ExtraLight_Italic,
+    ZalandoSans_300Light,
+    ZalandoSans_300Light_Italic,
+    ZalandoSans_400Regular,
+    ZalandoSans_400Regular_Italic,
+    ZalandoSans_500Medium,
+    ZalandoSans_500Medium_Italic,
+    ZalandoSans_700Bold,
+    ZalandoSans_700Bold_Italic,
+} from "@expo-google-fonts/zalando-sans";
 import {useEffect} from "react";
 import {ScrollView, Text, TouchableOpacity, View} from "react-native";
 import {ClerkProvider} from "@clerk/expo";
@@ -82,23 +99,30 @@ function RootLayout() {
     // falls back to the system font, which is the hardest kind of type bug to
     // spot on a device.
     //
-    // Satoshi ships as OTF; Space Grotesk and Gochi Hand stay TTF. React Native
-    // loads both, so there is nothing to convert.
+    // The Xe faces come from @expo-google-fonts as TTF; Gochi Hand is a local
+    // TTF.
     const [fontsLoaded, error] = useFonts({
-        "SpaceGrotesk-Bold": require("../assets/fonts/SpaceGrotesk-Bold.ttf"),
-        "SpaceGrotesk-Medium": require("../assets/fonts/SpaceGrotesk-Medium.ttf"),
-        "SpaceGrotesk-Regular": require("../assets/fonts/SpaceGrotesk-Regular.ttf"),
+        // Xe's pair: IBM Plex Sans for numbers and controls, Zalando Sans
+        // for text -- see tailwind.config.js's fontFamily.
+        "IBMPlexSans-SemiBold": IBMPlexSans_600SemiBold,
+        "IBMPlexSans-Medium": IBMPlexSans_500Medium,
+        "IBMPlexSans-Regular": IBMPlexSans_400Regular,
 
-        "Satoshi-Light": require("../assets/fonts/Satoshi-Light.otf"),
-        "Satoshi-LightItalic": require("../assets/fonts/Satoshi-LightItalic.otf"),
-        "Satoshi-Regular": require("../assets/fonts/Satoshi-Regular.otf"),
-        "Satoshi-Italic": require("../assets/fonts/Satoshi-Italic.otf"),
-        "Satoshi-Medium": require("../assets/fonts/Satoshi-Medium.otf"),
-        "Satoshi-MediumItalic": require("../assets/fonts/Satoshi-MediumItalic.otf"),
-        "Satoshi-Bold": require("../assets/fonts/Satoshi-Bold.otf"),
-        "Satoshi-BoldItalic": require("../assets/fonts/Satoshi-BoldItalic.otf"),
-        "Satoshi-Black": require("../assets/fonts/Satoshi-Black.otf"),
-        "Satoshi-BlackItalic": require("../assets/fonts/Satoshi-BlackItalic.otf"),
+        // One step lighter than the role names suggest: Zalando draws a
+        // weight heavier than Satoshi did (tailwind.config.js).
+        "ZalandoSans-ExtraLight": ZalandoSans_200ExtraLight,
+        "ZalandoSans-ExtraLightItalic": ZalandoSans_200ExtraLight_Italic,
+        "ZalandoSans-Light": ZalandoSans_300Light,
+        "ZalandoSans-LightItalic": ZalandoSans_300Light_Italic,
+        "ZalandoSans-Regular": ZalandoSans_400Regular,
+        "ZalandoSans-Italic": ZalandoSans_400Regular_Italic,
+        "ZalandoSans-Medium": ZalandoSans_500Medium,
+        "ZalandoSans-MediumItalic": ZalandoSans_500Medium_Italic,
+        "ZalandoSans-Bold": ZalandoSans_700Bold,
+        "ZalandoSans-BoldItalic": ZalandoSans_700Bold_Italic,
+
+        // The BPM readout keeps Space Grotesk.
+        "SpaceGrotesk-Bold": require("../assets/fonts/SpaceGrotesk-Bold.ttf"),
 
         "GochiHand-Regular": require("../assets/fonts/GochiHand-Regular.ttf"),
     });

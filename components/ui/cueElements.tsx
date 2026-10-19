@@ -3,13 +3,29 @@ import React, { useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 import { findLoopByKey, getAllLoops } from "../../constants/loops";
-import { PAD_PACKS, findPadPackByKey } from "../../constants/pads";
+import { TONAL_PAD_PACKS, findPadPackByKey } from "../../constants/pads";
 import { COLORS } from "../../constants/theme";
 import { Folder, Musicnote, type IconComponent } from "../icons";
-import CuePicker, { type CuePickerHandle, type PickerOption } from "./cuePicker";
+import CuePicker, {
+  type CuePickerHandle,
+  type PickerFacet,
+  type PickerOption,
+} from "./cuePicker";
 import { BpmDial, StepperButton } from "./instrument";
 import { useBpmControl } from "../../hooks/useBpmControl";
 import { roundBpm } from "../../utils/bpm";
+
+// What the session's pickers filter by: Bits' axes for loops, the pad
+// browser's for pads (less Type -- a cue's pad is always a tonal one).
+const LOOP_FACETS: PickerFacet[] = [
+  { key: "category", label: "Category" },
+  { key: "artist", label: "Artist" },
+  { key: "meter", label: "Meter", chips: true },
+];
+const PAD_FACETS: PickerFacet[] = [
+  { key: "artist", label: "Artist" },
+  { key: "genre", label: "Genre" },
+];
 
 const MIN_BPM = 20;
 const MAX_BPM = 320;
@@ -65,14 +81,21 @@ export default function CueElements({
     key: entry.key,
     title: entry.title,
     detail: `${entry.artist}  ·  ${entry.bpm} BPM  ·  ${entry.timeSignature}`,
-    group: entry.category,
+    // The axes Bits filters by, so a cue's loop is narrowed the same way.
+    facets: {
+      category: entry.category,
+      artist: entry.artist,
+      meter: entry.timeSignature,
+    },
   }));
 
-  const padOptions: PickerOption[] = PAD_PACKS.map((entry) => ({
+  // Tonal pads only. A cue's pad plays in the song's key, and ambience has
+  // none -- it's stacked from the Pad tab's mixer, not chosen per song.
+  const padOptions: PickerOption[] = TONAL_PAD_PACKS.map((entry) => ({
     key: entry.key,
     title: entry.title,
     detail: `${entry.artist}  ·  ${entry.genre}`,
-    group: entry.genre,
+    facets: { artist: entry.artist, genre: entry.genre },
   }));
 
   return (
@@ -105,24 +128,25 @@ export default function CueElements({
       {/* Tempo Control (loop active) */}
       {Boolean(loop) && (
         <View
-          className="p-4 rounded-2xl border bg-surface/50"
+          className="p-4"
+          // className="p-4 rounded-2xl border bg-surface/50"
           style={{ borderColor: COLORS.border }}
         >
           <View className="flex-row items-center justify-between mb-3">
             <View className="flex-row items-center gap-2">
-              <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
+              {/* <Text className="text-micro text-ink-muted font-spaceBold tracking-widest">
                 TEMPO CLOCK
-              </Text>
+              </Text> */}
             </View>
 
-            {loop?.bpm && (
+            {/* {loop?.bpm && (
               <Text
                 className="text-micro text-ink-muted font-spaceBold"
                 style={{ fontVariant: ["tabular-nums"] }}
               >
                 ORIGINAL: {loop.bpm} BPM
               </Text>
-            )}
+            )} */}
           </View>
 
           <TempoStepper
@@ -155,8 +179,10 @@ export default function CueElements({
       {/* Pickers */}
       <CuePicker
         ref={loopPickerRef}
-        title="Beat Loops"
+        title="Loops"
         options={loopOptions}
+        facets={LOOP_FACETS}
+        rowFacet="category"
         selectedKey={loopKey}
         noneLabel="Bypass Loop"
         onSelect={onChangeLoop}
@@ -165,6 +191,8 @@ export default function CueElements({
         ref={padPickerRef}
         title="Pad Packs"
         options={padOptions}
+        facets={PAD_FACETS}
+        rowFacet="genre"
         selectedKey={padPack}
         noneLabel="Bypass Pad"
         onSelect={onChangePadPack}
@@ -239,10 +267,16 @@ export function TempoStepper({
   bpm = 120,
   nativeBpm,
   onChange,
+  disabled = false,
 }: {
   bpm?: number;
   nativeBpm?: number;
   onChange: (bpm: number) => void;
+  /**
+   * Shown but not touchable -- the session's Studio locks the tempo while a
+   * song plays, where a nudged + would audibly restart a warped song.
+   */
+  disabled?: boolean;
 }) {
   // The hook wants a state setter, and hold-to-run calls it with an updater
   // many times between renders. Reading the latest value from a ref rather
@@ -267,7 +301,11 @@ export function TempoStepper({
   });
 
   return (
-    <View>
+    <View
+      pointerEvents={disabled ? "none" : "auto"}
+      accessibilityState={{ disabled }}
+      style={disabled ? { opacity: 0.4 } : undefined}
+    >
       <View className="flex-row items-center self-center gap-3">
         <StepperButton
           direction="down"
@@ -284,7 +322,7 @@ export function TempoStepper({
 
       {/* Quick Reset */}
       {nativeBpm !== undefined && bpm !== nativeBpm && (
-        <View className="mt-3 pt-2.5 border-t border-white/5 items-center">
+        <View className="mt-3 pt-2.5 border-white/5 items-center">
           <TouchableOpacity
             onPress={() => onChange(nativeBpm)}
             hitSlop={8}

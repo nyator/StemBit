@@ -245,7 +245,9 @@ export default function MetroScreen() {
             icon={Musicnote}
             label={timeSignature.label}
             onPress={openSheet}
-            style={{ width: SIZES.segmentWidth }}
+            // A floor, not a width: the glass capsule's ends and padding left
+            // too little of 105 for "4 / 4", let alone "12 / 8".
+            style={{ minWidth: SIZES.segmentWidth }}
             accessibilityLabel={`Time signature, currently ${timeSignature.label}`}
           />
         </View>

@@ -1,5 +1,5 @@
 import { findLoopByKey } from "../constants/loops";
-import { findPadPackByKey } from "../constants/pads";
+import { findPadPackByKey, playableKey } from "../constants/pads";
 import type { SessionItem } from "../context/SessionsContext";
 
 // What a cue holds, in one line.
@@ -18,8 +18,9 @@ export function describeCue(item: SessionItem): string {
   // The cue's key, wherever it ends up sitting: after the tempo on a stem
   // song, after the loop's own tempo on a loop cue, or on the pad's own line
   // if there's no loop under it to carry it.
-  const keyLabel = item.padKey
-    ? `${item.padKey} ${item.padMode === "minor" ? "min" : "maj"}`
+  const shownKey = item.padKey ? playableKey(item.padKey, item.padMode) : null;
+  const keyLabel = shownKey
+    ? `${shownKey.key} ${shownKey.mode === "minor" ? "min" : "maj"}`
     : null;
 
   if (stemCount > 0) {

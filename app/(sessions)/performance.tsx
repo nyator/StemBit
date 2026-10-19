@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
   Animated,
@@ -33,6 +33,7 @@ import {
   useSessionPlayback,
   type PlaySpan,
   type TrackMix,
+  type TransportPosition,
 } from "../../context/SessionPlaybackContext";
 import { usePreferences } from "../../context/PreferencesContext";
 import { useSessionCue } from "../../context/SessionCueContext";
@@ -42,7 +43,10 @@ import {
 } from "../../context/LoopPlaybackContext";
 import { KEYS, usePadPlayback } from "../../context/PadPlaybackContext";
 import { useLiveSections } from "../../hooks/useLiveSections";
-import { PAD_PACKS } from "../../constants/pads";
+import { MINOR_KEYS_ENABLED, PAD_PACKS, playableKey } from "../../constants/pads";
+import { nextSectionStart, prevSectionStart } from "../../utils/sectionNav";
+import { isTrackSilent } from "../../utils/soloRules";
+import { shortStemNames } from "../../utils/stemNames";
 import { findLoopByKey } from "../../constants/loops";
 import { hapticImpact } from "../../utils/haptics";
 import { confirm } from "../../utils/confirm";
@@ -83,6 +87,8 @@ import {
 } from "../../constants/barGrid";
 import {
   AudioStart,
+  DoubleBack,
+  DoubleForward,
   Musicnote,
   PlayFilled,
   SortPad,
@@ -293,9 +299,20 @@ export default function PerformanceScreen() {
 
   const [cursorSeconds, setCursorSeconds] = useState(0);
   const [loopEnabled, setLoopEnabled] = useState(false);
+  const [showMixer, setShowMixer] = useState(false);
 
   const timelineTracks = useMemo(
-    () => tracks.map((track) => ({ id: track.id, name: track.name })),
+    () => {
+      // "AntidoteAudio - Drums" ×14 shows as "Drums": the shared project
+      // prefix is what a narrow row would otherwise keep.
+      const labels = shortStemNames(tracks.map((track) => track.name));
+      return tracks.map((track, index) => ({
+        id: track.id,
+        name: track.name,
+        label: labels[index],
+        guide: track.guide === true,
+      }));
+    },
     [tracks]
   );
 
@@ -367,7 +384,13 @@ export default function PerformanceScreen() {
       session.setTrack(trackId, {
         level: track.level,
         pan: track.pan,
-        muted: masterMuted || (soloed ? trackId !== soloed : track.muted),
+        muted: isTrackSilent({
+          trackId,
+          solo: soloed,
+          master: masterMuted,
+          muted: track.muted,
+          guide: guideOf(trackId),
+        }),
       });
     });
   }, [session.isReady, cue?.id]);
@@ -428,12 +451,21 @@ export default function PerformanceScreen() {
   }, [peaks, trackDurations, duration]);
 
   const mixOf = (trackId: string) => mix[trackId] ?? DEFAULT_MIX;
+  const guideOf = (trackId: string) =>
+    tracks.find((track) => track.id === trackId)?.guide === true;
 
   const isSilent = (
     trackId: string,
     solo: string | null = soloed,
     master: boolean = masterMuted
-  ) => master || (solo ? trackId !== solo : mixOf(trackId).muted);
+  ) =>
+    isTrackSilent({
+      trackId,
+      solo,
+      master,
+      muted: mixOf(trackId).muted,
+      guide: guideOf(trackId),
+    });
 
   const pushTrack = (
     trackId: string,
@@ -444,7 +476,13 @@ export default function PerformanceScreen() {
     session.setTrack(trackId, {
       level: next.level,
       pan: next.pan,
-      muted: master || (solo ? trackId !== solo : next.muted),
+      muted: isTrackSilent({
+        trackId,
+        solo,
+        master,
+        muted: next.muted,
+        guide: guideOf(trackId),
+      }),
     });
   };
 
@@ -468,6 +506,28 @@ export default function PerformanceScreen() {
   const toggleMute = (trackId: string) => {
     hapticImpact(prefs.haptics, "medium");
     changeMix(trackId, { muted: !mixOf(trackId).muted });
+  };
+
+  // Mark a stem as a cue track, heard under any solo. Saved on the song --
+  // which stems are cues is a fact about the export, not about tonight's mix.
+  const toggleGuide = (trackId: string) => {
+    if (!sessionId || !itemId) return;
+    hapticImpact(prefs.haptics, "light");
+    const nextTracks = tracks.map<CueTrack>((track) =>
+      track.id === trackId ? { ...track, guide: !track.guide } : track
+    );
+    updateItem(sessionId, itemId, { tracks: nextTracks });
+    // Whether it's heard right now can change with it.
+    const guideNow = !tracks.find((track) => track.id === trackId)?.guide;
+    session.setTrack(trackId, {
+      muted: isTrackSilent({
+        trackId,
+        solo: soloed,
+        master: masterMuted,
+        muted: mixOf(trackId).muted,
+        guide: guideNow,
+      }),
+    });
   };
 
   const toggleSolo = (trackId: string) => {
@@ -823,6 +883,42 @@ export default function PerformanceScreen() {
     else stopCueTransport();
   };
 
+  // --- Warp ---------------------------------------------------------------
+  // The tempo to play the stems at, stretched with their pitch kept. cue.bpm
+  // stays the song's own tempo -- what the grid and sections are measured in
+  // -- and warpBpm over it is the playback rate.
+  const warpOn = cue?.warpBpm !== undefined;
+  const warpUsable = session.warpAvailable && !!cue?.bpm;
+  const warpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (warpTimerRef.current) clearTimeout(warpTimerRef.current);
+    },
+    []
+  );
+  const pushWarp = (target: number | undefined) => {
+    if (!cue?.bpm || session.loadedCueId !== cue.id) return;
+    const rate = target ? target / cue.bpm : 1;
+    if (warpTimerRef.current) clearTimeout(warpTimerRef.current);
+    // Settled before it's sent: a change mid-song picks the stems up again
+    // at the new rate, and a run of + taps shouldn't do that on every tap.
+    warpTimerRef.current = setTimeout(() => session.setWarp(rate), 250);
+  };
+  const toggleWarp = (on: boolean) => {
+    if (!sessionId || !itemId || !cue?.bpm) return;
+    // On at the song's own tempo -- nothing moves until the tempo does.
+    const next = on ? cue.bpm : undefined;
+    updateItem(sessionId, itemId, { warpBpm: next });
+    pushWarp(next);
+  };
+  const setWarpBpm = (next: number) => {
+    if (!sessionId || !itemId || !cue?.bpm) return;
+    // The stretcher's range: half to double the recorded tempo.
+    const clamped = Math.max(cue.bpm * 0.5, Math.min(cue.bpm * 2, clampBpm(next)));
+    updateItem(sessionId, itemId, { warpBpm: clamped });
+    pushWarp(clamped);
+  };
+
   const setCueBpm = (next: number) => {
     if (!sessionId || !itemId) return;
     const clamped = clampBpm(next);
@@ -859,8 +955,55 @@ export default function PerformanceScreen() {
     if (session.isPlaying) seek(0);
   };
 
-  const songKey = cue?.padKey;
-  const songMode = cue?.padMode ?? "major";
+  // Where the song is, as a number: the playhead is an Animated value that
+  // only drives what's drawn, and the section buttons need to read it.
+  const positionRef = useRef(0);
+  useEffect(() => {
+    const id = playheadValue.addListener(({ value }) => {
+      positionRef.current = value;
+    });
+    return () => playheadValue.removeListener(id);
+  }, [playheadValue]);
+
+  const sectionStarts = useMemo(
+    () => sections.map((section) => section.startSeconds),
+    [sections]
+  );
+  const songPosition = () =>
+    session.isPlaying ? positionRef.current : cursorSeconds;
+
+  // Seek, not a section launch: the song carries on from there the way a
+  // tap on the ruler does, rather than looping the section it lands in.
+  // A jump while playing comes in on the next bar of the song, not under the
+  // finger: a section change should land where a band would make it, and a
+  // jump pressed by mistake at least lands in time. Stopped, it just moves.
+  const seekOnBar = (seconds: number) => {
+    setCursorSeconds(seconds);
+    if (!session.isPlaying) return;
+    session.play(tracks, bpm, 0, {
+      id: "cursor",
+      startSeconds: seconds,
+      endSeconds: loopEnabled ? containingSection(seconds)?.endSeconds : undefined,
+      loop: loopEnabled,
+      alignToSongBar: true,
+    });
+  };
+  const toPrevSection = () => {
+    hapticImpact(prefs.haptics, "light");
+    seekOnBar(prevSectionStart(sectionStarts, songPosition(), session.isPlaying));
+  };
+  const toNextSection = () => {
+    const next = nextSectionStart(sectionStarts, songPosition());
+    if (next === null) return;
+    hapticImpact(prefs.haptics, "light");
+    seekOnBar(next);
+  };
+
+  // Through playableKey: with minor off, a cue saved in a minor key shows and
+  // plays as its relative major -- the clip it always sounded.
+  const songPlayable = cue?.padKey ? playableKey(cue.padKey, cue.padMode) : undefined;
+  const songKey = songPlayable?.key;
+  const songMode = songPlayable?.mode ?? "major";
   const padPack = cue?.padPack ?? PAD_PACKS[0]?.key;
 
   const padIsLive =
@@ -1083,6 +1226,48 @@ export default function PerformanceScreen() {
         ))}
       </View>
 
+      {view === "studio" && isStemCue && (
+        // The tempo and Warp, above the stems: what sets how the song plays
+        // sits over it, the transport stays at the foot of the screen.
+        <View className="px-screen mb-3">
+          {/* Warped (the WARP pill by CLICK), this is the tempo the stems
+              play at; otherwise the song's own, which moves the click only. */}
+          <TempoStepper
+            bpm={warpOn ? cue.warpBpm : cue.bpm}
+            // Warped, the way back to the recording.
+            nativeBpm={warpOn ? cue.bpm : undefined}
+            onChange={warpOn ? setWarpBpm : setCueBpm}
+            // Locked while playing: a nudged + mid-song would restart a
+            // warped song, audibly, in front of a room.
+            disabled={session.isPlaying}
+          />
+          {(session.isPlaying || warpOn) && (
+            <Text
+              className="mt-1 text-center font-spaceBold tracking-widest"
+              style={{ fontSize: 12, color: session.isPlaying ? COLORS.textMuted : COLORS.brandFrom }}
+            >
+              {session.isPlaying
+                ? "STOP TO CHANGE THE TEMPO"
+                : `RECORDED AT ${cue.bpm} BPM`}
+            </Text>
+          )}
+
+          <PositionReadout
+            subscribe={session.subscribePosition}
+            isPlaying={session.isPlaying}
+            cursorSeconds={cursorSeconds}
+            duration={duration}
+            bpm={bpm}
+            sectionName={
+              (session.isPlaying && liveSectionId
+                ? sections.find((section) => section.id === liveSectionId)
+                : containingSection(cursorSeconds)
+              )?.name
+            }
+          />
+        </View>
+      )}
+
       {view === "studio" && isStemCue ? (
         <ScrollView
           className="flex-1 px-screen"
@@ -1102,6 +1287,9 @@ export default function PerformanceScreen() {
                 masterMuted={masterMuted}
                 onToggleMute={toggleMute}
                 onToggleSolo={toggleSolo}
+                onLevel={(trackId, level) => changeMix(trackId, { level })}
+                onLevelCommit={saveMix}
+                onToggleGuide={toggleGuide}
                 playheadSeconds={playheadValue}
                 isPlaying={session.isPlaying}
                 cursorSeconds={cursorSeconds}
@@ -1248,6 +1436,34 @@ export default function PerformanceScreen() {
             <View className="mb-4" />
           )}
 
+          {/* Level, mute, solo and cue live in the track rows now; the
+              strips are for what the rows don't carry -- pan, and a long
+              vertical throw for fine level work at soundcheck. */}
+          {tracks.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setShowMixer((current) => !current)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showMixer }}
+              activeOpacity={0.7}
+              className="flex-row items-center mb-2"
+              style={{ minHeight: SIZES.minTouch }}
+            >
+              <Text className="font-spaceBold tracking-widest" style={{ fontSize: 12, color: COLORS.textMuted }}>
+                {showMixer ? "▾" : "▸"} MIXER: PAN, FADERS, STEM SYNC
+              </Text>
+            </TouchableOpacity>
+          )}
+          {showMixer && (
+            // Stem sync is soundcheck work too -- set once per song, so it
+            // lives with the mixer rather than over the transport.
+            <View className="mb-3">
+              <SyncNudge
+                offsetSeconds={cue.stemOffset}
+                onChange={(seconds) => session.setStemOffset(cue.id, seconds)}
+              />
+            </View>
+          )}
+          {showMixer && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1260,6 +1476,8 @@ export default function PerformanceScreen() {
                 mix={mixOf(track.id)}
                 isSilent={isSilent(track.id)}
                 isSolo={soloed === track.id}
+                isGuide={track.guide === true}
+                onToggleGuide={() => toggleGuide(track.id)}
                 meter={meterFor(track.id)}
                 onLevel={(level) => changeMix(track.id, { level })}
                 onLevelCommit={saveMix}
@@ -1272,6 +1490,7 @@ export default function PerformanceScreen() {
               />
             ))}
           </ScrollView>
+          )}
 
           <ImportStemsButton
             hasStems={tracks.length > 0}
@@ -1337,11 +1556,6 @@ export default function PerformanceScreen() {
             </View>
           )}
 
-          <TempoStepper
-            bpm={cue.bpm}
-            onChange={setCueBpm}
-          // hint="Set the tempo — every quantised launch is measured from it."
-          />
         </ScrollView>
       ) : isStemCue ? (
         <>
@@ -1459,8 +1673,72 @@ export default function PerformanceScreen() {
         </>
       )}
 
-      {/* REDESIGNED CONTROLS STRIP */}
-      {view === "studio" && (
+      {/* PAD · CLICK · WARP -- a stem song's three switches, in one row of
+          equal buttons right over the transport, within a thumb's reach of
+          PLAY. */}
+      {view === "studio" && isStemCue && (
+        // A hairline and room above: the stems scroll up to a clear edge
+        // rather than running straight into the switches.
+        <View
+          className="flex-row px-screen pt-3 mb-2"
+          style={{ gap: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}
+        >
+          <StageToggle
+            label="PAD"
+            detail={
+              songKey
+                ? `${songKey} ${songMode === "minor" ? "Minor" : "Major"}`
+                : "Set key"
+            }
+            on={padIsLive}
+            tone="brand"
+            // Release, not touch-down: a pad starting under a stray brush is
+            // a chord over the wrong song.
+            onPress={togglePad}
+            onLongPress={() => {
+              hapticImpact(prefs.haptics, "light");
+              setEditingKey(true);
+            }}
+            accessibilityLabel={padIsLive ? "Stop pad" : "Start pad"}
+            accessibilityHint="Hold to change the key."
+          />
+          <StageToggle
+            label="CLICK"
+            on={prefs.stemClick}
+            tone="amber"
+            onPress={() => {
+              hapticImpact(prefs.haptics, "medium");
+              setPref("stemClick", !prefs.stemClick);
+            }}
+            accessibilityLabel={prefs.stemClick ? "Turn click off" : "Turn click on"}
+          />
+          <StageToggle
+            label="WARP"
+            detail={warpOn && cue.bpm ? `${cue.bpm} → ${cue.warpBpm}` : undefined}
+            on={warpOn}
+            tone="brand"
+            // Locked mid-song, like the tempo: switching it restarts the stems.
+            disabled={!warpUsable || session.isPlaying}
+            onPress={() => {
+              hapticImpact(prefs.haptics, "medium");
+              toggleWarp(!warpOn);
+            }}
+            accessibilityLabel={warpOn ? "Turn warp off" : "Turn warp on"}
+            accessibilityHint={
+              session.isPlaying
+                ? "Stop the song to change warp."
+                : warpUsable
+                  ? "Warp makes the stems follow the tempo, keeping their pitch."
+                  : session.warpAvailable
+                    ? "Set the song's tempo first."
+                    : "Needs native audio, which isn't in this build."
+            }
+          />
+        </View>
+      )}
+
+      {/* REDESIGNED CONTROLS STRIP (loop and pad cues) */}
+      {view === "studio" && !isStemCue && (
         <View className="flex-row items-center px-screen mb-3 gap-2">
           {/* COMBINED PAD & KEY CONTROL PILL */}
           <View
@@ -1469,7 +1747,7 @@ export default function PerformanceScreen() {
               height: 52,
               borderColor: padIsLive ? COLORS.brand : COLORS.border,
               backgroundColor: padIsLive
-                ? "rgba(88,190,236,0.28)"
+                ? "rgba(79,171,212,0.28)"
                 : "rgba(255,255,255,0.02)",
             }}
           >
@@ -1519,7 +1797,7 @@ export default function PerformanceScreen() {
               activeOpacity={0.7}
               className="px-4 justify-center items-center border-l"
               style={{
-                borderColor: padIsLive ? "rgba(88,190,236,0.2)" : COLORS.border,
+                borderColor: padIsLive ? "rgba(79,171,212,0.2)" : COLORS.border,
                 backgroundColor: "rgba(255,255,255,0.03)",
               }}
             >
@@ -1529,56 +1807,9 @@ export default function PerformanceScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* METRONOME CLICK PILL */}
-          {isStemCue && (
-            <TouchableOpacity
-              onPress={() => {
-                hapticImpact(prefs.haptics, "medium");
-                setPref("stemClick", !prefs.stemClick);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={
-                prefs.stemClick ? "Turn click off" : "Turn click on"
-              }
-              activeOpacity={0.8}
-              className="px-5 items-center justify-center rounded-xl"
-              style={{
-                height: 52,
-                backgroundColor: prefs.stemClick
-                  ? "rgba(245,158,11,0.38)"
-                  : "transparent",
-                borderColor: prefs.stemClick ? COLORS.warning : COLORS.border,
-              }}
-            >
-              <View className="flex-row items-center gap-1.5">
-                {/* <View
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    backgroundColor: prefs.stemClick ? COLORS.warning : "rgba(255,255,255,0.2)",
-                  }}
-                /> */}
-                <Text
-                  className="text-micro font-spaceBold tracking-wider"
-                  style={{
-                    color: prefs.stemClick ? COLORS.warning : COLORS.textMuted,
-                  }}
-                >
-                  CLICK
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
         </View>
       )}
 
-      {view === "studio" && isStemCue && (
-        <View className="px-screen mb-3">
-          <SyncNudge
-            offsetSeconds={cue.stemOffset}
-            onChange={(seconds) => session.setStemOffset(cue.id, seconds)}
-          />
-        </View>
-      )}
 
       <View className="px-screen pb-4">
         {!isStemCue ? (
@@ -1602,24 +1833,33 @@ export default function PerformanceScreen() {
           </TouchableOpacity>
         ) : view === "studio" ? (
           <View className="flex-row items-center w-full gap-2" style={{ height: 60 }}>
-            {/* Return to Zero (RTZ) Button */}
-            <TouchableOpacity
-              onPressIn={returnToZero}
+            {/* Start, previous section, play, next section -- the order a
+                transport reads in. Square buttons in one style; play takes
+                the rest of the row. */}
+            <StudioNavButton
+              onPress={returnToZero}
+              // Playing, back-to-the-top is a hold: one brush would restart
+              // the song under the band.
+              holdToFire={session.isPlaying}
               disabled={tracks.length === 0}
-              accessibilityRole="button"
-              accessibilityLabel="Return to start"
-              activeOpacity={0.85}
-              className="items-center justify-center rounded-lg border border-hairline"
-              style={{
-                width: 60,
-                height: 60,
-                borderColor: COLORS.border,
-                backgroundColor: COLORS.surfaceMuted,
-                opacity: tracks.length === 0 ? 0.4 : 1,
-              }}
+              accessibilityLabel="Back to the start"
+              accessibilityHint={session.isPlaying ? "Hold to go back to the start." : undefined}
             >
-              <AudioStart size={28} color={COLORS.white} />
-            </TouchableOpacity>
+              <AudioStart size={26} color={COLORS.white} />
+            </StudioNavButton>
+            <StudioNavButton
+              onPress={toPrevSection}
+              disabled={tracks.length === 0 || sections.length === 0}
+              accessibilityLabel="Previous section"
+              accessibilityHint="Back to the top of this section, or the one before if you're at its top."
+            >
+              {/* The icon draws pointing right; mirrored, it points back. */}
+              <DoubleBack
+                size={24}
+                color={COLORS.white}
+                style={{ transform: [{ scaleX: -1 }] }}
+              />
+            </StudioNavButton>
 
             <TouchableOpacity
               onPressIn={toggleStudioTransport}
@@ -1640,6 +1880,14 @@ export default function PerformanceScreen() {
                 {session.isPlaying ? "STOP" : "PLAY"}
               </Text>
             </TouchableOpacity>
+
+            <StudioNavButton
+              onPress={toNextSection}
+              disabled={tracks.length === 0 || sections.length === 0}
+              accessibilityLabel="Next section"
+            >
+              <DoubleForward size={24} color={COLORS.white} />
+            </StudioNavButton>
           </View>
         ) : (
           <View className="flex-row" style={{ height: 60 }}>
@@ -1679,9 +1927,9 @@ export default function PerformanceScreen() {
               disabled={tracks.length === 0}
               accessibilityRole="button"
               accessibilityLabel={
-                masterMuted ? "Unmute everything" : "Mute everything"
+                masterMuted ? "Bring the band back" : "Mute the band"
               }
-              accessibilityHint="Silences the song without stopping it, so it can be brought back where it is."
+              accessibilityHint="Silences the stems without stopping the song, so they can be brought back where they are. The click and cue tracks keep playing."
               accessibilityState={{
                 selected: masterMuted,
                 disabled: tracks.length === 0,
@@ -1838,6 +2086,7 @@ export default function PerformanceScreen() {
               ))}
             </View>
 
+            {MINOR_KEYS_ENABLED && (
             <View className="flex-row gap-2 mt-4">
               {(["major", "minor"] as const).map((option) => (
                 <TouchableOpacity
@@ -1866,6 +2115,7 @@ export default function PerformanceScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            )}
 
             <View className="flex-row mt-4">
               {songKey && (
@@ -1968,5 +2218,194 @@ export default function PerformanceScreen() {
         </View>
       </Modal>
     </Screen>
+  );
+}
+
+/** One of Studio's square transport buttons beside PLAY. */
+function StudioNavButton({
+  onPress,
+  disabled,
+  holdToFire = false,
+  accessibilityLabel,
+  accessibilityHint,
+  children,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+  /** Fire on a hold rather than a tap -- for a jump too costly to mis-tap. */
+  holdToFire?: boolean;
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <TouchableOpacity
+      // On release, not touch-down: on stage a finger reaching for PLAY
+      // brushes these, and a jump has to be meant. While playing the jump
+      // lands on the next bar of the song anyway (seekOnBar), so firing on
+      // the lift costs no timing.
+      onPress={holdToFire ? undefined : onPress}
+      onLongPress={holdToFire ? onPress : undefined}
+      delayLongPress={400}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: !!disabled }}
+      activeOpacity={0.85}
+      className="items-center justify-center border rounded-lg border-hairline"
+      style={{
+        width: 56,
+        height: 62,
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.surfaceMuted,
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {children}
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Where the song is, for a glance from arm's length: bar.beat large, the
+ * section it's in, and the time.
+ *
+ * Its own component so the engine's sixteen position reports a second
+ * re-render this and nothing else. Stopped, it reads the cursor instead.
+ */
+function PositionReadout({
+  subscribe,
+  isPlaying,
+  cursorSeconds,
+  duration,
+  bpm,
+  sectionName,
+}: {
+  subscribe: (listener: (position: TransportPosition) => void) => () => void;
+  isPlaying: boolean;
+  cursorSeconds: number;
+  duration: number;
+  bpm: number;
+  sectionName?: string;
+}) {
+  const [live, setLive] = useState<{ bar: number; beat: number; seconds: number } | null>(null);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      setLive(null);
+      return;
+    }
+    return subscribe((position) => {
+      if (position.seconds === null) return;
+      setLive({ bar: position.bar, beat: position.beat, seconds: position.seconds });
+    });
+  }, [isPlaying, subscribe]);
+
+  // Stopped: the cursor, counted in the song's bars (four beats each, the
+  // same as the ruler).
+  const beats = (cursorSeconds * bpm) / 60;
+  const bar = live ? live.bar : Math.floor(beats / 4);
+  const beat = live ? live.beat : Math.floor(beats % 4);
+  const seconds = live ? live.seconds : cursorSeconds;
+
+  return (
+    <View
+      className="flex-row items-center mt-3"
+      style={{ gap: 12 }}
+      accessibilityRole="text"
+      accessibilityLabel={`Bar ${bar + 1}, beat ${beat + 1}${sectionName ? `, ${sectionName}` : ""}, ${clock(seconds)} of ${clock(duration)}`}
+    >
+      <Text
+        className="text-white font-bpm"
+        style={{ fontSize: 28, lineHeight: 32, fontVariant: ["tabular-nums"] }}
+      >
+        {bar + 1}.{beat + 1}
+      </Text>
+      {sectionName && (
+        <View
+          className="px-2.5 py-1 rounded-md"
+          style={{ backgroundColor: "rgba(79,171,212,0.22)" }}
+        >
+          <Text className="font-spaceBold tracking-wider" style={{ fontSize: 12, color: COLORS.brandFrom }}>
+            {sectionName.toUpperCase()}
+          </Text>
+        </View>
+      )}
+      <View className="flex-1" />
+      <Text
+        className="text-ink-muted font-spaceRegular"
+        style={{ fontSize: 14, fontVariant: ["tabular-nums"] }}
+      >
+        {clock(seconds)} / {clock(duration)}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * One of Studio's stage switches -- PAD, CLICK, WARP. Equal thirds of a row,
+ * 52 tall, lit in its colour when on and labelled so its state reads from
+ * arm's length.
+ */
+function StageToggle({
+  label,
+  detail,
+  on,
+  tone,
+  disabled = false,
+  onPress,
+  onLongPress,
+  accessibilityLabel,
+  accessibilityHint,
+}: {
+  label: string;
+  detail?: string;
+  on: boolean;
+  tone: "brand" | "amber";
+  disabled?: boolean;
+  onPress: () => void;
+  onLongPress?: () => void;
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+}) {
+  const accent = tone === "amber" ? COLORS.warning : COLORS.brandFrom;
+  const fill = tone === "amber" ? "rgba(245,158,11,0.22)" : "rgba(0,125,175,0.28)";
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ selected: on, disabled }}
+      activeOpacity={0.8}
+      className="flex-1 items-center justify-center rounded-xl"
+      style={{
+        height: 52,
+        borderWidth: 1,
+        borderColor: on ? accent : COLORS.border,
+        backgroundColor: on ? fill : "transparent",
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      <Text
+        className="font-spaceBold tracking-wider"
+        style={{ fontSize: detail ? 11 : 14, color: on ? accent : COLORS.textMuted }}
+      >
+        {label}
+      </Text>
+      {detail && (
+        <Text
+          className="font-spaceBold"
+          numberOfLines={1}
+          style={{ fontSize: 13, color: on ? COLORS.white : COLORS.textSoft, marginTop: 1 }}
+        >
+          {detail}
+        </Text>
+      )}
+    </TouchableOpacity>
   );
 }

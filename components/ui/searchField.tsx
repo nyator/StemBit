@@ -1,5 +1,10 @@
-import { useRef, useState } from "react";
-import { Pressable, TextInput, TouchableOpacity } from "react-native";
+import { useRef, useState, type ComponentType } from "react";
+import {
+  Pressable,
+  TextInput,
+  TouchableOpacity,
+  type TextInputProps,
+} from "react-native";
 
 import { COLORS, SIZES } from "../../constants/theme";
 import { Close, SearchNormal } from "../icons";
@@ -21,13 +26,21 @@ export default function SearchField({
   onChangeText,
   placeholder = "Search",
   accessibilityLabel,
+  InputComponent,
 }: {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
   accessibilityLabel?: string;
+  /**
+   * The input to render, for a field inside a bottom sheet: the sheet's own
+   * BottomSheetTextInput is what lets it move clear of the keyboard. Same
+   * escape hatch BrandInput has.
+   */
+  InputComponent?: ComponentType<TextInputProps>;
 }) {
   const inputRef = useRef<TextInput>(null);
+  const Input = (InputComponent ?? TextInput) as typeof TextInput;
   const [focused, setFocused] = useState(false);
 
   return (
@@ -47,7 +60,7 @@ export default function SearchField({
         size={SIZES.rowIcon}
         color={focused ? COLORS.brand : COLORS.textMuted}
       />
-      <TextInput
+      <Input
         ref={inputRef}
         value={value}
         onChangeText={onChangeText}

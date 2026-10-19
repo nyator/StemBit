@@ -40,11 +40,12 @@ function extract(name) {
  * supplied rather than extracted bare -- a closure over a parameter is the
  * closest thing to how it actually runs.
  */
-function songSecondsWith(live) {
+function songSecondsWith(live, warp = 1) {
   return new Function(
     "live",
+    "warp",
     `${sourceOf("songSeconds")}; return songSeconds;`
-  )(live);
+  )(live, warp);
 }
 
 describe("session engine page", () => {
@@ -152,6 +153,13 @@ describe("launch quantisation", () => {
 });
 
 describe("song position", () => {
+  it("runs at the warp rate against the audio clock", () => {
+    // Launched at real time 2, 30s into the song, played 25% fast: two real
+    // seconds later the song is two and a half seconds further on.
+    const at = songSecondsWith({ at: 2, offset: 30, looping: false }, 1.25);
+    expect(at(4)).toBeCloseTo(32.5);
+  });
+
   // The number the timeline's playhead and the bar counter are both drawn from.
   // It is not "how long has the transport run": a section launch seeks every
   // stem into the middle of the files, and from that moment the two answers

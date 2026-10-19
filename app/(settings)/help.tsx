@@ -24,7 +24,7 @@ const GUIDES: {
     {
       icon: Clipboard,
       title: "Pad",
-      body: "Sustained pads in every major and minor key. Tap a key to fade it in; tap again to stop. Switching keys crossfades smoothly so you can move with the song.",
+      body: "Sustained pads in every major key. Tap a key to fade it in; tap again to stop. Switching keys crossfades smoothly so you can move with the song.",
     },
     {
       icon: Setting4,

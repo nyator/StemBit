@@ -8,13 +8,23 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import { isLiquidGlassAvailable } from "expo-glass-effect";
 import InfoButton from "./infoButton";
+import GlassSurface from "./glassSurface";
 import { DialGlowRings } from "./dialGlowRing";
 import BeatGlow, { BEAT_GLOW_SIZE } from "./beatGlow";
 import { AddCircle, MinusCircle, PlayFilled, Stop } from "../icons";
 import type { InfoTopicKey } from "../../constants/infoCopy";
 import type { BpmControls } from "../../hooks/useBpmControl";
 import { COLORS, SHADOWS, SIZES, TYPE } from "../../constants/theme";
+
+// Real glass draws its own edge; the flat fallback needs a hairline to read
+// as a control. Read once: a device's support can't change.
+const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
+
+// rounded-md (tailwind.config.js), as a number: glass is clipped to a style
+// radius, not a class.
+const CONTROL_RADIUS = 14;
 
 // The control surface the metronome, the loop player and the loop importer all
 // share.
@@ -72,11 +82,20 @@ export function ControlLabel({
 /* -------------------------------------------------------------------------- */
 
 /**
- * The white pill that opens a picker: an icon, a hairline, and what is loaded.
+ * The glass pill that opens a picker: an icon, a hairline, and what is loaded.
  *
  * The loop screen's "SELECT LOOP" and the metronome's time signature are the
  * same button. Width comes from the caller, since one of them is sized to a
  * meter (4/4) and the other has to take a loop title and truncate it.
+ *
+ * Liquid Glass on iOS 26 (GlassSurface), the translucent fill elsewhere --
+ * it was a solid white slab, the one opaque control on screens otherwise
+ * built of glass. The caller's width limits are put on the glass itself,
+ * which otherwise hugs its label.
+ *
+ * Not flexGrow, which is what this tried first: inside a parent that centres
+ * its children, Yoga grows a flex-grow child to all the room it's offered,
+ * and the time signature spread across the whole screen.
  */
 export function PickerButton({
   icon: Icon,
@@ -94,16 +113,36 @@ export function PickerButton({
   return (
     <TouchableOpacity
       onPress={onPress}
+      activeOpacity={0.7}
       style={[{ height: SIZES.control }, style]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      className="flex-row items-center justify-center gap-2 px-4 bg-white rounded-md"
     >
-      <Icon size={SIZES.rowIcon} color={COLORS.black} />
-      <View style={{ width: 1, height: 18, backgroundColor: "rgba(0,0,0,0.2)" }} />
-      <Text className="text-black shrink text-title font-spaceBold" numberOfLines={1}>
-        {label}
-      </Text>
+      <GlassSurface
+        fallbackClassName="bg-white/10"
+        style={[
+          {
+            height: SIZES.control,
+            borderRadius: SIZES.control / 2,
+            flexShrink: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            paddingHorizontal: 16,
+            borderWidth: HAS_LIQUID_GLASS ? 0 : 1,
+            borderColor: COLORS.borderGlass,
+          },
+          // width / minWidth / maxWidth from the caller, on the glass too.
+          style,
+        ]}
+      >
+        <Icon size={SIZES.rowIcon} color={COLORS.white} />
+        <View style={{ width: 1, height: 18, backgroundColor: "rgba(255,255,255,0.25)" }} />
+        <Text className="text-white shrink text-title font-spaceBold" numberOfLines={1}>
+          {label}
+        </Text>
+      </GlassSurface>
     </TouchableOpacity>
   );
 }
@@ -149,7 +188,7 @@ export function BpmDial({
 
   const field = (
     <View
-      className="items-center justify-center bg-surface-sunken border-hairline-dial rounded-dial"
+      className="items-center justify-center border-hairline-dial rounded-dial"
       style={
         isFull
           ? {
@@ -162,7 +201,7 @@ export function BpmDial({
       }
     >
       <TextInput
-        className="p-0 text-center text-display font-spaceBold"
+        className="p-0 text-center text-display font-bpm"
         style={{
           minWidth: 110,
           color: isPlaying ? COLORS.brand : COLORS.white,
@@ -229,10 +268,22 @@ export function StepperButton({
       onPress={up ? controls.increase : controls.decrease}
       onLongPress={up ? controls.startHoldIncrease : controls.startHoldDecrease}
       onPressOut={controls.endHold}
-      className="items-center justify-center rounded-md bg-white/10"
-      style={{ width: SIZES.control, height: SIZES.control }}
+      activeOpacity={0.7}
     >
-      <Icon size={SIZES.transportSecondary} color={COLORS.white} />
+      {/* Liquid Glass on iOS 26; the translucent square it always was
+          elsewhere. */}
+      <GlassSurface
+        fallbackClassName="bg-white/10"
+        style={{
+          width: SIZES.control,
+          height: SIZES.control,
+          borderRadius: CONTROL_RADIUS,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon size={SIZES.transportSecondary} color={COLORS.white} />
+      </GlassSurface>
     </TouchableOpacity>
   );
 }
@@ -305,10 +356,25 @@ export function TapTempoButton({
       onPressIn={onPress}
       accessibilityRole="button"
       accessibilityLabel="Tap tempo"
-      className={`items-center justify-center px-4 border-2 border-hairline-strong rounded-md ${className}`}
+      activeOpacity={0.7}
+      className={className}
       style={{ height: SIZES.control }}
     >
-      <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
+      {/* Glass on iOS 26; the outlined button it was, elsewhere. Sized by
+          its label, as the outlined one was -- not flexGrow (see
+          PickerButton). */}
+      <GlassSurface
+        fallbackClassName="border-2 border-hairline-strong"
+        style={{
+          height: SIZES.control,
+          borderRadius: CONTROL_RADIUS,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 16,
+        }}
+      >
+        <Text className="text-white text-title font-spaceBold">TAP TEMPO</Text>
+      </GlassSurface>
     </TouchableOpacity>
   );
 }
@@ -335,16 +401,34 @@ export function InstrumentIconButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !!disabled, selected: active }}
+      activeOpacity={0.7}
       style={{
         width: SIZES.control,
         height: SIZES.control,
         opacity: disabled ? 0.4 : 1,
       }}
-      className={`items-center justify-center rounded-md border-2 ${
-        active ? "bg-white border-white" : "border-hairline-strong"
-      }`}
     >
-      {children}
+      {active ? (
+        // On is solid white, glass or not: "this is on" has to read at a
+        // glance, and glass is the resting state.
+        <View
+          className="items-center justify-center flex-1 bg-white border-2 border-white rounded-md"
+        >
+          {children}
+        </View>
+      ) : (
+        <GlassSurface
+          fallbackClassName="border-2 border-hairline-strong"
+          style={{
+            flex: 1,
+            borderRadius: CONTROL_RADIUS,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {children}
+        </GlassSurface>
+      )}
     </TouchableOpacity>
   );
 }
@@ -414,7 +498,7 @@ export function BeatDots({
     // Idle group accents sit brighter than plain beats, so the meter's grouping
     // is readable before anything is playing.
     const idleColor = isSecondaryAccent
-      ? "rgba(0,139,194,0.3)"
+      ? "rgba(0,125,175,0.3)"
       : "rgba(255,255,255,0.15)";
     const size = isCurrent ? 12 : 8;
     // Gated on isPlaying as well as the accent: currentBeat resets to 0 on

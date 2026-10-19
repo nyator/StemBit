@@ -30,6 +30,7 @@ import {
   TransportRow,
 } from "../../components/ui/instrument";
 import { COLORS, SIZES } from "../../constants/theme";
+import GlassSurface from "../../components/ui/glassSurface";
 import {
   Edit2,
   Folder,
@@ -187,9 +188,20 @@ export default function LoopScreen() {
                     ? `Edit ${selectedLoop.title}`
                     : `Save ${selectedLoop.title} as my loop`
                 }
-                className="p-2 rounded-full bg-white/10"
+                activeOpacity={0.7}
               >
-                <Edit2 size={SIZES.rowIcon} color={COLORS.white} />
+                {/* Glass, like the Select Loop pill beside it. */}
+                <GlassSurface
+                  style={{
+                    width: SIZES.control,
+                    height: SIZES.control,
+                    borderRadius: SIZES.control / 2,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Edit2 size={SIZES.rowIcon} color={COLORS.white} />
+                </GlassSurface>
               </TouchableOpacity>
             )}
           </View>

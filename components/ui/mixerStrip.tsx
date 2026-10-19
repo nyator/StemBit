@@ -20,6 +20,9 @@ import type { TrackMix } from "../../context/SessionPlaybackContext";
 // rate would cost more frames than the audio does.
 
 const STRIP_WIDTH = 74;
+// Shorter than the pad mixer's 132: a song brings a strip per stem, and at
+// full height the row of them took most of the Studio screen.
+const FADER_HEIGHT = 84;
 const METER_HEIGHT = 132;
 const PAN_WIDTH = 58;
 const PAN_HEIGHT = 22;
@@ -44,6 +47,9 @@ type MixerStripProps = {
   onPanCommit: (pan: number) => void;
   onToggleMute: () => void;
   onToggleSolo: () => void;
+  /** A cue track: heard under another track's solo. */
+  isGuide?: boolean;
+  onToggleGuide?: () => void;
   /**
    * Where a double tap puts the fader and the pan bar -- unity and centre, the
    * two positions a strip gets put back to often enough that hunting for them
@@ -65,6 +71,8 @@ export default function MixerStrip({
   onPanCommit,
   onToggleMute,
   onToggleSolo,
+  isGuide = false,
+  onToggleGuide,
   defaultMix,
   onRemove,
 }: MixerStripProps) {
@@ -147,7 +155,7 @@ export default function MixerStrip({
       style={{
         width: STRIP_WIDTH,
         alignItems: "center",
-        paddingVertical: 10,
+        paddingVertical: 6,
         marginRight: 8,
         borderRadius: 8,
         borderWidth: 1,
@@ -159,7 +167,7 @@ export default function MixerStrip({
       <Text
         numberOfLines={1}
         className="text-nav text-white font-satoshiBold"
-        style={{ maxWidth: STRIP_WIDTH - 10, marginBottom: 8 }}
+        style={{ maxWidth: STRIP_WIDTH - 10, marginBottom: 4 }}
       >
         {name}
       </Text>
@@ -193,6 +201,7 @@ export default function MixerStrip({
           onComplete={onLevelCommit}
           defaultValue={defaultMix?.level}
           accessibilityLabel={`${name} level`}
+          height={FADER_HEIGHT}
         />
       </View>
 
@@ -216,7 +225,7 @@ export default function MixerStrip({
         style={{
           width: PAN_WIDTH,
           height: PAN_HEIGHT,
-          marginTop: 6,
+          marginTop: 4,
           justifyContent: "center",
         }}
       >
@@ -273,6 +282,36 @@ export default function MixerStrip({
           accessibilityLabel={`${isSolo ? "Clear solo on" : "Solo"} ${name}`}
         />
       </View>
+
+      {/* Cue track: on, this stem stays up when another is soloed -- the
+          guide voice, the count-in. Its own row: M and S fill the width. */}
+      {onToggleGuide && (
+        <TouchableOpacity
+          onPress={onToggleGuide}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: isGuide }}
+          accessibilityLabel={`${name} is a cue track`}
+          accessibilityHint="A cue track stays audible when another track is soloed."
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          activeOpacity={0.7}
+          style={{
+            width: 56,
+            height: 22,
+            marginTop: 6,
+            borderRadius: 4,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: isGuide ? COLORS.brand : "rgba(255,255,255,0.08)",
+          }}
+        >
+          <Text
+            className="text-micro font-spaceBold"
+            style={{ color: isGuide ? COLORS.white : COLORS.textMuted }}
+          >
+            CUE
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <TouchableOpacity
         onPress={onRemove}

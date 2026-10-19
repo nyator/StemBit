@@ -1,18 +1,15 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 
-import { MAX_PAD_LAYERS, NATURE_CHANNEL } from "../constants/pads";
+import { MAX_PAD_LAYERS } from "../constants/pads";
 import { COLORS } from "../constants/theme";
-import {
-  DEFAULT_NATURE_LEVEL,
-  DEFAULT_PAD_LEVEL,
-} from "../context/PreferencesContext";
+import { DEFAULT_PAD_LEVEL } from "../context/PreferencesContext";
 import { usePadLayers, type MixerChannel } from "../hooks/usePadLayers";
 import { MinusCircle } from "./icons";
 import VerticalFader from "./ui/verticalFader";
 
-// The loaded stack as a console: one channel strip per pad pack, plus the
-// nature bed, laid out the way a hardware mixer is. Loading a pack from the
+// The loaded stack as a console: one channel strip per loaded pack -- pad or
+// ambience -- laid out the way a hardware mixer is. Loading a pack from the
 // catalog fills the next channel; empty channels stay on the panel so the
 // capacity is visible rather than something you discover by hitting it.
 //
@@ -26,7 +23,6 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
   const { setLevel, removeLayer, toggleMute } = usePadLayers();
 
   const [draftLevel, setDraftLevel] = useState<number | null>(null);
-  const isNature = channel.id === NATURE_CHANNEL.key;
 
   return (
     <View
@@ -34,19 +30,17 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
       style={{
         flex: 1,
         minWidth: 64,
-        backgroundColor: isNature ? "" : "rgba(0,0,0,0.25)",
+        backgroundColor: "rgba(0,0,0,0.25)",
       }}
     >
-      {channel.removable && (
-        <TouchableOpacity
-          onPress={() => removeLayer(channel.id)}
-          hitSlop={10}
-          accessibilityLabel={`Unload ${channel.title} from the mixer`}
-          style={{ position: "absolute", top: 4, right: 3, zIndex: 1 }}
-        >
-          <MinusCircle size={18} color="rgba(255,255,255,0.35)" />
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        onPress={() => removeLayer(channel.id)}
+        hitSlop={10}
+        accessibilityLabel={`Unload ${channel.title} from the mixer`}
+        style={{ position: "absolute", top: 4, right: 3, zIndex: 1 }}
+      >
+        <MinusCircle size={18} color="rgba(255,255,255,0.35)" />
+      </TouchableOpacity>
 
       <Text
         className="text-white text-micro font-satoshiMedium"
@@ -54,6 +48,10 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
         style={{ paddingHorizontal: 16 }}
       >
         {channel.title}
+      </Text>
+      {/* Which kind of channel, since a forest and a drone share a desk now. */}
+      <Text className="text-white/40 text-nav uppercase font-spaceBold">
+        {channel.kind === "ambience" ? "Ambience" : "Pad"}
       </Text>
       <Text
         className="text-nav font-spaceBold mb-2"
@@ -72,7 +70,7 @@ function ChannelStrip({ channel }: { channel: MixerChannel }) {
             setDraftLevel(null);
             setLevel(channel.id, level);
           }}
-          defaultValue={isNature ? DEFAULT_NATURE_LEVEL : DEFAULT_PAD_LEVEL}
+          defaultValue={DEFAULT_PAD_LEVEL}
           accessibilityLabel={`${channel.title} level`}
         />
       </View>
@@ -128,24 +126,17 @@ export default function PadMixer() {
           Mixer
         </Text>
         <Text className="text-ink-muted text-micro font-satoshiRegular">
-          {loadedCount} of {MAX_PAD_LAYERS} pads
+          {loadedCount} of {MAX_PAD_LAYERS} loaded
         </Text>
       </View>
 
       <View className="flex-row justify-center gap-2">
-        {channels
-          .filter((channel) => channel.id !== NATURE_CHANNEL.key)
-          .map((channel) => (
-            <ChannelStrip key={channel.id} channel={channel} />
-          ))}
+        {channels.map((channel) => (
+          <ChannelStrip key={channel.id} channel={channel} />
+        ))}
         {Array.from({ length: emptySlots }, (_, index) => (
           <EmptyStrip key={`empty-${index}`} />
         ))}
-        {channels
-          .filter((channel) => channel.id === NATURE_CHANNEL.key)
-          .map((channel) => (
-            <ChannelStrip key={channel.id} channel={channel} />
-          ))}
       </View>
     </View>
   );

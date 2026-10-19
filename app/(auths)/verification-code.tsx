@@ -191,7 +191,7 @@ export default function VerificationCodeScreen() {
             },
             focusedPinCodeContainerStyle: {
               borderColor: COLORS.brand,
-              backgroundColor: "rgba(0,139,194,0.10)",
+              backgroundColor: "rgba(0,125,175,0.10)",
             },
             filledPinCodeContainerStyle: { borderColor: COLORS.borderStrong },
             // Space Grotesk, because the design system gives it the numerals --

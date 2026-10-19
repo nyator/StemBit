@@ -8,6 +8,15 @@ import { buildSessionEngineHtml } from "../../constants/sessionEngine";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 
+// The library itself is mapped to its own mock (jest.config.js); this stands
+// in for the native module being registered, which is what a real build with
+// it reports -- utils/nativeAudio.ts asks before loading anything.
+beforeAll(() => {
+  jest
+    .spyOn(require("react-native").TurboModuleRegistry, "get")
+    .mockImplementation((name) => (name === "AudioAPIModule" ? {} : null));
+});
+
 describe("nativeEngineHost", () => {
   it.each([
     ["loop", buildLoopEngineHtml()],

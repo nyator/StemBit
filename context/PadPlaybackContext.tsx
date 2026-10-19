@@ -11,15 +11,13 @@ import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 
 import audio from "../constants/audio";
+import { usePreferences, type PadLayer } from "./PreferencesContext";
 import {
-  usePreferences,
-  type MixSettings,
-  type PadLayer,
-} from "./PreferencesContext";
-import {
-  NATURE_CHANNEL,
+  MINOR_KEYS_ENABLED,
   findPadPackByKey,
   padBusScale,
+  padSourceFor,
+  padTrim,
   type PadPack,
 } from "../constants/pads";
 import { onVolumePreview } from "../utils/volumePreview";
@@ -48,9 +46,26 @@ const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 //
 // Minor keys play the *relative major* clip (tonic + 3 semitones), which shares
 // the same notes as the natural minor key (A minor -> C major pad).
+//
+// Ambience has one clip whatever the key; padSourceFor hands that back.
 function sourceForKey(pack: PadPack, note: string, minor: boolean) {
   const idx = (NOTE_INDEX[note] + (minor ? 3 : 0)) % 12;
-  return pack.sources[NOTE_NAMES[idx]];
+  return padSourceFor(pack, NOTE_NAMES[idx]);
+}
+
+/**
+ * The clip a pack sounds at a pad key (an index into KEYS) and voicing -- or
+ * its C clip when no key is lit. What the engine plays, for anything that
+ * wants to sound a pack in tune with it: the picker's preview, so auditioning
+ * a pack over a held drone doesn't play it in C against a song in E.
+ */
+export function padClipAt(
+  pack: PadPack,
+  keyIndex: number | null,
+  mode: PadMode
+): number {
+  if (keyIndex === null) return padSourceFor(pack, "C");
+  return sourceForKey(pack, KEYS[keyIndex], mode === "minor");
 }
 
 // Same 12 chromatic pads for both major and minor -- only the sample source
@@ -97,6 +112,11 @@ type PadPlayer = {
   isLoopCrossfading: boolean;
   currentSource: number;
   playToken: number;
+  /**
+   * Started and not since torn down. What lets an ambience voice carry on
+   * through a key change instead of starting its recording again.
+   */
+  sounding: boolean;
 };
 
 const resetPlayer = (player?: AudioPlayer, volume = TARGET_VOLUME) => {
@@ -126,6 +146,7 @@ const createPadPlayer = (packKey: string, source: number): PadPlayer => ({
   isLoopCrossfading: false,
   currentSource: source,
   playToken: 0,
+  sounding: false,
 });
 
 const prepareLayer = async (
@@ -185,11 +206,6 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   // The current stack, mirrored for reading inside timers and callbacks
   // without stale closures.
   const padLayersRef = useRef<PadLayer[]>(prefs.padLayers);
-  // The nature bed's mix, and its voice. Unlike the pads it isn't keyed off a
-  // pad press: it runs whenever it's audible and stops when it isn't. It does
-  // share the output bus, so the pad voices have to account for it.
-  const natureRef = useRef<MixSettings>(prefs.natureNoise);
-  const naturePlayerRef = useRef<PadPlayer | null>(null);
 
   // Keep the app's audio session configured for playback in silent mode (iOS).
   useEffect(() => {
@@ -214,35 +230,19 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   // the scale only ever attenuates, never boosts a quiet stack.
   const volumeForPack = useCallback((packKey: string) => {
     const layers = padLayersRef.current;
-    // The nature bed shares this output bus, so it counts towards the scale
-    // even though it isn't one of the pad voices — otherwise bringing it in
-    // would push the total past full scale and clip everything. It counts at
-    // its trimmed level, which is what actually reaches the bus: charging the
-    // pads for gain the bed never uses would duck them for nothing.
-    const nature = natureRef.current;
-    const natureGain = nature.level * NATURE_CHANNEL.trim;
-    const scale = padBusScale([...layers, { ...nature, level: natureGain }]);
-
-    if (packKey === NATURE_CHANNEL.key) {
-      if (nature.muted) return 0;
-      return padVolumeRef.current * natureGain * scale;
-    }
+    // Each channel counts at its trimmed level, which is what actually
+    // reaches the bus: charging the pads for gain a trimmed field recording
+    // never uses would duck them for nothing.
+    const scale = padBusScale(
+      layers.map((layer) => ({ ...layer, level: layer.level * padTrim(layer.pack) }))
+    );
 
     const layer = layers.find((entry) => entry.pack === packKey);
     if (!layer || layer.muted) return 0;
 
-    return padVolumeRef.current * layer.level * scale;
+    return padVolumeRef.current * layer.level * padTrim(packKey) * scale;
   }, []);
 
-  // The bed only sounds when a pad is sounding. It's ambience *under the
-  // instrument*, not a standalone player: with no pad held there's nothing for
-  // it to sit beneath, and leaving it running would mean the app quietly
-  // playing forest audio with the transport stopped and no obvious way to
-  // notice. So no combination of unmuting and fader position starts it on its
-  // own — the pad is the gate, and the mix settings only decide whether it
-  // comes along.
-  const isNatureAudible = (settings: MixSettings, padSounding: boolean) =>
-    padSounding && !settings.muted && settings.level > 0;
 
   const clearFade = useCallback((player: AudioPlayer) => {
     const timer = fadeTimersRef.current.get(player);
@@ -289,6 +289,7 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   const teardownPad = useCallback(
     (player: PadPlayer, fadeOut = true) => {
       player.playToken += 1;
+      player.sounding = false;
 
       if (player.loopTimer) {
         clearInterval(player.loopTimer);
@@ -389,6 +390,19 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       const pack = findPadPackByKey(padPlayer.packKey);
       if (!pack) return;
 
+      // Ambience has no key to change to. A voice already running carries on
+      // -- a forest doesn't start again because the song modulated -- and
+      // only picks up its share of the mix.
+      if (pack.kind === "ambience" && padPlayer.sounding) {
+        if (!padPlayer.isLoopCrossfading) {
+          fadeVolume(
+            padPlayer.layers[padPlayer.activeLayer],
+            volumeForPack(padPlayer.packKey)
+          );
+        }
+        return;
+      }
+
       const source = sourceForKey(
         pack,
         KEYS[index],
@@ -422,6 +436,7 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
           if (pressToken !== padPlayer.playToken) return;
 
           padPlayer.activeLayer = targetLayer;
+          padPlayer.sounding = true;
           player.play();
 
           fadeVolume(player, volumeForPack(padPlayer.packKey));
@@ -462,6 +477,9 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   // the original pad-screen behavior.
   const setMode = useCallback(
     (nextMode: PadMode) => {
+      // Minor is switched off for now (constants/pads.ts); the engine stays
+      // in major whoever asks.
+      if (nextMode === "minor" && !MINOR_KEYS_ENABLED) return;
       if (nextMode === modeRef.current) return;
       modeRef.current = nextMode;
       setModeState(nextMode);
@@ -482,7 +500,6 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     padVolumeRef.current = prefs.padVolume;
     padLayersRef.current = prefs.padLayers;
-    natureRef.current = prefs.natureNoise;
 
     // Preferences start at DEFAULTS and are replaced once the file is read.
     // Building voices for the defaults first would open native players just to
@@ -515,10 +532,22 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       const pack = findPadPackByKey(layer.pack);
       if (!pack) return; // stale key from an older catalog
 
-      const player = createPadPlayer(layer.pack, pack.sources.C);
+      // Loaded mid-drone, the voice is built on the clip for the key that's
+      // sounding, not C. It used to start on C and be switched straight
+      // after -- but the players download their first clip before loading
+      // it, and a C download landing after the switch put it back, so a pack
+      // added over a held E could come in in C.
+      const sounding =
+        isPlayingRef.current && activeKeyIndexRef.current !== null;
+      const player = createPadPlayer(
+        layer.pack,
+        sounding
+          ? padClipAt(pack, activeKeyIndexRef.current, modeRef.current)
+          : pack.sources.C
+      );
       players.set(layer.pack, player);
 
-      if (isPlayingRef.current && activeKeyIndexRef.current !== null) {
+      if (sounding && activeKeyIndexRef.current !== null) {
         startVoice(player, activeKeyIndexRef.current, false);
       }
     });
@@ -536,7 +565,6 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     isLoaded,
     prefs.padLayers,
     prefs.padVolume,
-    prefs.natureNoise,
     clearFade,
     startVoice,
     teardownPad,
@@ -552,9 +580,7 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       onVolumePreview("pad", (volume) => {
         padVolumeRef.current = volume;
         if (!isPlayingRef.current) return;
-        const voices = [...padPlayersRef.current.values()];
-        if (naturePlayerRef.current) voices.push(naturePlayerRef.current);
-        voices.forEach((player) => {
+        padPlayersRef.current.forEach((player) => {
           if (player.isLoopCrossfading) return;
           const audioLayer = player.layers[player.activeLayer];
           clearFade(audioLayer);
@@ -564,89 +590,11 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
     [clearFade, volumeForPack]
   );
 
-  // Run the nature bed whenever it's audible. Unlike a pad voice it isn't tied
-  // to a particular key — switching keys leaves it running rather than
-  // restarting it — but it does follow the transport: it comes in when a pad
-  // starts and goes out when the last one stops.
-  //
-  // It loops through the same crossfade pair the pads use rather than
-  // AudioPlayer.loop. A 60-second slice of a field recording doesn't
-  // butt-splice cleanly, and AAC's encoder padding would add a gap on top of
-  // that; overlapping the end against a fresh copy hides the seam entirely.
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    const audible = isNatureAudible(prefs.natureNoise, isPlaying);
-    const player = naturePlayerRef.current;
-
-    if (!audible) {
-      if (player) {
-        teardownPad(player, true);
-        naturePlayerRef.current = null;
-        // Release the natives once the fade can no longer be writing to them.
-        setTimeout(() => {
-          player.layers.forEach((layer) => {
-            clearFade(layer);
-            layer.pause();
-            layer.loop = false;
-            layer.remove();
-          });
-        }, CROSSFADE_MS + CROSSFADE_MARGIN_MS);
-      }
-      return;
-    }
-
-    // Already running: just follow the fader.
-    if (player) {
-      if (player.isLoopCrossfading) return;
-      const audioLayer = player.layers[player.activeLayer];
-      clearFade(audioLayer);
-      audioLayer.volume = volumeForPack(NATURE_CHANNEL.key);
-      return;
-    }
-
-    const nature = createPadPlayer(NATURE_CHANNEL.key, NATURE_CHANNEL.source);
-    naturePlayerRef.current = nature;
-
-    nature.playToken += 1;
-    const startToken = nature.playToken;
-    nature.currentSource = NATURE_CHANNEL.source;
-    const first = nature.layers[0];
-
-    prepareLayer(first, NATURE_CHANNEL.source, 0)
-      .then(() => {
-        if (startToken !== nature.playToken) return;
-        nature.activeLayer = 0;
-        first.play();
-        fadeVolume(first, volumeForPack(NATURE_CHANNEL.key));
-        startSelfCrossfadeLoop(nature);
-      })
-      .catch((error) => {
-        console.error("Failed to start nature bed:", error);
-      });
-  }, [
-    isLoaded,
-    // The transport gates the bed, so starting or stopping a pad has to
-    // re-evaluate it — this is what brings it in and takes it out.
-    isPlaying,
-    prefs.natureNoise,
-    prefs.padVolume,
-    prefs.padLayers,
-    clearFade,
-    fadeVolume,
-    startSelfCrossfadeLoop,
-    teardownPad,
-    volumeForPack,
-  ]);
-
   // Release the native players when the app itself tears down (this provider
   // lives for the app's lifetime, so this only runs on full unmount).
   useEffect(() => {
     const fadeTimers = fadeTimersRef.current;
     const players = padPlayersRef.current;
-    // The nature ref is read inside the cleanup, not out here: it's still null
-    // at mount and only gets a player once the bed is first unmuted, so
-    // capturing it now would leak those two natives.
     return () => {
       fadeTimers.forEach((timer) => clearInterval(timer));
       fadeTimers.clear();
@@ -660,10 +608,6 @@ export function PadPlaybackProvider({ children }: { children: ReactNode }) {
       };
       players.forEach(release);
       players.clear();
-      if (naturePlayerRef.current) {
-        release(naturePlayerRef.current);
-        naturePlayerRef.current = null;
-      }
     };
   }, []);
 

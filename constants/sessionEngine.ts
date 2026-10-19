@@ -110,6 +110,22 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         // any later beat is arithmetic rather than a running count that could
         // drift.
         var tempo = 120;
+        // Warp: how fast the stems play against their own tempo -- the target
+        // tempo over the song's. 1 is as recorded. Only ever set natively
+        // (react-native-audio-api), where a source can be time-stretched with
+        // its pitch kept; a WebView source can only varispeed, which would put
+        // the song in another key, so there it stays 1.
+        //
+        // Two clocks follow from it. SONG time is the stems' own: sections,
+        // markers, bars on the ruler, everything the app stores. REAL time is
+        // the audio clock. A second of song lasts 1/warp seconds of real time.
+        var warp = 1;
+        // What the last launch was asked to play, so a tempo change mid-song
+        // can play it again from where the song has got to, at the new rate.
+        var lastLaunch = null;
+        // The furthest the library's time-stretcher will go either way.
+        var MAX_WARP = 2;
+        var MIN_WARP = 0.5;
         var beatsPerBar = 4;
         var transportRunning = false;
         var startedAt = 0;
@@ -256,7 +272,13 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
 
         // --- Grid maths -----------------------------------------------------
 
+        /** A beat in REAL seconds -- the transport, the click, quantised arms. */
         function secondsPerBeat() {
+          return 60.0 / (tempo * warp);
+        }
+
+        /** A beat in SONG seconds -- bars and beats measured in the stems. */
+        function songSecondsPerBeat() {
           return 60.0 / tempo;
         }
 
@@ -279,7 +301,8 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         function songSeconds(atTime) {
           if (!live) return null;
 
-          var position = live.offset + (atTime - live.at);
+          // Song time runs at the warp rate against the audio clock.
+          var position = live.offset + (atTime - live.at) * warp;
           // Scheduled but not yet reached: the launch is a moment in the future,
           // so the playhead sits where it is about to start rather than before it.
           if (position < live.offset) return live.offset;
@@ -355,7 +378,10 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         //
         // Pure, and covered by tests: the timing is the whole of the risk here
         // and none of it is visible until it is wrong in front of a room.
-        function planArrangement(sections, fromSeconds, atTime) {
+        function planArrangement(sections, fromSeconds, atTime, rate) {
+          // Spans are song seconds; when a step fires is real time. A warped
+          // song passes through a span in span / rate.
+          var r = rate > 0 ? rate : 1;
           var plan = [];
           var cursorTime = atTime;
           var position = fromSeconds;
@@ -380,7 +406,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               // A vamp. Loop it and schedule nothing after, because nothing
               // after it is going to play until a pad is hit.
               plan.push({
-                when: cursorTime + firstSpan / 2,
+                when: cursorTime + firstSpan / 2 / r,
                 position: enterAt + firstSpan / 2,
                 looping: true,
                 loopStart: start,
@@ -394,7 +420,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               // section's window was taken away, and well before this one's
               // end is reached.
               plan.push({
-                when: cursorTime + firstSpan / 2,
+                when: cursorTime + firstSpan / 2 / r,
                 position: enterAt + firstSpan / 2,
                 looping: true,
                 loopStart: start,
@@ -403,17 +429,17 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               // Off, halfway through the last pass, so the source runs on past
               // the boundary into whatever follows.
               plan.push({
-                when: cursorTime + firstSpan + (plays - 1.5) * span,
+                when: cursorTime + (firstSpan + (plays - 1.5) * span) / r,
                 position: start + span / 2,
                 looping: false,
                 loopStart: start,
                 loopEnd: end,
               });
-              cursorTime += firstSpan + (plays - 1) * span;
+              cursorTime += (firstSpan + (plays - 1) * span) / r;
             } else {
               // Played once: the audio already flows through it, so there is
               // nothing to schedule.
-              cursorTime += firstSpan;
+              cursorTime += firstSpan / r;
             }
 
             position = end;
@@ -479,6 +505,12 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           // also why they stay locked to each other across a jump.
           var offset = section.offset || 0;
           var end = section.endSeconds || 0;
+          // Where a looping section comes back to. Its own start, except for a
+          // relaunch (setWarp) that picks the song up inside the loop: the
+          // window stays the section's, the audio starts where it had got to.
+          var loopFrom =
+            typeof section.loopFrom === "number" ? section.loopFrom : offset;
+          lastLaunch = section;
 
           // How many times through, and therefore which of three shapes this
           // launch has.
@@ -520,8 +552,15 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             if (!buffer) continue;
 
             var ctx = audioContext;
-            var source = ctx.createBufferSource();
+            // Time-stretched only when warped: the stretcher costs CPU per
+            // stem, and at the recorded tempo there's nothing for it to do.
+            var stretched =
+              typeof window !== "undefined" && !!window.__nativeHost && warp !== 1;
+            var source = stretched
+              ? ctx.createBufferSource({ pitchCorrection: true })
+              : ctx.createBufferSource();
             source.buffer = buffer;
+            if (stretched) source.playbackRate.value = warp;
             boundary = end > offset ? end : buffer.duration;
 
             if (looping) {
@@ -529,7 +568,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               // Looping inside the section, so holding on a chorus repeats the
               // chorus rather than running on into whatever follows it. Without
               // an end the section runs to the end of the file.
-              source.loopStart = offset;
+              source.loopStart = loopFrom;
               source.loopEnd = boundary;
               source.connect(gainForTrack(id));
               source.start(atTime, offset);
@@ -557,7 +596,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           live = {
             at: atTime,
             offset: offset,
-            loopStart: offset,
+            loopStart: loopFrom,
             loopEnd: boundary,
             looping: looping,
           };
@@ -601,7 +640,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
               });
             }
 
-            var steps = planArrangement(closed, offset, atTime);
+            var steps = planArrangement(closed, offset, atTime, warp);
             var arrangementSources = [];
             for (var p = 0; p < section.tracks.length; p++) {
               var held = playing[section.tracks[p]];
@@ -618,9 +657,13 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           }
 
           if (countsDown && loopingSources.length > 0) {
-            var span = boundary - offset;
+            var span = boundary - loopFrom;
             if (span > 0) {
-              var releaseAt = atTime + (repeats - 0.5) * span;
+              // Halfway through the last pass, in real time. The first pass
+              // is short when a relaunch started inside the loop.
+              var firstPass = boundary - offset;
+              var releaseAt =
+                atTime + (firstPass + (repeats - 1.5) * span) / warp;
               var delayMs = (releaseAt - audioContext.currentTime) * 1000;
               setTimeout(
                 function () {
@@ -735,7 +778,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
         function songBeatAt(atTime) {
           var seconds = songSeconds(atTime);
           if (seconds === null) return beatsElapsed(atTime);
-          return seconds / secondsPerBeat();
+          return seconds / songSecondsPerBeat();
         }
 
         function seedClickGrid(atTime) {
@@ -994,7 +1037,8 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           var ctx = audioContext;
 
           if (armed && !armed.scheduled) {
-            var at = timeOfBeat(armed.atBeat);
+            var at =
+              typeof armed.atTime === "number" ? armed.atTime : timeOfBeat(armed.atBeat);
             if (at < ctx.currentTime + SCHEDULE_AHEAD) {
               // Never hand Web Audio a time it has already passed; if the
               // boundary slipped by while the JS thread was busy, take the
@@ -1019,7 +1063,7 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             // is the only thing left to show.
             var seconds = songSeconds(now);
             var beats =
-              seconds === null ? beatsElapsed(now) : seconds / secondsPerBeat();
+              seconds === null ? beatsElapsed(now) : seconds / songSecondsPerBeat();
             var bar = Math.floor(beats / beatsPerBar);
             var beatInBar = beats - bar * beatsPerBar;
 
@@ -1079,6 +1123,46 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           post({ type: "transport", running: false });
         }
 
+        // Change the warp rate. Stopped, it's only remembered for the next
+        // launch. Playing, the song is picked up again from exactly where it
+        // has got to, at the new rate: a source's stretch can't be switched on
+        // after it starts, and re-planning from here keeps the arrangement's
+        // timers in step with the new speed. Repeats already taken of the
+        // section underway are counted again -- the one thing this costs.
+        var WARP_RELAUNCH_LEAD = 0.05;
+        function setWarp(rate) {
+          var next = window.__nativeHost && rate > 0 ? rate : 1;
+          next = Math.max(MIN_WARP, Math.min(MAX_WARP, next));
+          if (Math.abs(next - warp) < 1e-6) return;
+
+          var ctx = audioContext;
+          if (!ctx || !transportRunning || !live || !lastLaunch) {
+            warp = next;
+            return;
+          }
+
+          var at = ctx.currentTime + WARP_RELAUNCH_LEAD;
+          // Both read at the OLD rate, before it changes.
+          var position = songSeconds(at);
+          var beatNow = beatsElapsed(at);
+          var loopFrom = live.looping ? live.loopStart : undefined;
+
+          warp = next;
+          // Keep the beat we're on where it is in real time, so an armed
+          // launch still lands on the grid line it was aiming at.
+          startedAt = at - beatNow * secondsPerBeat();
+
+          var again = {};
+          for (var key in lastLaunch) {
+            if (Object.prototype.hasOwnProperty.call(lastLaunch, key)) {
+              again[key] = lastLaunch[key];
+            }
+          }
+          again.offset = position;
+          again.loopFrom = loopFrom;
+          launch(again, at);
+        }
+
         // Arm a section to launch on the next grid line. Replacing an armed
         // launch that hasn't fired is deliberate: on stage, hitting a second
         // pad before the first lands means you changed your mind, and the last
@@ -1091,7 +1175,8 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
           endSeconds,
           loop,
           repeats,
-          arrangement
+          arrangement,
+          songAligned
         ) {
           var ctx = ensureContext();
           if (!transportRunning) startTransport();
@@ -1120,6 +1205,19 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
             atBeat: nextBoundary(fromBeat, q),
             scheduled: false,
           };
+
+          // A mid-song jump lands on the song's next bar line. Worked out in
+          // song beats from where the stems are, then turned into real time:
+          // the transport's own bars drift from the song's after any seek.
+          if (songAligned && live) {
+            var nowT = ctx.currentTime;
+            var songBeat = songSeconds(nowT) / songSecondsPerBeat();
+            var bpb = beatsPerBar > 0 ? beatsPerBar : 4;
+            // A hair past the line counts as on it -- no waiting a whole bar
+            // for a press that landed on the downbeat.
+            var nextBar = Math.ceil((songBeat + 0.05) / bpb) * bpb;
+            armed.atTime = nowT + (nextBar - songBeat) * secondsPerBeat();
+          }
           post({ type: "armed", sectionId: sectionId, atBeat: armed.atBeat });
         }
 
@@ -1441,8 +1539,12 @@ export const buildSessionEngineHtml = () => `<!DOCTYPE html>
                 data.endSeconds,
                 data.loop,
                 data.repeats,
-                data.arrangement
+                data.arrangement,
+                data.songAligned
               );
+              break;
+            case "setWarp":
+              setWarp(data.rate);
               break;
             case "setTrack":
               setTrack(data.id, data.level, data.muted, data.pan);

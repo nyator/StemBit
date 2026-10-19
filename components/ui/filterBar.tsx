@@ -1,14 +1,19 @@
 import type { ReactNode } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 import { COLORS, SIZES } from "../../constants/theme";
-import { Close, Filter } from "../icons";
+import { Filter } from "../icons";
 import GlassSurface from "./glassSurface";
 
 // A screen's search and filter controls: the search field and a round filter
-// button with a count on one row, opening a FilterDrawer, then one removable pill per
-// active filter (or search) on the row below. Shared by Bits and the Loop Store, so the two filters
-// look and behave as one control rather than two that drift apart.
+// button on one row, the button opening a FilterDrawer and carrying a count of
+// what's set in it. Shared by every catalogue -- the Loop Store, Bits, the pad
+// browser and the session's pickers -- so they look and behave as one control
+// rather than several that drift apart.
+//
+// No row of pills under it any more. What's set is listed in the drawer, with
+// its own clear and reset, and the count on the button says when to look --
+// a second copy of the same list on the screen was only taking up room.
 
 export type ActiveFilterPill = {
   key: string;
@@ -25,30 +30,17 @@ export default function FilterBar({
   /** The screen's search field. It takes the row; the button sits at its end. */
   search: ReactNode;
   onOpen: () => void;
-  /** Everything narrowing the list right now; its length is the badge. */
+  /** Everything narrowing the list right now. Drawer filters make the badge. */
   pills: ActiveFilterPill[];
 }) {
-  const count = pills.length;
+  // The search counts as narrowing the list, but it already shows itself in
+  // its own field -- a badge of 1 over a drawer with nothing ticked would send
+  // people looking for a filter that isn't there.
+  const count = pills.filter((pill) => pill.key !== "query").length;
   return (
-    <View className="gap-3">
-      <View className="flex-row items-center gap-2">
-        <View className="flex-1">{search}</View>
-        <FilterButton count={count} onOpen={onOpen} />
-      </View>
-
-      {/* On a row of their own, so however many there are they never squeeze
-          the search. */}
-      {count > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, alignItems: "center" }}
-        >
-          {pills.map(({ key, ...pill }) => (
-            <ActivePill key={key} {...pill} />
-          ))}
-        </ScrollView>
-      )}
+    <View className="flex-row items-center gap-2">
+      <View className="flex-1">{search}</View>
+      <FilterButton count={count} onOpen={onOpen} />
     </View>
   );
 }
@@ -87,35 +79,6 @@ function FilterButton({ count, onOpen }: { count: number; onOpen: () => void }) 
           <Text className="text-white text-micro font-spaceBold">{count}</Text>
         </View>
       )}
-    </TouchableOpacity>
-  );
-}
-
-// One applied filter (or the search text), removable on its own. Styled like
-// the search field -- glass pill, the same small round clear button -- so
-// everything narrowing the list looks like it belongs to the search.
-function ActivePill({
-  label,
-  onRemove,
-  accessibilityLabel,
-}: Omit<ActiveFilterPill, "key">) {
-  return (
-    <TouchableOpacity
-      onPress={onRemove}
-      accessibilityLabel={accessibilityLabel}
-      activeOpacity={0.8}
-      className="flex-row items-center gap-2 pl-4 pr-2 rounded-full bg-white/5"
-      style={{ height: SIZES.control }}
-    >
-      <Text className="text-white text-label font-satoshiMedium" numberOfLines={1}>
-        {label}
-      </Text>
-      <View
-        className="items-center justify-center rounded-full bg-white/15"
-        style={{ width: 22, height: 22 }}
-      >
-        <Close size={12} color={COLORS.white} />
-      </View>
     </TouchableOpacity>
   );
 }

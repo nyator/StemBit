@@ -12,11 +12,16 @@ import {
   KEY_DISPLAY_LABELS,
   type PadMode,
 } from "../../context/PadPlaybackContext";
-import { findPadPackByKey, type PadPack } from "../../constants/pads";
+import {
+  MINOR_KEYS_ENABLED,
+  findPadPackByKey,
+  type PadPack,
+} from "../../constants/pads";
 import { hapticImpact } from "../../utils/haptics";
 import { COLORS, LAYOUT } from "../../constants/theme";
 import { SortPad } from "../../components/icons";
 import Screen from "../../components/ui/screen";
+import GlassSurface from "../../components/ui/glassSurface";
 import SegmentedControl, {
   type SegmentedOption,
 } from "../../components/ui/segmentedControl";
@@ -83,19 +88,22 @@ export default function PadScreen() {
               and then this screen kept its hand-rolled copy, which had drifted
               a shade lighter on the track and a step down on the label. The
               accent still carries the mode, as it did before. */}
-          <SegmentedControl
-            options={MODE_OPTIONS}
-            value={mode}
-            onChange={setMode}
-            accent={isMinor ? COLORS.danger : COLORS.brand}
-          />
+          {/* Major only for now -- see MINOR_KEYS_ENABLED. */}
+          {MINOR_KEYS_ENABLED && (
+            <SegmentedControl
+              options={MODE_OPTIONS}
+              value={mode}
+              onChange={setMode}
+              accent={isMinor ? COLORS.danger : COLORS.brand}
+            />
+          )}
 
           {/* What's loaded, and the control that changes it — one target, so
               the name isn't a label sitting next to a button that means the
               same thing. Shrinks (and the title ellipsises) rather than
               pushing the Maj/Min toggle off-centre on a narrow screen. */}
           <TouchableOpacity
-            className="flex-row items-center gap-2 px-3 py-3 rounded-full bg-white/5 shrink"
+            className="flex-row shrink"
             onPress={() => router.push("/(pads)/sounds")}
             activeOpacity={0.7} 
             accessibilityLabel={
@@ -106,13 +114,27 @@ export default function PadScreen() {
                 : "Select pads"
             }
           >
-            <SortPad size={20} color={COLORS.white} />
-            <Text
-              className="text-white shrink text-label font-satoshiMedium"
-              numberOfLines={1}
+            {/* Glass, matching Select Loop and the time signature. */}
+            <GlassSurface
+              fallbackClassName="bg-white/5"
+              style={{
+                flexShrink: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 12,
+                borderRadius: 999,
+              }}
             >
-              {padStackLabel}
-            </Text>
+              <SortPad size={20} color={COLORS.white} />
+              <Text
+                className="text-white shrink text-label font-satoshiMedium"
+                numberOfLines={1}
+              >
+                {padStackLabel}
+              </Text>
+            </GlassSurface>
           </TouchableOpacity>
         </View>
 

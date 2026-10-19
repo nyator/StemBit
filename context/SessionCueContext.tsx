@@ -13,7 +13,7 @@ import { useMetronome } from "./MetronomeContext";
 import { useSessionPlayback } from "./SessionPlaybackContext";
 import { arrangementFrom } from "../constants/arrangement";
 import { usePreferences, type PadLayer } from "./PreferencesContext";
-import { findPadPackByKey } from "../constants/pads";
+import { findPadPackByKey, playableKey } from "../constants/pads";
 import { findLoopByKey } from "../constants/loops";
 import type { SessionItem } from "./SessionsContext";
 
@@ -186,7 +186,9 @@ export function SessionCueProvider({ children }: { children: ReactNode }) {
     };
   };
 
-  const armPad = (packKey: string, key: string, padMode: "major" | "minor") => {
+  const armPad = (packKey: string, savedKey: string, savedMode: "major" | "minor") => {
+    // A cue saved in a minor key plays its relative major while minor is off.
+    const { key, mode: padMode } = playableKey(savedKey, savedMode);
     const pack = findPadPackByKey(packKey);
     const index = KEYS.indexOf(key);
     if (!pack || index < 0) return;

@@ -45,12 +45,25 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        // Figma design system. Space Grotesk carries numerals, controls and
-        // labels; Satoshi carries prose and list content; Gochi Hand is the
-        // logotype only.
-        spaceBold: ["SpaceGrotesk-Bold"],
-        spaceMedium: ["SpaceGrotesk-Medium"],
-        spaceRegular: ["SpaceGrotesk-Regular"],
+        // After Xe's design system (design.xe.com/foundations/typography):
+        // IBM Plex Sans carries numerals, controls and labels; Zalando Sans
+        // carries prose, lists and UI text; Gochi Hand is the logotype only.
+        //
+        // The class names are the ones the app was written against --
+        // "space*" was Space Grotesk, "satoshi*" was Satoshi -- kept so the
+        // hundreds of call sites didn't change. Read them as roles: space* is
+        // the display/number face, satoshi* the text face.
+        //
+        // Weights are matched by measured ink, not by name. Plex SemiBold
+        // draws exactly as heavy as Space Grotesk Bold did, so spaceBold is
+        // SemiBold. Zalando Sans draws a full step heavier than Satoshi at
+        // the same name, so every satoshi* role is one Zalando weight down:
+        // Regular is Light, Medium is Regular, Bold is Medium, Black is Bold.
+        //
+        // The BPM number keeps Space Grotesk (bpm, below).
+        spaceBold: ["IBMPlexSans-SemiBold"],
+        spaceMedium: ["IBMPlexSans-Medium"],
+        spaceRegular: ["IBMPlexSans-Regular"],
 
         // Satoshi's full range. Regular / Medium / Bold carry the app; Light
         // and Black exist for the two ends of a hierarchy that needs more room
@@ -60,35 +73,39 @@ module.exports = {
         // for italic on Satoshi-Regular gets you upright text on iOS and a
         // mechanical slant on Android. So each style is its own registered
         // face, and italic is a font choice here rather than a modifier.
-        satoshiLight: ["Satoshi-Light"],
-        satoshiLightItalic: ["Satoshi-LightItalic"],
-        satoshiRegular: ["Satoshi-Regular"],
-        satoshiItalic: ["Satoshi-Italic"],
-        satoshiMedium: ["Satoshi-Medium"],
-        satoshiMediumItalic: ["Satoshi-MediumItalic"],
-        satoshiBold: ["Satoshi-Bold"],
-        satoshiBoldItalic: ["Satoshi-BoldItalic"],
-        satoshiBlack: ["Satoshi-Black"],
-        satoshiBlackItalic: ["Satoshi-BlackItalic"],
+        satoshiLight: ["ZalandoSans-ExtraLight"],
+        satoshiLightItalic: ["ZalandoSans-ExtraLightItalic"],
+        satoshiRegular: ["ZalandoSans-Light"],
+        satoshiItalic: ["ZalandoSans-LightItalic"],
+        satoshiMedium: ["ZalandoSans-Regular"],
+        satoshiMediumItalic: ["ZalandoSans-Italic"],
+        satoshiBold: ["ZalandoSans-Medium"],
+        satoshiBoldItalic: ["ZalandoSans-MediumItalic"],
+        satoshiBlack: ["ZalandoSans-Bold"],
+        satoshiBlackItalic: ["ZalandoSans-BoldItalic"],
 
         wordmark: ["GochiHand-Regular"],
+
+        // The tempo readout only: Space Grotesk's numerals, kept from before
+        // the type moved to Xe's pair.
+        bpm: ["SpaceGrotesk-Bold"],
       },
       colors: {
-        canvas: "#101116", // app background
+        canvas: "#030406", // app background
         surface: {
           DEFAULT: "rgba(23,28,36,0.6)", // rows, cards
           sunken: "rgba(21,21,27,0.87)", // dial interior
           muted: "rgba(42,42,42,0.7)", // segmented control, unselected
           glass: "rgba(15,20,22,0.52)", // floating nav
           field: "#17181F", // input / text-field fill
-          sheet: "#090B10", // bottom sheet panel, darker than the canvas
+          sheet: "#010102", // bottom sheet panel, darker than the canvas
           badge: "rgba(25,25,25,0.5)", // label chip recessed into a surface row
         },
         // The brand is a gradient; `brand` alone is the flat fallback.
         brand: {
-          DEFAULT: "#008BC2",
-          from: "#58BEEC",
-          to: "#007EB7",
+          DEFAULT: "#007DAF",
+          from: "#4FABD4",
+          to: "#0071A5",
           blue: "#2563EB", // switch "on" track
         },
         ink: {

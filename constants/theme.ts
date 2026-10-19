@@ -1,14 +1,16 @@
 export const COLORS = {
-  canvas: "#101116",
+  // Near black, three steps down from the #101116 it started at, with a
+  // trace of its blue cast left in.
+  canvas: "#030406",
   surface: "rgba(23,28,36,0.6)",
   surfaceSunken: "rgba(21,21,27,0.87)",
   surfaceMuted: "rgba(42,42,42,0.7)",
   surfaceGlass: "rgba(15,20,22,0.52)",
   surfaceField: "#17181F",
-  surfaceSheet: "#090B10",
+  surfaceSheet: "#010102",
   surfaceBadge: "rgba(25,25,25,0.5)",
 
-  glow: "#00415A",
+  glow: "#003B51",
 
   border: "rgba(0,65,91,0.26)",
   borderStrong: "rgba(0,65,91,0.5)",
@@ -22,9 +24,13 @@ export const COLORS = {
   track: "#2D3332",
   progressTrack: "rgba(255,255,255,0.10)",
 
-  brand: "#008BC2",
-  brandFrom: "#58BEEC",
-  brandTo: "#007EB7",
+  // 10% darker than the #008BC2 / #58BEEC / #007EB7 they started at, to go
+  // with the darker canvas: against it the old blue read brighter than it
+  // used to, and white on it was 3.8:1. Now white on brand is about 4.6:1
+  // and brand on the canvas about 4.4:1 -- where it sat on the old canvas.
+  brand: "#007DAF",
+  brandFrom: "#4FABD4",
+  brandTo: "#0071A5",
   brandBlue: "#2563EB",
 
   text: "#FFFFFF",
@@ -127,22 +133,25 @@ export const SHADOWS = {
 } as const;
 
 export const FONTS = {
-  spaceBold: "SpaceGrotesk-Bold",
-  spaceMedium: "SpaceGrotesk-Medium",
-  spaceRegular: "SpaceGrotesk-Regular",
+  spaceBold: "IBMPlexSans-SemiBold",
+  spaceMedium: "IBMPlexSans-Medium",
+  spaceRegular: "IBMPlexSans-Regular",
 
-  satoshiLight: "Satoshi-Light",
-  satoshiLightItalic: "Satoshi-LightItalic",
-  satoshiRegular: "Satoshi-Regular",
-  satoshiItalic: "Satoshi-Italic",
-  satoshiMedium: "Satoshi-Medium",
-  satoshiMediumItalic: "Satoshi-MediumItalic",
-  satoshiBold: "Satoshi-Bold",
-  satoshiBoldItalic: "Satoshi-BoldItalic",
-  satoshiBlack: "Satoshi-Black",
-  satoshiBlackItalic: "Satoshi-BlackItalic",
+  satoshiLight: "ZalandoSans-ExtraLight",
+  satoshiLightItalic: "ZalandoSans-ExtraLightItalic",
+  satoshiRegular: "ZalandoSans-Light",
+  satoshiItalic: "ZalandoSans-LightItalic",
+  satoshiMedium: "ZalandoSans-Regular",
+  satoshiMediumItalic: "ZalandoSans-Italic",
+  satoshiBold: "ZalandoSans-Medium",
+  satoshiBoldItalic: "ZalandoSans-MediumItalic",
+  satoshiBlack: "ZalandoSans-Bold",
+  satoshiBlackItalic: "ZalandoSans-BoldItalic",
 
   wordmark: "GochiHand-Regular",
+
+  // The tempo readout only -- see tailwind.config.js.
+  bpm: "SpaceGrotesk-Bold",
 } as const;
 
 export const TYPE = {

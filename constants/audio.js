@@ -14,7 +14,36 @@ import PAD_A from "../assets/audio/pads/generated/pad_A.m4a";
 import PAD_As from "../assets/audio/pads/generated/pad_As.m4a";
 import PAD_B from "../assets/audio/pads/generated/pad_B.m4a";
 
+// Chimes: rendered from a D# major recording by scripts/build_pad_keys.py.
+import CHIMES_C from "../assets/audio/pads/chimes/pad_C.m4a";
+import CHIMES_Cs from "../assets/audio/pads/chimes/pad_Cs.m4a";
+import CHIMES_D from "../assets/audio/pads/chimes/pad_D.m4a";
+import CHIMES_Ds from "../assets/audio/pads/chimes/pad_Ds.m4a";
+import CHIMES_E from "../assets/audio/pads/chimes/pad_E.m4a";
+import CHIMES_F from "../assets/audio/pads/chimes/pad_F.m4a";
+import CHIMES_Fs from "../assets/audio/pads/chimes/pad_Fs.m4a";
+import CHIMES_G from "../assets/audio/pads/chimes/pad_G.m4a";
+import CHIMES_Gs from "../assets/audio/pads/chimes/pad_Gs.m4a";
+import CHIMES_A from "../assets/audio/pads/chimes/pad_A.m4a";
+import CHIMES_As from "../assets/audio/pads/chimes/pad_As.m4a";
+import CHIMES_B from "../assets/audio/pads/chimes/pad_B.m4a";
+
+// Sad Bass String: rendered from a C bass-string note by scripts/build_pad_keys.py.
+import SAD_BASS_C from "../assets/audio/pads/sad_bass/pad_C.m4a";
+import SAD_BASS_Cs from "../assets/audio/pads/sad_bass/pad_Cs.m4a";
+import SAD_BASS_D from "../assets/audio/pads/sad_bass/pad_D.m4a";
+import SAD_BASS_Ds from "../assets/audio/pads/sad_bass/pad_Ds.m4a";
+import SAD_BASS_E from "../assets/audio/pads/sad_bass/pad_E.m4a";
+import SAD_BASS_F from "../assets/audio/pads/sad_bass/pad_F.m4a";
+import SAD_BASS_Fs from "../assets/audio/pads/sad_bass/pad_Fs.m4a";
+import SAD_BASS_G from "../assets/audio/pads/sad_bass/pad_G.m4a";
+import SAD_BASS_Gs from "../assets/audio/pads/sad_bass/pad_Gs.m4a";
+import SAD_BASS_A from "../assets/audio/pads/sad_bass/pad_A.m4a";
+import SAD_BASS_As from "../assets/audio/pads/sad_bass/pad_As.m4a";
+import SAD_BASS_B from "../assets/audio/pads/sad_bass/pad_B.m4a";
+
 import nature_forest from "../assets/audio/nature/forest_awakening.m4a";
+import nature_dawn_chorus from "../assets/audio/nature/dawn_chorus.m4a";
 
 import ableton_beat from "../assets/audio/clicks/ableton_beat.wav";
 import ableton_accent from "../assets/audio/clicks/ableton_accent.wav";
@@ -68,8 +97,39 @@ export default {
     B: PAD_B,
   },
 
-  // Nature — ambience layered over the pads, on its own mixer channel
+  chimes: {
+    C: CHIMES_C,
+    "C#": CHIMES_Cs,
+    D: CHIMES_D,
+    "D#": CHIMES_Ds,
+    E: CHIMES_E,
+    F: CHIMES_F,
+    "F#": CHIMES_Fs,
+    G: CHIMES_G,
+    "G#": CHIMES_Gs,
+    A: CHIMES_A,
+    "A#": CHIMES_As,
+    B: CHIMES_B,
+  },
+
+  sadBass: {
+    C: SAD_BASS_C,
+    "C#": SAD_BASS_Cs,
+    D: SAD_BASS_D,
+    "D#": SAD_BASS_Ds,
+    E: SAD_BASS_E,
+    F: SAD_BASS_F,
+    "F#": SAD_BASS_Fs,
+    G: SAD_BASS_G,
+    "G#": SAD_BASS_Gs,
+    A: SAD_BASS_A,
+    "A#": SAD_BASS_As,
+    B: SAD_BASS_B,
+  },
+
+  // Ambience — keyless packs stacked in the pad mixer (constants/pads.ts)
   nature_forest,
+  nature_dawn_chorus,
 
 
   //metronome — the Ableton click kit (keyed ableton_<beat|accent>)

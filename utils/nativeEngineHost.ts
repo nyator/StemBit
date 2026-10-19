@@ -62,10 +62,12 @@ const withDecodeCallbacks = <T extends { decodeAudioData: (...args: any[]) => Pr
 };
 
 // Sources answer to `onended` as in a browser.
-const withOnEnded = <T extends { createBufferSource: () => any }>(ctx: T) => {
+const withOnEnded = <T extends { createBufferSource: (options?: any) => any }>(ctx: T) => {
   const create = ctx.createBufferSource.bind(ctx);
-  (ctx as any).createBufferSource = () => {
-    const source = create();
+  // Options passed through: { pitchCorrection: true } is how the session
+  // engine asks for a time-stretched source when a song is warped.
+  (ctx as any).createBufferSource = (options?: { pitchCorrection: boolean }) => {
+    const source = options ? create(options) : create();
     let handler: ((event: unknown) => void) | null = null;
     Object.defineProperty(source, "onended", {
       configurable: true,

@@ -7,6 +7,7 @@ import { COLORS } from "../constants/theme";
 import { Musicnote, TickCircle } from "./icons";
 import PreviewButton from "./ui/previewButton";
 import { usePreview } from "../hooks/usePreview";
+import { padClipAt, usePadPlayback } from "../context/PadPlaybackContext";
 
 type SelectPadViewProps = {
   // Which packs to show -- defaults to the full catalog. The picker screen
@@ -31,6 +32,10 @@ const SelectPadView = ({
 }: SelectPadViewProps) => {
   const { layerFor, addLayer, removeLayer, isFull } = usePadLayers();
   const preview = usePreview();
+  // Previews sound in the key the pad is playing in, so a pack is auditioned
+  // in tune with the drone under it; with nothing playing, in C.
+  const pad = usePadPlayback();
+  const previewKey = pad.isPlaying ? pad.activeKeyIndex : null;
 
   // Row order shifts when the filter changes, so a running preview stops
   // rather than lighting up whatever row moved under it.
@@ -106,14 +111,14 @@ const SelectPadView = ({
                 </Text>
               )}
               <TouchableOpacity
-                className="flex-row items-center gap-3 p-3 mb-1.5 rounded-md"
+                className="flex-row items-center gap-3 p-3 mb-1.5 rounded-lg"
                 activeOpacity={0.75}
                 // Loaded packs are lit from the left by a brand bar and a
                 // tinted fill, unloaded ones sit flat. A row still has to read
                 // as a list item, and up to three can be lit at once, so the
                 // state has to be legible without dominating the list.
                 style={{
-                  backgroundColor: layer ? "rgba(0,139,194,0.14)" : COLORS.surface,
+                  backgroundColor: layer ? "rgba(0,125,175,0.14)" : COLORS.surface,
                   borderWidth: 1,
                   borderColor: layer ? COLORS.brand : "transparent",
                   // Greys out packs you can't load until you free a channel,
@@ -139,7 +144,7 @@ const SelectPadView = ({
                     borderColor: "rgba(255,255,255,0.2)",
                   }}
                 >
-                  {layer && <TickCircle size={12} color={COLORS.white} />}
+                  {/* {layer && <TickCircle size={12} color={COLORS.white} />} */}
                 </View>
 
                 <View className="flex-1">
@@ -172,7 +177,9 @@ const SelectPadView = ({
                 <PreviewButton
                   isPlaying={preview.activeKey === item.key && !preview.isLoading}
                   isLoading={preview.activeKey === item.key && preview.isLoading}
-                  onPress={() => preview.toggle(item.key, item.sources.C)}
+                  onPress={() =>
+                    preview.toggle(item.key, padClipAt(item, previewKey, pad.mode))
+                  }
                   title={item.title}
                 />
               </TouchableOpacity>

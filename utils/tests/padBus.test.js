@@ -9,7 +9,7 @@
  * here — in power terms, which is how uncorrelated sources actually combine.
  */
 
-const { padBusScale, NATURE_CHANNEL } = require("../../constants/pads");
+const { padBusScale, padTrim, PAD_PACKS } = require("../../constants/pads");
 
 /**
  * What the bus actually puts out, as power, for a set of channels.
@@ -70,12 +70,48 @@ describe("padBusScale — stacking pads must not turn the instrument down", () =
     expect(scale * 2 * 0.7).toBeLessThanOrEqual(1);
   });
 
-  it("charges the nature bed at its trimmed level, not its fader", () => {
-    // The bed reaches the bus through a fixed trim, so it should cost the pads
-    // only what it actually contributes -- otherwise bringing it in would duck
-    // the instrument for gain the bed never uses.
-    const bedAtFullFader = { level: 1 * NATURE_CHANNEL.trim, muted: false };
-    const withBed = padBusScale([...full(1), bedAtFullFader]);
-    expect(withBed).toBeGreaterThan(padBusScale(full(2)));
+  it("charges a trimmed ambience at its trimmed level, not its fader", () => {
+    // A field recording reaches the bus through a fixed trim, so it should
+    // cost the pads only what it actually contributes -- otherwise bringing
+    // it in would duck the instrument for gain it never uses.
+    const forestAtFullFader = { level: 1 * padTrim("nature"), muted: false };
+    const withForest = padBusScale([...full(1), forestAtFullFader]);
+    expect(withForest).toBeGreaterThan(padBusScale(full(2)));
   });
+});
+
+describe("the pad catalog", () => {
+  it("gives every ambience one clip and every pad all twelve", () => {
+    for (const pack of PAD_PACKS) {
+      const roots = Object.keys(pack.sources);
+      if (pack.kind === "ambience") expect(roots).toEqual(["C"]);
+      else expect(roots).toHaveLength(12);
+    }
+  });
+
+  it("keeps the old Nature channel's key, so saved mixes carry over", () => {
+    expect(PAD_PACKS.find((pack) => pack.key === "nature")?.kind).toBe("ambience");
+  });
+
+  it("leaves an untrimmed pack at full scale", () => {
+    expect(padTrim("drone-pad")).toBe(1);
+    expect(padTrim("no-such-pack")).toBe(1);
+  });
+});
+
+describe("major-only keys", () => {
+  const { playableKey, MINOR_KEYS_ENABLED } = require("../../constants/pads");
+
+  it("leaves a major key alone", () => {
+    expect(playableKey("D#", "major")).toEqual({ key: "D#", mode: "major" });
+  });
+
+  (MINOR_KEYS_ENABLED ? it.skip : it)(
+    "plays a saved minor key as its relative major -- the clip it always sounded",
+    () => {
+      expect(playableKey("A", "minor")).toEqual({ key: "C", mode: "major" });
+      expect(playableKey("C", "minor")).toEqual({ key: "D#", mode: "major" });
+      expect(playableKey("A#", "minor")).toEqual({ key: "C#", mode: "major" });
+    }
+  );
 });
